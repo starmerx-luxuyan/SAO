@@ -8,7 +8,7 @@ from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.recipes import WeaponRecipe
 from sao_mcp.domain.models import CombatantState, ItemInstance, ItemKind
 from sao_mcp.rules.crafting import CraftQuality, roll_craft_quality
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, carry_capacity, inventory_weight
 
 
 @dataclass(slots=True, frozen=True)
@@ -45,15 +45,25 @@ def _consume(actor: CombatantState, template_id: str, quantity: int) -> None:
     for instance_id, item in list(actor.inventory.items()):
         if item.template_id != template_id:
             continue
+        if instance_id in actor.equipment.values():
+            raise ValueError("equipped material cannot be consumed")
         used = min(item.quantity, remaining)
         item.quantity -= used
         remaining -= used
         if item.quantity <= 0:
-            if instance_id in actor.equipment.values():
-                raise ValueError("equipped material cannot be consumed")
             actor.inventory.pop(instance_id)
         if remaining <= 0:
             break
+
+
+def _post_craft_weight(actor: CombatantState, recipe: WeaponRecipe, catalog: Catalog) -> float:
+    current = inventory_weight(actor, catalog)
+    consumed = sum(
+        catalog.item(requirement.template_id).weight * requirement.quantity
+        for requirement in recipe.materials
+    )
+    product = catalog.weapons[recipe.product_template_id]
+    return current - consumed + product.weight
 
 
 def craft_weapon(
@@ -72,15 +82,17 @@ def craft_weapon(
         if _inventory_count(actor, requirement.template_id) < requirement.quantity:
             raise ValueError(f"insufficient material: {requirement.template_id}")
 
+    # Capacity is checked against the *post-craft* inventory before any material is consumed.
+    # An illegal start therefore cannot eat materials and then fail while depositing the product.
+    if _post_craft_weight(actor, recipe, catalog) > carry_capacity(actor):
+        raise ValueError("crafted weapon would exceed carrying capacity after material consumption")
+
     quality = roll_craft_quality(
         smith_proficiency=smith_proficiency,
         material_quality=material_quality,
         item_difficulty=recipe.difficulty,
         rng=rng,
     )
-    for requirement in recipe.materials:
-        _consume(actor, requirement.template_id, requirement.quantity)
-
     template = catalog.weapons[recipe.product_template_id]
     instance = ItemInstance(
         instance_id=f"item_{uuid.uuid4().hex[:12]}",
@@ -98,6 +110,9 @@ def craft_weapon(
             "nominal_hammer_hits": recipe.nominal_hammer_hits,
         },
     )
+
+    for requirement in recipe.materials:
+        _consume(actor, requirement.template_id, requirement.quantity)
     add_item(actor, instance, catalog)
     return CraftWeaponResolution(
         recipe.recipe_id,
