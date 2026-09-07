@@ -49,6 +49,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     economy = getattr(runtime, "economy", None)
     timeline_dump = getattr(runtime, "dump_timeline_state", None)
     duel_dump = getattr(runtime, "dump_duel_state", None)
+    relationship_dump = getattr(runtime, "dump_relationship_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -60,6 +61,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "economy_state": economy.dump_state() if economy is not None else {},
         "timeline_state": timeline_dump() if timeline_dump is not None else {},
         "duel_state": duel_dump() if duel_dump is not None else {},
+        "relationship_state": relationship_dump() if relationship_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -70,10 +72,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        # v1 remains backward-compatible while new optional sections restore richer runtime layers.
-        from sao_mcp.runtime.social_runtime import SocialTimelineAincradRuntime
+        from sao_mcp.runtime.community_runtime import CommunityAincradRuntime
 
-        runtime: GameRuntime = SocialTimelineAincradRuntime()
+        runtime: GameRuntime = CommunityAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -127,4 +128,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     duel_load = getattr(runtime, "load_duel_state", None)
     if duel_load is not None:
         duel_load(payload.get("duel_state", {}))
+    relationship_load = getattr(runtime, "load_relationship_state", None)
+    if relationship_load is not None:
+        relationship_load(payload.get("relationship_state", {}))
+    if hasattr(runtime, "relationships"):
+        from sao_mcp.runtime.community_hooks import attach_community_economy
+
+        attach_community_economy(runtime, economy)
     return runtime
