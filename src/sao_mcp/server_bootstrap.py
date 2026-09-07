@@ -29,7 +29,8 @@ from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
 
 register_boss_tools(mcp, runtime)
 
-# Import after all state/tool groups exist so the unified view can expose every panel.
+# Import after all state/tool groups exist so UI views can expose every panel and boss state.
 from sao_mcp import server_ui as _server_ui  # noqa: E402,F401
+from sao_mcp import server_boss_ui as _server_boss_ui  # noqa: E402,F401
 
 __all__ = ["mcp", "runtime"]
