@@ -4,8 +4,11 @@ import random
 import uuid
 from dataclasses import asdict
 
+from sao_mcp.corpus.canon_seed import apply_canon_seed
 from sao_mcp.corpus.core import Catalog, build_core_catalog
 from sao_mcp.corpus.loot import CORE_LOOT_TABLES
+from sao_mcp.corpus.quests import CORE_QUESTS
+from sao_mcp.corpus.world import WorldMapCatalog, build_world_map_catalog
 from sao_mcp.domain.models import (
     CombatEvent,
     CombatantState,
@@ -31,12 +34,15 @@ from sao_mcp.rules.inventory import (
 )
 from sao_mcp.rules.items import ConsumableResolution, tick_statuses, use_consumable
 from sao_mcp.rules.loot import GrantedLoot, LootRoll, grant_loot, roll_loot
+from sao_mcp.rules.npcs import NPCInteraction, NPCRuntime
 from sao_mcp.rules.progression import (
     default_max_hp,
     experience_to_reach_level,
     gain_skill_proficiency,
 )
+from sao_mcp.rules.quests import QuestClaimResolution, QuestObjectiveKind, QuestProgress, QuestRuntime
 from sao_mcp.rules.social import add_party_member, add_raid_party, apply_unlawful_hostile_action
+from sao_mcp.rules.travel import TravelResolution, discover_location, teleport_to_active_gate, travel
 from sao_mcp.rules.world import advance_world_time, defeat_floor_boss, make_aincrad_world
 
 
@@ -45,11 +51,14 @@ def _id(prefix: str) -> str:
 
 
 class GameRuntime:
-    """Authoritative in-memory Aincrad runtime. Persistence is layered separately."""
+    """Authoritative Aincrad runtime shared by rules, MCP tools, persistence and UI."""
 
     def __init__(self, *, seed: int | None = None, catalog: Catalog | None = None) -> None:
-        self.catalog = catalog or build_core_catalog()
+        self.catalog = apply_canon_seed(catalog or build_core_catalog())
         self.world = make_aincrad_world()
+        self.world_map: WorldMapCatalog = build_world_map_catalog()
+        self.quests = QuestRuntime(CORE_QUESTS)
+        self.npcs = NPCRuntime()
         self.actors: dict[str, CombatantState] = {}
         self.encounters: dict[str, EncounterState] = {}
         self.rng = random.Random(seed)
@@ -117,13 +126,27 @@ class GameRuntime:
         equip(actor, weapon.instance_id, self.catalog)
         equip(actor, coat.instance_id, self.catalog)
         self.actors[actor_id] = actor
+        discover_location(
+            self.world,
+            actor,
+            self.world_map.locations["floor_1_town_of_beginnings"],
+        )
         return actor
 
-    def create_training_monster(self, name: str = "Frenzy Boar", *, level: int = 1) -> CombatantState:
+    def _create_monster(
+        self,
+        *,
+        name: str,
+        level: int,
+        location_id: str,
+        hp_factor: float,
+        loot_table_id: str,
+        quest_kill_id: str,
+    ) -> CombatantState:
         actor_id = _id("mob")
         strength = 9 + level * 2
         agility = 8 + level * 2
-        hp = int(default_max_hp(level, strength, agility) * 0.72)
+        hp = max(1, int(default_max_hp(level, strength, agility) * hp_factor))
         actor = CombatantState(
             actor_id=actor_id,
             name=name,
@@ -136,9 +159,9 @@ class GameRuntime:
             armor=20 + level * 3,
             evasion=level,
             cursor=CursorColor.RED,
-            location_id="floor_1_west_field",
+            location_id=location_id,
             skill_proficiencies={"one_hand_sword": min(1000.0, 80.0 + level * 5)},
-            metadata={"loot_table_id": "floor1_frenzy_boar"},
+            metadata={"loot_table_id": loot_table_id, "quest_kill_id": quest_kill_id},
         )
         natural = self.catalog.weapons["starter_one_hand_sword"]
         attack = ItemInstance(
@@ -147,7 +170,6 @@ class GameRuntime:
             owner_id=actor_id,
             durability=10_000,
             max_durability=10_000,
-            max_enhancement_attempts=0,
             metadata={"natural_attack": True},
         )
         actor.inventory[attack.instance_id] = attack
@@ -155,25 +177,52 @@ class GameRuntime:
         self.actors[actor_id] = actor
         return actor
 
+    def create_training_monster(self, name: str = "Frenzy Boar", *, level: int = 1) -> CombatantState:
+        return self._create_monster(
+            name=name,
+            level=level,
+            location_id="floor_1_west_field",
+            hp_factor=0.72,
+            loot_table_id="floor1_frenzy_boar",
+            quest_kill_id="frenzy_boar",
+        )
+
+    def create_little_nepenthes(self, *, flowerhead: bool = False, level: int = 2) -> CombatantState:
+        return self._create_monster(
+            name="Flowerhead Little Nepenthes" if flowerhead else "Little Nepenthes",
+            level=level,
+            location_id="floor_1_west_field",
+            hp_factor=0.78,
+            loot_table_id=(
+                "floor1_little_nepenthes_flower"
+                if flowerhead
+                else "floor1_little_nepenthes"
+            ),
+            quest_kill_id="little_nepenthes",
+        )
+
     def start_encounter(
         self,
         actor_ids: list[str],
         *,
         zone_id: str = "floor_1_west_field",
-        safe_zone: bool = False,
-        anti_crystal: bool = False,
+        safe_zone: bool | None = None,
+        anti_crystal: bool | None = None,
     ) -> EncounterState:
         if len(set(actor_ids)) < 2:
             raise ValueError("an encounter needs at least two distinct participants")
         missing = [actor_id for actor_id in actor_ids if actor_id not in self.actors]
         if missing:
             raise KeyError(f"unknown actors: {missing}")
+        location = self.world_map.locations.get(zone_id)
+        resolved_safe = location.safe_zone if location and safe_zone is None else bool(safe_zone)
+        resolved_anti = location.anti_crystal if location and anti_crystal is None else bool(anti_crystal)
         encounter = EncounterState(
             encounter_id=_id("enc"),
             participants={actor_id: self.actors[actor_id] for actor_id in actor_ids},
             zone_id=zone_id,
-            safe_zone=safe_zone,
-            anti_crystal=anti_crystal,
+            safe_zone=resolved_safe,
+            anti_crystal=resolved_anti,
         )
         self.encounters[encounter.encounter_id] = encounter
         return encounter
@@ -221,7 +270,6 @@ class GameRuntime:
         count = max(1, len(recipients))
         details: list[dict] = []
         for index, recipient in enumerate(recipients):
-            # Simulation policy: Col/XP are party-shared, item drops go to the killer.
             col_share = rolled.col // count + (rolled.col % count if index == 0 else 0)
             xp_share = rolled.xp // count + (rolled.xp % count if index == 0 else 0)
             share = LootRoll(
@@ -249,6 +297,20 @@ class GameRuntime:
         self._append(encounter, "loot_awarded", killer.actor_id, target.actor_id, **payload)
         return payload
 
+    def _credit_quest_kill(
+        self,
+        encounter: EncounterState,
+        target: CombatantState,
+        killer: CombatantState,
+    ) -> None:
+        target_id = str(target.metadata.get("quest_kill_id", target.name))
+        for recipient in self._reward_recipients(encounter, killer):
+            self.quests.record_event(
+                recipient.actor_id,
+                kind=QuestObjectiveKind.KILL,
+                target_id=target_id,
+            )
+
     def _resolve_defeat(
         self,
         encounter: EncounterState,
@@ -264,6 +326,7 @@ class GameRuntime:
         killer = encounter.participants.get(killer_id)
         if killer is None or killer.kind is not EntityKind.PLAYER:
             return
+        self._credit_quest_kill(encounter, target, killer)
         self._grant_defeat_rewards(encounter, target, killer)
 
     def _advance_encounter_to(self, encounter: EncounterState, new_time_ms: int) -> None:
@@ -271,7 +334,7 @@ class GameRuntime:
             return
         elapsed = new_time_ms - encounter.time_ms
         encounter.time_ms = new_time_ms
-        for actor in encounter.participants.values():
+        for actor in list(encounter.participants.values()):
             was_alive = actor.alive
             changes = tick_statuses(actor, elapsed)
             for status_type, delta in changes:
@@ -319,7 +382,6 @@ class GameRuntime:
         weapon_item, weapon = self._equipped_weapon(attacker)
         skill = self.catalog.sword_skills.get(sword_skill_id) if sword_skill_id else None
         local_rng = random.Random(seed) if seed is not None else self.rng
-        mode = DefenseMode(defense)
         result = resolve_physical_attack(
             attacker,
             target,
@@ -328,7 +390,7 @@ class GameRuntime:
             now_ms=encounter.time_ms,
             rng=local_rng,
             sword_skill=skill,
-            defense=mode,
+            defense=DefenseMode(defense),
             distance_m=distance_m,
         )
         if not result.legal:
@@ -387,13 +449,7 @@ class GameRuntime:
             self._resolve_defeat(encounter, target, attacker_id)
         return result
 
-    def switch(
-        self,
-        encounter_id: str,
-        outgoing_id: str,
-        incoming_id: str,
-        target_id: str,
-    ) -> CombatEvent:
+    def switch(self, encounter_id: str, outgoing_id: str, incoming_id: str, target_id: str) -> CombatEvent:
         encounter = self.encounters[encounter_id]
         outgoing = encounter.participants[outgoing_id]
         incoming = encounter.participants[incoming_id]
@@ -437,9 +493,9 @@ class GameRuntime:
         if legal:
             return max(legal, key=legal.get)
         candidates = [
-            a.actor_id
-            for a in encounter.participants.values()
-            if a.alive and a.kind is EntityKind.PLAYER
+            actor.actor_id
+            for actor in encounter.participants.values()
+            if actor.alive and actor.kind is EntityKind.PLAYER
         ]
         return candidates[0] if candidates else None
 
@@ -475,6 +531,89 @@ class GameRuntime:
                 reason=result.reason,
             )
         return result
+
+    def _in_live_encounter(self, actor_id: str) -> bool:
+        for encounter in self.encounters.values():
+            if actor_id not in encounter.participants:
+                continue
+            other_alive = any(
+                member_id != actor_id and member.alive
+                for member_id, member in encounter.participants.items()
+            )
+            if other_alive:
+                return True
+        return False
+
+    def travel_actor(self, actor_id: str, destination_id: str) -> TravelResolution:
+        actor = self.actors[actor_id]
+        if self._in_live_encounter(actor_id):
+            raise ValueError("ordinary travel is unavailable during a live encounter")
+        resolution = travel(self.world, actor, destination_id, self.world_map)
+        if resolution.newly_discovered:
+            self.quests.record_event(
+                actor_id,
+                kind=QuestObjectiveKind.DISCOVER,
+                target_id=destination_id,
+            )
+        return resolution
+
+    def teleport_actor(
+        self,
+        actor_id: str,
+        crystal_instance_id: str,
+        destination_id: str,
+        *,
+        encounter_id: str | None = None,
+    ) -> TravelResolution:
+        actor = self.actors[actor_id]
+        destination = self.world_map.locations[destination_id]
+        floor = self.world.floors[destination.floor_number]
+        if not destination.teleport_gate or not floor.unlocked or not floor.main_town_gate_active:
+            raise ValueError("destination is not an active teleport gate")
+        template_id = actor.inventory[crystal_instance_id].template_id
+        if template_id != "teleport_crystal":
+            raise ValueError("item is not a teleport crystal")
+        used = self.use_inventory_item(actor_id, crystal_instance_id, encounter_id=encounter_id)
+        if not used.consumed:
+            raise ValueError(used.reason or "teleport crystal could not be used")
+        resolution = teleport_to_active_gate(self.world, actor, destination_id, self.world_map)
+        if encounter_id and actor_id in self.encounters[encounter_id].participants:
+            encounter = self.encounters[encounter_id]
+            self._append(encounter, "teleport_escape", actor_id, actor_id, destination_id=destination_id)
+            encounter.participants.pop(actor_id, None)
+        return resolution
+
+    def interact_npc(self, actor_id: str, npc_id: str) -> NPCInteraction:
+        actor = self.actors[actor_id]
+        interaction = self.npcs.interact(
+            actor_id,
+            npc_id,
+            actor_location_id=actor.location_id,
+            now_ms=self.world.now_ms,
+            quests=self.quests,
+        )
+        self.quests.record_event(
+            actor_id,
+            kind=QuestObjectiveKind.TALK,
+            target_id=npc_id,
+        )
+        return interaction
+
+    def accept_quest(self, actor_id: str, quest_id: str) -> QuestProgress:
+        actor = self.actors[actor_id]
+        definition = self.quests.definitions[quest_id]
+        interaction = self.interact_npc(actor_id, definition.giver_id)
+        if quest_id not in interaction.available_quests:
+            raise ValueError("quest is not currently available from this NPC")
+        return self.quests.accept(actor_id, quest_id, now_ms=self.world.now_ms)
+
+    def claim_quest(self, actor_id: str, quest_id: str) -> QuestClaimResolution:
+        actor = self.actors[actor_id]
+        definition = self.quests.definitions[quest_id]
+        state = self.npcs.states[definition.turn_in_id]
+        if actor.location_id != state.location_id:
+            raise ValueError("quest must be turned in to the designated NPC")
+        return self.quests.claim(actor, quest_id, self.catalog, now_ms=self.world.now_ms)
 
     def equip_item(self, actor_id: str, instance_id: str) -> EquipmentChange:
         return equip(self.actors[actor_id], instance_id, self.catalog)
