@@ -35,11 +35,19 @@ def _item_view(item: ItemInstance, catalog: Catalog, *, equipped: bool = False) 
         "durability": item.durability,
         "maxDurability": item.max_durability,
         "quality": item.quality,
+        "makerId": item.maker_id,
+        "craftGrade": item.metadata.get("craft_grade"),
+        "crafted": bool(item.metadata.get("crafted", False)),
         "enhancements": {track.value: value for track, value in item.enhancements.items()},
         "attemptsUsed": item.enhancement_attempts_used,
         "maxAttempts": item.max_enhancement_attempts,
         "broken": item.broken,
         "equipped": equipped,
+        "provenance": {
+            "kind": template.provenance.kind.value,
+            "sources": list(template.provenance.sources),
+            "notes": template.provenance.notes,
+        },
     }
 
 
