@@ -1,0 +1,25 @@
+{
+  "name": "sao-aincrad",
+  "version": "0.1.0",
+  "description": "Run detailed Sword Art Online Aincrad campaigns with rules, combat, items, progression and native UI.",
+  "author": {"name": "starmerx-luxuyan"},
+  "repository": "https://github.com/starmerx-luxuyan/SAO",
+  "license": "MIT",
+  "keywords": ["sao", "aincrad", "rpg", "gm", "mcp", "combat"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "SAO Aincrad GM",
+    "shortDescription": "Detailed Aincrad rules, runtime and HUD",
+    "longDescription": "A granular Aincrad game runtime for character progression, Sword Skills, equipment, crafting, combat, parties, raids, crime, quests, floors and persistent GM play.",
+    "developerName": "starmerx-luxuyan",
+    "category": "Games",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Start a new Aincrad campaign and show my character HUD.",
+      "Inspect my equipment and recommend a legal upgrade from my current inventory.",
+      "Resolve this combat action mechanically, then narrate only what my character can observe."
+    ],
+    "brandColor": "#54C6D8"
+  }
+}
