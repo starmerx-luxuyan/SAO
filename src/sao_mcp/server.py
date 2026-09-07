@@ -58,6 +58,7 @@ mcp = MCPServer(
         "Use the runtime as the mechanical source of truth for Aincrad. "
         "Do not invent HP, damage, durability, inventory, enhancement, cooldown, crime, skill proficiency, "
         "party/raid, encounter or floor-progression mutations outside these tools. "
+        "In the spatial runtime, combat distance is derived from authoritative encounter coordinates. "
         "Canon-backed and simulation-calibrated fields are explicitly distinguished by provenance."
     ),
 )
@@ -66,7 +67,16 @@ mcp = MCPServer(
 @mcp.tool()
 def health() -> str:
     """Return runtime/plugin health and schema version."""
-    return _json({"ok": True, "runtime": "sao-aincrad", "version": "0.1.0", "actors": len(runtime.actors), "encounters": len(runtime.encounters)})
+    return _json(
+        {
+            "ok": True,
+            "runtime": "sao-aincrad",
+            "version": "0.1.0",
+            "actors": len(runtime.actors),
+            "encounters": len(runtime.encounters),
+            "spatial": hasattr(runtime, "attack_authoritative"),
+        }
+    )
 
 
 @mcp.tool()
@@ -82,7 +92,15 @@ def create_training_encounter(actor_id: str, monster_level: int | None = None) -
     actor = runtime.actors[actor_id]
     monster = runtime.create_training_monster(level=monster_level or actor.level)
     encounter = runtime.start_encounter([actor_id, monster.actor_id])
-    return _json({"encounterId": encounter.encounter_id, "playerId": actor_id, "monsterId": monster.actor_id, "zoneId": encounter.zone_id})
+    return _json(
+        {
+            "encounterId": encounter.encounter_id,
+            "playerId": actor_id,
+            "monsterId": monster.actor_id,
+            "zoneId": encounter.zone_id,
+            "positions": encounter.positions,
+        }
+    )
 
 
 @mcp.tool()
@@ -129,7 +147,12 @@ def list_catalog(category: str) -> str:
     }.get(category)
     if mapping is None:
         raise ValueError("category must be weapons, consumables, skills, or sword_skills")
-    return _json({"category": category, "entries": [{"id": key, "name": value.name} for key, value in mapping.items()]})
+    return _json(
+        {
+            "category": category,
+            "entries": [{"id": key, "name": value.name} for key, value in mapping.items()],
+        }
+    )
 
 
 @mcp.tool()
@@ -142,18 +165,37 @@ def attack(
     distance_m: float = 1.0,
     seed: int | None = None,
 ) -> str:
-    """Resolve one physical or Sword Skill attack and mutate authoritative encounter state."""
-    result = runtime.attack(
-        encounter_id,
-        attacker_id,
-        target_id,
-        sword_skill_id=sword_skill_id,
-        defense=DefenseMode(defense),
-        distance_m=distance_m,
-        seed=seed,
-    )
+    """Resolve one attack. Spatial runtime ignores caller-supplied distance and derives range from coordinates."""
+    if hasattr(runtime, "attack_authoritative"):
+        result, resolved_distance = runtime.attack_authoritative(
+            encounter_id,
+            attacker_id,
+            target_id,
+            sword_skill_id=sword_skill_id,
+            defense=DefenseMode(defense),
+            seed=seed,
+        )
+    else:
+        resolved_distance = distance_m
+        result = runtime.attack(
+            encounter_id,
+            attacker_id,
+            target_id,
+            sword_skill_id=sword_skill_id,
+            defense=DefenseMode(defense),
+            distance_m=distance_m,
+            seed=seed,
+        )
     encounter = runtime.encounters[encounter_id]
-    return _json({"resolution": asdict(result), "timeMs": encounter.time_ms, "targetHp": encounter.participants[target_id].hp})
+    return _json(
+        {
+            "resolution": asdict(result),
+            "resolvedDistanceM": round(float(resolved_distance), 4),
+            "callerDistanceIgnored": hasattr(runtime, "attack_authoritative"),
+            "timeMs": encounter.time_ms,
+            "targetHp": encounter.participants[target_id].hp,
+        }
+    )
 
 
 @mcp.tool()
@@ -185,7 +227,16 @@ def preview_weapon_enhancement(
 ) -> str:
     """Preview a simulation-calibrated enhancement probability without mutating the item."""
     item = runtime.actors[actor_id].inventory[instance_id]
-    return _json(asdict(preview_enhancement(item, smith_proficiency=smith_proficiency, material_quality=material_quality, item_difficulty=item_difficulty)))
+    return _json(
+        asdict(
+            preview_enhancement(
+                item,
+                smith_proficiency=smith_proficiency,
+                material_quality=material_quality,
+                item_difficulty=item_difficulty,
+            )
+        )
+    )
 
 
 @mcp.tool()
@@ -199,7 +250,7 @@ def enhance_weapon(
     seed: int | None = None,
     allow_destructive_overcap: bool = False,
 ) -> str:
-    """Attempt one of the five Aincrad weapon enhancement tracks; success and failure consume attempts."""
+    """Legacy compact enhancement entry point; detailed reinforcement is exposed separately."""
     result = runtime.enhance_item(
         actor_id,
         instance_id,
