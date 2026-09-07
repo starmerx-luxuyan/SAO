@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from sao_mcp.server import mcp
+from sao_mcp.server_bootstrap import mcp
 
 
 def main() -> None:
