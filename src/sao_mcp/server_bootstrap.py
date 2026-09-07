@@ -3,9 +3,10 @@ from __future__ import annotations
 import sao_mcp.server as core_server
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
 from sao_mcp.runtime.community_hooks import attach_community_economy
+from sao_mcp.runtime.communications_runtime import CommunicatingAincradRuntime
 from sao_mcp.runtime.property_economy import make_runtime_economy
-from sao_mcp.runtime.property_runtime import PropertyFamilyAincradRuntime
 from sao_mcp.server_adventure import register_adventure_tools
+from sao_mcp.server_communications import register_communication_tools
 from sao_mcp.server_duels import register_duel_tools
 from sao_mcp.server_economy import register_economy_tools
 from sao_mcp.server_family import register_family_tools
@@ -15,10 +16,10 @@ from sao_mcp.server_relationships import register_relationship_tools
 from sao_mcp.server_spatial import register_spatial_tools
 from sao_mcp.server_timeline import register_timeline_tools
 
-# One authoritative state retains Boss, raid-spatial, timeline, duel, death, community, family and
-# cross-actor shared-inventory occupancy rules.
-if not isinstance(core_server.runtime, PropertyFamilyAincradRuntime):
-    core_server.runtime = PropertyFamilyAincradRuntime(seed=0xA1C0)
+# One authoritative state retains Boss, raid-spatial, timeline, duel, death, community, family,
+# shared-inventory occupancy and knowledge-bounded communications.
+if not isinstance(core_server.runtime, CommunicatingAincradRuntime):
+    core_server.runtime = CommunicatingAincradRuntime(seed=0xA1C0)
 
 mcp = core_server.mcp
 runtime = core_server.runtime
@@ -37,12 +38,12 @@ register_timeline_tools(mcp, runtime)
 register_duel_tools(mcp, runtime)
 register_relationship_tools(mcp, runtime)
 register_family_tools(mcp, runtime)
+register_communication_tools(mcp, runtime)
 
 from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
 
 register_boss_tools(mcp, runtime)
 
-# Import after all state/tool groups exist so UI views can expose every panel and Boss state.
 from sao_mcp import server_ui as _server_ui  # noqa: E402,F401
 from sao_mcp import server_boss_ui as _server_boss_ui  # noqa: E402,F401
 
