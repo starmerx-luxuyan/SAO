@@ -23,8 +23,17 @@ def add_raid_party(raid: RaidState, party_id: str) -> None:
     raid.party_ids.append(party_id)
 
 
+def authorized_duel_between(attacker: CombatantState, target: CombatantState) -> bool:
+    opponents = attacker.metadata.get("authorized_duel_opponents", ())
+    return target.actor_id in opponents
+
+
 def hostile_action_is_criminal(attacker: CombatantState, target: CombatantState, *, safe_zone: bool) -> bool:
-    if safe_zone or attacker.actor_id == target.actor_id:
+    if attacker.actor_id == target.actor_id:
+        return False
+    if authorized_duel_between(attacker, target):
+        return False
+    if safe_zone:
         return False
     if target.cursor is CursorColor.ORANGE:
         return False
