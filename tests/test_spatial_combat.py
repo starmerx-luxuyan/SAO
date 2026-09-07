@@ -75,6 +75,34 @@ def test_destination_cannot_overlap_living_actor():
         runtime.move_encounter_actor(encounter.encounter_id, mover.actor_id, 2.0, 0.0)
 
 
+def test_switch_requires_incoming_member_to_be_spatially_ready():
+    runtime = SpatialAincradRuntime(seed=1)
+    outgoing = runtime.create_character("Outgoing")
+    incoming = runtime.create_character("Incoming")
+    monster = runtime.create_training_monster(level=1)
+    party = runtime.create_party(outgoing.actor_id)
+    runtime.join_party(party.party_id, incoming.actor_id)
+    encounter = runtime.start_encounter([outgoing.actor_id, incoming.actor_id, monster.actor_id])
+    encounter.positions[outgoing.actor_id] = (0.0, 0.0)
+    encounter.positions[monster.actor_id] = (1.2, 0.0)
+    encounter.positions[incoming.actor_id] = (7.0, 0.0)
+
+    attack, _ = runtime.attack_authoritative(
+        encounter.encounter_id,
+        outgoing.actor_id,
+        monster.actor_id,
+        seed=1,
+    )
+    assert attack.legal and attack.hit
+    with pytest.raises(ValueError, match="outside striking range"):
+        runtime.switch(encounter.encounter_id, outgoing.actor_id, incoming.actor_id, monster.actor_id)
+
+    encounter.positions[incoming.actor_id] = (2.5, 0.0)
+    event = runtime.switch(encounter.encounter_id, outgoing.actor_id, incoming.actor_id, monster.actor_id)
+    assert event.event_type == "switch"
+    assert event.payload["incoming_id"] == incoming.actor_id
+
+
 def _start_spatial_illfang():
     runtime = SpatialAincradRuntime(seed=4)
     player = runtime.create_character("Raider", level=6)
@@ -100,6 +128,33 @@ def test_player_can_spatially_escape_boss_telegraph_before_deadline():
     escaped = next(row for row in result["targets"] if row.get("spatiallyEscaped"))
     assert escaped["targetId"] == player.actor_id
     assert player.hp == player.max_hp
+
+
+def test_attack_cannot_cross_pending_boss_telegraph_deadline():
+    runtime, player, encounter, boss = _start_spatial_illfang()
+    runtime.telegraph_boss_action(
+        encounter.encounter_id,
+        boss.actor_id,
+        "illfang_sweeping_axe",
+        [player.actor_id],
+    )
+    first, _ = runtime.attack_authoritative(
+        encounter.encounter_id,
+        player.actor_id,
+        boss.actor_id,
+        seed=1,
+    )
+    assert first.legal
+    assert encounter.time_ms < int(boss.metadata["pending_boss_action"]["execute_at_ms"])
+
+    second, _ = runtime.attack_authoritative(
+        encounter.encounter_id,
+        player.actor_id,
+        boss.actor_id,
+        seed=2,
+    )
+    assert not second.legal
+    assert "cross a pending boss telegraph" in (second.reason or "")
 
 
 def test_movement_cannot_finish_after_pending_telegraph_deadline():
