@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import sao_mcp.server as core_server
 from sao_mcp.rules.economy import EconomyRuntime
-from sao_mcp.server import mcp, runtime
+from sao_mcp.runtime.aincrad_runtime import AincradRuntime
 from sao_mcp.server_adventure import register_adventure_tools
 from sao_mcp.server_economy import register_economy_tools
 from sao_mcp.server_inventory import register_inventory_tools
 from sao_mcp.server_progression import register_progression_tools
+
+# Core tools registered in sao_mcp.server resolve that module's global `runtime` at call time.
+# Replace the empty bootstrap runtime before any user calls so both old/core and extended tools share
+# the same boss-aware authoritative state without duplicating MCP registrations.
+if not isinstance(core_server.runtime, AincradRuntime):
+    core_server.runtime = AincradRuntime(seed=0xA1C0)
+
+mcp = core_server.mcp
+runtime = core_server.runtime
 
 if not hasattr(runtime, "economy"):
     runtime.economy = EconomyRuntime()
@@ -15,7 +25,11 @@ register_inventory_tools(mcp, runtime)
 register_progression_tools(mcp, runtime)
 register_economy_tools(mcp, runtime, runtime.economy)
 
-# Import after the economy/runtime groups exist so the unified view can expose all panels.
+from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
+
+register_boss_tools(mcp, runtime)
+
+# Import after all state/tool groups exist so the unified view can expose every panel.
 from sao_mcp import server_ui as _server_ui  # noqa: E402,F401
 
 __all__ = ["mcp", "runtime"]
