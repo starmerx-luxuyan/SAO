@@ -75,13 +75,16 @@ class SpatialAincradRuntime(AincradRuntime):
         elapsed = movement_duration_ms(actor, distance)
         deadline = earliest_pending_execution_ms(encounter)
         finish_at = encounter.time_ms + elapsed
-        if deadline is not None and encounter.time_ms < deadline < finish_at:
-            remaining_ms = max(0, deadline - encounter.time_ms)
-            max_distance = movement_speed_mps(actor) * remaining_ms / 1000.0
-            raise ValueError(
-                f"movement would finish after a pending boss telegraph resolves; "
-                f"remaining window permits about {max_distance:.2f} m"
-            )
+        if deadline is not None:
+            if deadline <= encounter.time_ms:
+                raise ValueError("a pending boss telegraph is due and must resolve before movement")
+            if finish_at > deadline:
+                remaining_ms = max(0, deadline - encounter.time_ms)
+                max_distance = movement_speed_mps(actor) * remaining_ms / 1000.0
+                raise ValueError(
+                    f"movement would finish after a pending boss telegraph resolves; "
+                    f"remaining window permits about {max_distance:.2f} m"
+                )
         if elapsed == 0:
             return MovementResolution(actor_id, origin, destination, 0.0, movement_speed_mps(actor), 0, True)
 
