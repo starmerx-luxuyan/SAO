@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sao_mcp.corpus.social_seed import apply_social_catalog_seed
 from sao_mcp.domain.models import CursorColor, EntityKind
 from sao_mcp.rules.duels import DuelMode, DuelRuntime
 from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
@@ -14,6 +15,7 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
+        apply_social_catalog_seed(self.catalog)
         self.duels = DuelRuntime()
 
     def challenge_duel(self, challenger_id: str, target_id: str, mode: DuelMode | str):
@@ -101,8 +103,6 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
         if encounter.safe_zone and duel is None:
             return super().attack(encounter_id, attacker_id, target_id, **kwargs)
         if encounter.safe_zone and duel is not None:
-            # Base GameRuntime blocks all safe-zone hostility before checking duel authorization.
-            # Temporarily bypass only that gate; criminal-cursor logic independently sees duel metadata.
             encounter.safe_zone = False
             try:
                 result = super().attack(encounter_id, attacker_id, target_id, **kwargs)
@@ -179,6 +179,8 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
         encounter = self.encounters[encounter_id]
         reviver = encounter.participants[reviver_id]
         target = encounter.participants[target_id]
+        if not reviver.alive:
+            raise ValueError("defeated players cannot use the revival item")
         if target.metadata.get("death_state") != "end_phase":
             raise ValueError("target is not in the revival End Phase")
         deadline = int(target.metadata.get("revive_until_encounter_ms", -1))
