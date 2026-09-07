@@ -26,11 +26,18 @@ def inventory_weight(actor: CombatantState, catalog: Catalog) -> float:
     return round(total, 4)
 
 
-def carry_capacity(actor: CombatantState) -> float:
+def personal_carry_capacity(actor: CombatantState) -> float:
     return default_carry_capacity(
         actor.strength,
         actor.skill_proficiencies.get("extended_weight_limit", 0.0),
     )
+
+
+def carry_capacity(actor: CombatantState) -> float:
+    shared = actor.metadata.get("shared_carry_capacity_override")
+    if shared is not None:
+        return max(personal_carry_capacity(actor), float(shared))
+    return personal_carry_capacity(actor)
 
 
 def can_receive(actor: CombatantState, item: ItemInstance, catalog: Catalog) -> bool:
@@ -107,6 +114,8 @@ def transfer_item(
 ) -> ItemInstance:
     if source.actor_id == destination.actor_id:
         raise ValueError("source and destination are the same actor")
+    if source.inventory is destination.inventory:
+        raise ValueError("source and destination already share the same inventory")
     if instance_id not in source.inventory:
         raise KeyError(instance_id)
     if instance_id in source.equipment.values():
