@@ -47,6 +47,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         }
 
     economy = getattr(runtime, "economy", None)
+    timeline_dump = getattr(runtime, "dump_timeline_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -56,6 +57,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "quest_state": runtime.quests.dump_state(),
         "npc_state": runtime.npcs.dump_state(),
         "economy_state": economy.dump_state() if economy is not None else {},
+        "timeline_state": timeline_dump() if timeline_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -66,11 +68,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        # Feature-complete saves restore to the raid-scale spatial boss runtime. Older v1 saves that
-        # predate positions are upgraded in memory by assigning the deterministic default formation.
-        from sao_mcp.runtime.raid_spatial_runtime import RaidSpatialAincradRuntime
+        # Feature-complete saves restore to the raid/spatial/timeline runtime. Older v1 saves that
+        # predate positions or queued actions are upgraded in memory with empty/default state.
+        from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
 
-        runtime: GameRuntime = RaidSpatialAincradRuntime()
+        runtime: GameRuntime = TimelineRaidAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -118,4 +120,7 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         economy = EconomyRuntime()
         runtime.economy = economy
     economy.load_state(payload.get("economy_state", {}))
+    timeline_load = getattr(runtime, "load_timeline_state", None)
+    if timeline_load is not None:
+        timeline_load(payload.get("timeline_state", {}))
     return runtime
