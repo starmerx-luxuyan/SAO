@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.economy import CORE_VENDORS, VendorDefinition
 from sao_mcp.domain.models import CombatantState, ItemInstance
-from sao_mcp.rules.inventory import add_item, can_receive
+from sao_mcp.rules.inventory import add_item, can_receive, carry_capacity, inventory_weight
 
 
 @dataclass(slots=True, frozen=True)
@@ -95,18 +95,16 @@ class EconomyRuntime:
             raise ValueError("insufficient Col")
 
         template = catalog.item(template_id)
+        added_weight = template.weight * quantity
+        if inventory_weight(buyer, catalog) + added_weight > carry_capacity(buyer):
+            raise ValueError("purchase would exceed carrying capacity")
+
         created: list[ItemInstance] = []
         if template.stack_limit > 1:
-            item = _new_instance_from_template(template_id, buyer.actor_id, catalog, quantity)
-            if not can_receive(buyer, item, catalog):
-                raise ValueError("purchase would exceed carrying capacity")
-            created.append(item)
+            created.append(_new_instance_from_template(template_id, buyer.actor_id, catalog, quantity))
         else:
             for _ in range(quantity):
-                item = _new_instance_from_template(template_id, buyer.actor_id, catalog)
-                if not can_receive(buyer, item, catalog):
-                    raise ValueError("purchase would exceed carrying capacity")
-                created.append(item)
+                created.append(_new_instance_from_template(template_id, buyer.actor_id, catalog))
 
         buyer.col -= total
         for item in created:
