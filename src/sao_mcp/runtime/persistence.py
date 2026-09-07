@@ -7,6 +7,7 @@ from pydantic import TypeAdapter
 
 from sao_mcp.domain.models import CombatEvent, CombatantState, EncounterState, WorldState
 from sao_mcp.rules.economy import EconomyRuntime
+from sao_mcp.rules.spatial import default_formation
 from sao_mcp.runtime.engine import GameRuntime
 
 
@@ -38,6 +39,11 @@ def export_runtime(runtime: GameRuntime) -> str:
             "last_attacker_by_target": encounter.last_attacker_by_target,
             "last_attack_time_by_target": encounter.last_attack_time_by_target,
             "events": EVENTS_ADAPTER.dump_python(encounter.events, mode="json"),
+            "positions": {
+                actor_id: [float(position[0]), float(position[1])]
+                for actor_id, position in encounter.positions.items()
+            },
+            "arena_radius_m": encounter.arena_radius_m,
         }
 
     economy = getattr(runtime, "economy", None)
@@ -60,11 +66,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        # Local import avoids an import cycle: AincradRuntime subclasses GameRuntime and is the
-        # feature-complete default for saves, while callers can still supply a custom GameRuntime.
-        from sao_mcp.runtime.aincrad_runtime import AincradRuntime
+        # Feature-complete saves restore to the spatial boss-aware runtime. Older v1 saves that
+        # predate positions are upgraded in memory by assigning the deterministic default formation.
+        from sao_mcp.runtime.spatial_runtime import SpatialAincradRuntime
 
-        runtime: GameRuntime = AincradRuntime()
+        runtime: GameRuntime = SpatialAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -75,7 +81,12 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         missing = [actor_id for actor_id in participant_ids if actor_id not in runtime.actors]
         if missing:
             raise ValueError(f"save references missing actors: {missing}")
-        runtime.encounters[encounter_id] = EncounterState(
+        positions = {
+            actor_id: (float(position[0]), float(position[1]))
+            for actor_id, position in value.get("positions", {}).items()
+            if actor_id in participant_ids and len(position) == 2
+        }
+        encounter = EncounterState(
             encounter_id=value["encounter_id"],
             participants={actor_id: runtime.actors[actor_id] for actor_id in participant_ids},
             zone_id=value["zone_id"],
@@ -92,7 +103,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
                 for target_id, time_ms in value.get("last_attack_time_by_target", {}).items()
             },
             events=EVENTS_ADAPTER.validate_python(value.get("events", [])),
+            positions=positions,
+            arena_radius_m=float(value.get("arena_radius_m", 30.0)),
         )
+        default_formation(encounter)
+        runtime.encounters[encounter_id] = encounter
 
     if "rng_state" in payload:
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
