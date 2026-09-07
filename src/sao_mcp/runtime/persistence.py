@@ -50,6 +50,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     timeline_dump = getattr(runtime, "dump_timeline_state", None)
     duel_dump = getattr(runtime, "dump_duel_state", None)
     relationship_dump = getattr(runtime, "dump_relationship_state", None)
+    family_dump = getattr(runtime, "dump_family_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -62,6 +63,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "timeline_state": timeline_dump() if timeline_dump is not None else {},
         "duel_state": duel_dump() if duel_dump is not None else {},
         "relationship_state": relationship_dump() if relationship_dump is not None else {},
+        "family_state": family_dump() if family_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -72,9 +74,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        from sao_mcp.runtime.community_runtime import CommunityAincradRuntime
+        from sao_mcp.runtime.family_runtime import FamilyCommunityAincradRuntime
 
-        runtime: GameRuntime = CommunityAincradRuntime()
+        runtime: GameRuntime = FamilyCommunityAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -131,6 +133,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     relationship_load = getattr(runtime, "load_relationship_state", None)
     if relationship_load is not None:
         relationship_load(payload.get("relationship_state", {}))
+    family_load = getattr(runtime, "load_family_state", None)
+    if family_load is not None:
+        family_load(payload.get("family_state", {}))
     if hasattr(runtime, "relationships"):
         from sao_mcp.runtime.community_hooks import attach_community_economy
 
