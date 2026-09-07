@@ -183,7 +183,6 @@ class GameRuntime:
             self._append(encounter, "attack_blocked", attacker_id, target_id, reason=result.reason)
             return result
 
-        apply_unlawful_hostile_action(attacker, target, safe_zone=encounter.safe_zone)
         weapon_item, weapon = self._equipped_weapon(attacker)
         skill = self.catalog.sword_skills.get(sword_skill_id) if sword_skill_id else None
         local_rng = random.Random(seed) if seed is not None else self.rng
@@ -202,6 +201,10 @@ class GameRuntime:
         if not result.legal:
             self._append(encounter, "attack_illegal", attacker_id, target_id, reason=result.reason)
             return result
+
+        # Crime state is a consequence of a legal hostile action, including a miss,
+        # not of merely submitting an invalid/out-of-range attack request.
+        apply_unlawful_hostile_action(attacker, target, safe_zone=encounter.safe_zone)
 
         attacker.committed_until_ms = result.action_end_ms
         attacker.recovery_until_ms = result.recovery_end_ms
