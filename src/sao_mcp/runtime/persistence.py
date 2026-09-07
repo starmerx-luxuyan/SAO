@@ -59,7 +59,14 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     if payload.get("schema") != SAVE_SCHEMA:
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
-    runtime = into or GameRuntime()
+    if into is None:
+        # Local import avoids an import cycle: AincradRuntime subclasses GameRuntime and is the
+        # feature-complete default for saves, while callers can still supply a custom GameRuntime.
+        from sao_mcp.runtime.aincrad_runtime import AincradRuntime
+
+        runtime: GameRuntime = AincradRuntime()
+    else:
+        runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
     runtime.actors = ACTORS_ADAPTER.validate_python(payload["actors"])
     runtime.encounters = {}
