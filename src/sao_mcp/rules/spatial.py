@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from sao_mcp.domain.models import CombatantState, EncounterState, StatusType
+from sao_mcp.domain.models import CombatantState, EncounterState, EntityKind, StatusType
 
 
 IMMOBILIZING_STATUSES = {StatusType.PARALYSIS, StatusType.STUN}
@@ -25,13 +25,33 @@ def distance_between_points(a: tuple[float, float], b: tuple[float, float]) -> f
     return math.hypot(b[0] - a[0], b[1] - a[1])
 
 
-def actor_distance(encounter: EncounterState, actor_id: str, target_id: str) -> float:
+def actor_collision_radius_m(actor: CombatantState) -> float:
+    """Simulation body radius used for occupancy, blocking and effective weapon range."""
+    explicit = actor.metadata.get("collision_radius_m")
+    if explicit is not None:
+        return max(0.15, min(3.0, float(explicit)))
+    if actor.kind is EntityKind.BOSS:
+        return 1.0
+    if actor.kind is EntityKind.MONSTER:
+        return 0.45
+    return 0.35
+
+
+def actor_center_distance(encounter: EncounterState, actor_id: str, target_id: str) -> float:
     try:
         a = encounter.positions[actor_id]
         b = encounter.positions[target_id]
     except KeyError as exc:
         raise ValueError("encounter spatial position is missing") from exc
     return distance_between_points(a, b)
+
+
+def actor_distance(encounter: EncounterState, actor_id: str, target_id: str) -> float:
+    """Effective surface-to-surface combat distance, not caller-reported center distance."""
+    center = actor_center_distance(encounter, actor_id, target_id)
+    actor = encounter.participants[actor_id]
+    target = encounter.participants[target_id]
+    return max(0.0, center - actor_collision_radius_m(actor) - actor_collision_radius_m(target))
 
 
 def movement_speed_mps(actor: CombatantState) -> float:
@@ -66,29 +86,84 @@ def movement_duration_ms(actor: CombatantState, distance_m: float) -> int:
     return max(1, math.ceil(distance_m / movement_speed_mps(actor) * 1000.0))
 
 
-def validate_destination(encounter: EncounterState, destination: tuple[float, float]) -> None:
+def _point_segment_distance(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> float:
+    sx, sy = start
+    ex, ey = end
+    px, py = point
+    dx = ex - sx
+    dy = ey - sy
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-12:
+        return distance_between_points(point, start)
+    t = ((px - sx) * dx + (py - sy) * dy) / length_sq
+    t = max(0.0, min(1.0, t))
+    closest = (sx + t * dx, sy + t * dy)
+    return distance_between_points(point, closest)
+
+
+def validate_destination(
+    encounter: EncounterState,
+    actor_id: str,
+    destination: tuple[float, float],
+) -> None:
     if not all(math.isfinite(value) for value in destination):
         raise ValueError("destination coordinates must be finite")
     if math.hypot(destination[0], destination[1]) > encounter.arena_radius_m:
         raise ValueError("destination is outside the encounter arena")
+    actor = encounter.participants[actor_id]
+    actor_radius = actor_collision_radius_m(actor)
+    for other_id, other_position in encounter.positions.items():
+        if other_id == actor_id:
+            continue
+        other = encounter.participants.get(other_id)
+        if other is None or not other.alive:
+            continue
+        minimum = actor_radius + actor_collision_radius_m(other)
+        if distance_between_points(destination, other_position) < minimum - 1e-6:
+            raise ValueError(f"destination overlaps living actor {other_id}")
+
+
+def validate_movement_path(
+    encounter: EncounterState,
+    actor_id: str,
+    destination: tuple[float, float],
+) -> None:
+    if actor_id not in encounter.positions:
+        raise ValueError("moving actor has no encounter position")
+    origin = encounter.positions[actor_id]
+    actor = encounter.participants[actor_id]
+    actor_radius = actor_collision_radius_m(actor)
+    for other_id, other_position in encounter.positions.items():
+        if other_id == actor_id:
+            continue
+        other = encounter.participants.get(other_id)
+        if other is None or not other.alive:
+            continue
+        minimum = actor_radius + actor_collision_radius_m(other)
+        if _point_segment_distance(other_position, origin, destination) < minimum - 1e-6:
+            raise ValueError(f"movement path is blocked by living actor {other_id}")
 
 
 def default_formation(encounter: EncounterState) -> None:
-    """Assign deterministic positions for encounters that did not provide a scenario-specific formation."""
+    """Assign deterministic non-overlapping positions for encounters without scenario-specific formation."""
     if encounter.positions:
         return
     players = [
-        actor for actor in encounter.participants.values() if actor.kind.value == "player"
+        actor for actor in encounter.participants.values() if actor.kind is EntityKind.PLAYER
     ]
     hostiles = [
-        actor for actor in encounter.participants.values() if actor.kind.value != "player"
+        actor for actor in encounter.participants.values() if actor.kind is not EntityKind.PLAYER
     ]
     for index, actor in enumerate(players):
         offset = (index - (len(players) - 1) / 2.0) * 1.1
-        encounter.positions[actor.actor_id] = (-1.2, offset)
+        encounter.positions[actor.actor_id] = (-1.15, offset)
     for index, actor in enumerate(hostiles):
         offset = (index - (len(hostiles) - 1) / 2.0) * 1.2
-        encounter.positions[actor.actor_id] = (1.2, offset)
+        encounter.positions[actor.actor_id] = (1.15, offset)
 
 
 def earliest_pending_execution_ms(encounter: EncounterState) -> int | None:
