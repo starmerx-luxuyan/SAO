@@ -61,6 +61,30 @@ CORE_NPCS: dict[str, NPCDefinition] = {
             notes="Runtime tutorial NPC; not an SAO canon character.",
         ),
     ),
+    "pc_lisbeth": NPCDefinition(
+        npc_id="pc_lisbeth",
+        name="Lisbeth",
+        home_location_id="floor_48_lisbeth_smith_shop",
+        roles=("named_player", "blacksmith", "armorer", "shop_owner", "repair_service"),
+        knowledge_tags=("lindarth", "blacksmithing", "weapon_creation", "enhancement", "repair"),
+        provenance=Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 2: Warmth of the Heart",),
+            notes="Named player blacksmith and owner of a smith/armour shop in Lindarth on Floor 48.",
+        ),
+    ),
+    "pc_agil": NPCDefinition(
+        npc_id="pc_agil",
+        name="Agil",
+        home_location_id="floor_50_agil_shop",
+        roles=("named_player", "merchant", "shop_owner", "item_trader"),
+        knowledge_tags=("algade", "trade", "market_prices", "weapons", "materials", "food_ingredients"),
+        provenance=Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 5",),
+            notes="Named player merchant and owner of an item shop in Algade on Floor 50.",
+        ),
+    ),
 }
 
 
