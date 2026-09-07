@@ -7,7 +7,8 @@ from typing import Any
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.domain.models import CombatantState, EncounterState, ItemInstance
-from sao_mcp.rules.progression import default_carry_capacity, skill_slot_count
+from sao_mcp.rules.inventory import carry_capacity, inventory_weight
+from sao_mcp.rules.progression import current_experience, experience_to_reach_level, skill_slot_count
 
 
 def _json_default(value: Any):
@@ -22,47 +23,41 @@ def dumps_view(view: dict[str, Any]) -> str:
     return json.dumps(view, ensure_ascii=False, separators=(",", ":"), default=_json_default)
 
 
-def _item_weight(item: ItemInstance, catalog: Catalog) -> float:
+def _item_view(item: ItemInstance, catalog: Catalog, *, equipped: bool = False) -> dict[str, Any]:
     template = catalog.item(item.template_id)
-    return template.weight * max(1, item.quantity)
+    return {
+        "instanceId": item.instance_id,
+        "templateId": template.template_id,
+        "name": template.name,
+        "kind": template.kind.value,
+        "quantity": item.quantity,
+        "weight": template.weight,
+        "durability": item.durability,
+        "maxDurability": item.max_durability,
+        "quality": item.quality,
+        "enhancements": {track.value: value for track, value in item.enhancements.items()},
+        "attemptsUsed": item.enhancement_attempts_used,
+        "maxAttempts": item.max_enhancement_attempts,
+        "broken": item.broken,
+        "equipped": equipped,
+    }
 
 
-def character_view(actor: CombatantState, catalog: Catalog, encounter: EncounterState | None = None) -> dict[str, Any]:
-    weapon = None
-    weapon_instance_id = actor.equipment.get("weapon")
-    if weapon_instance_id and weapon_instance_id in actor.inventory:
-        instance = actor.inventory[weapon_instance_id]
-        template = catalog.item(instance.template_id)
-        weapon = {
-            "instanceId": instance.instance_id,
-            "templateId": template.template_id,
-            "name": template.name,
-            "durability": instance.durability,
-            "maxDurability": instance.max_durability,
-            "enhancements": {track.value: value for track, value in instance.enhancements.items()},
-            "attemptsUsed": instance.enhancement_attempts_used,
-            "maxAttempts": instance.max_enhancement_attempts,
-            "broken": instance.broken,
-        }
+def character_view(
+    actor: CombatantState,
+    catalog: Catalog,
+    encounter: EncounterState | None = None,
+) -> dict[str, Any]:
+    equipment: dict[str, dict[str, Any]] = {}
+    equipped_ids = set(actor.equipment.values())
+    for slot, instance_id in actor.equipment.items():
+        if instance_id in actor.inventory:
+            equipment[slot] = _item_view(actor.inventory[instance_id], catalog, equipped=True)
 
-    inventory = []
-    total_weight = 0.0
-    for instance in actor.inventory.values():
-        template = catalog.item(instance.template_id)
-        total_weight += _item_weight(instance, catalog)
-        inventory.append(
-            {
-                "instanceId": instance.instance_id,
-                "templateId": template.template_id,
-                "name": template.name,
-                "kind": template.kind.value,
-                "quantity": instance.quantity,
-                "weight": template.weight,
-                "durability": instance.durability,
-                "maxDurability": instance.max_durability,
-                "equipped": instance.instance_id in actor.equipment.values(),
-            }
-        )
+    inventory = [
+        _item_view(instance, catalog, equipped=instance.instance_id in equipped_ids)
+        for instance in actor.inventory.values()
+    ]
 
     now_ms = encounter.time_ms if encounter else 0
     cooldowns = {
@@ -76,6 +71,12 @@ def character_view(actor: CombatantState, catalog: Catalog, encounter: Encounter
     elif now_ms < actor.recovery_until_ms:
         state = "post_motion"
 
+    xp = current_experience(actor)
+    level_floor_xp = experience_to_reach_level(actor.level)
+    next_level_xp = experience_to_reach_level(actor.level + 1)
+    xp_span = max(1, next_level_xp - level_floor_xp)
+    xp_ratio = max(0.0, min(1.0, (xp - level_floor_xp) / xp_span))
+
     view: dict[str, Any] = {
         "schema": "sao.ui.character.v1",
         "actor": {
@@ -83,6 +84,9 @@ def character_view(actor: CombatantState, catalog: Catalog, encounter: Encounter
             "name": actor.name,
             "kind": actor.kind.value,
             "level": actor.level,
+            "experience": xp,
+            "nextLevelExperience": next_level_xp,
+            "experienceRatio": xp_ratio,
             "hp": actor.hp,
             "maxHp": actor.max_hp,
             "hpRatio": actor.hp / actor.max_hp if actor.max_hp else 0.0,
@@ -111,11 +115,11 @@ def character_view(actor: CombatantState, catalog: Catalog, encounter: Encounter
                 for skill_id in actor.equipped_skills
             ],
         },
-        "equipment": {"weapon": weapon},
+        "equipment": equipment,
         "inventory": inventory,
         "weight": {
-            "current": round(total_weight, 2),
-            "capacity": round(default_carry_capacity(actor.strength, actor.skill_proficiencies.get("extended_weight_limit", 0.0)), 2),
+            "current": round(inventory_weight(actor, catalog), 2),
+            "capacity": round(carry_capacity(actor), 2),
         },
         "statuses": [asdict(status) for status in actor.statuses],
         "cooldownsMs": cooldowns,
@@ -142,6 +146,6 @@ def character_view(actor: CombatantState, catalog: Catalog, encounter: Encounter
                 for other in encounter.participants.values()
                 if other.actor_id != actor.actor_id
             ],
-            "recentEvents": [asdict(event) for event in encounter.events[-8:]],
+            "recentEvents": [asdict(event) for event in encounter.events[-10:]],
         }
     return view

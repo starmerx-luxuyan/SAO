@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.domain.models import CombatantState, ItemInstance
 from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.progression import ExperienceGain, grant_experience
 
 
 @dataclass(slots=True, frozen=True)
@@ -42,6 +43,13 @@ class LootRoll:
     drops: tuple[LootDrop, ...]
 
 
+@dataclass(slots=True, frozen=True)
+class GrantedLoot:
+    col: int
+    experience: ExperienceGain
+    item_instance_ids: tuple[str, ...]
+
+
 def roll_loot(table: LootTable, rng: random.Random) -> LootRoll:
     col = rng.randint(table.col_min, table.col_max) if table.col_max >= table.col_min else table.col_min
     xp = rng.randint(table.xp_min, table.xp_max) if table.xp_max >= table.xp_min else table.xp_min
@@ -61,10 +69,10 @@ def grant_loot(
     catalog: Catalog,
     *,
     allow_overweight: bool = True,
-) -> list[ItemInstance]:
+) -> GrantedLoot:
     actor.col += roll.col
-    actor.metadata["experience"] = int(actor.metadata.get("experience", 0)) + roll.xp
-    granted: list[ItemInstance] = []
+    xp_gain = grant_experience(actor, roll.xp)
+    granted_ids: list[str] = []
     for drop in roll.drops:
         template = catalog.item(drop.template_id)
         stack_target = next(
@@ -83,6 +91,8 @@ def grant_loot(
             merged = min(room, remaining)
             stack_target.quantity += merged
             remaining -= merged
+            if merged:
+                granted_ids.append(stack_target.instance_id)
         while remaining > 0:
             qty = min(template.stack_limit, remaining)
             item = ItemInstance(
@@ -92,6 +102,6 @@ def grant_loot(
                 quantity=qty,
             )
             add_item(actor, item, catalog, allow_overweight=allow_overweight)
-            granted.append(item)
+            granted_ids.append(item.instance_id)
             remaining -= qty
-    return granted
+    return GrantedLoot(roll.col, xp_gain, tuple(granted_ids))

@@ -5,6 +5,7 @@ import uuid
 from dataclasses import asdict
 
 from sao_mcp.corpus.core import Catalog, build_core_catalog
+from sao_mcp.corpus.loot import CORE_LOOT_TABLES
 from sao_mcp.domain.models import (
     CombatEvent,
     CombatantState,
@@ -19,8 +20,22 @@ from sao_mcp.domain.models import (
 )
 from sao_mcp.rules.combat import AttackResolution, resolve_physical_attack
 from sao_mcp.rules.crafting import EnhancementResolution, attempt_enhancement
+from sao_mcp.rules.inventory import (
+    EquipmentChange,
+    RepairResolution,
+    equip,
+    recompute_equipment_stats,
+    repair_item,
+    transfer_item,
+    unequip,
+)
 from sao_mcp.rules.items import ConsumableResolution, tick_statuses, use_consumable
-from sao_mcp.rules.progression import default_max_hp, gain_skill_proficiency
+from sao_mcp.rules.loot import GrantedLoot, LootRoll, grant_loot, roll_loot
+from sao_mcp.rules.progression import (
+    default_max_hp,
+    experience_to_reach_level,
+    gain_skill_proficiency,
+)
 from sao_mcp.rules.social import add_party_member, add_raid_party, apply_unlawful_hostile_action
 from sao_mcp.rules.world import advance_world_time, defeat_floor_boss, make_aincrad_world
 
@@ -39,15 +54,26 @@ class GameRuntime:
         self.encounters: dict[str, EncounterState] = {}
         self.rng = random.Random(seed)
 
-    def create_character(self, name: str, *, level: int = 1) -> CombatantState:
+    def create_character(
+        self,
+        name: str,
+        *,
+        level: int = 1,
+        starter_weapon_id: str = "starter_one_hand_sword",
+    ) -> CombatantState:
         if not name.strip():
             raise ValueError("name is required")
         if level < 1:
             raise ValueError("level must be >= 1")
+        if starter_weapon_id not in self.catalog.weapons:
+            raise KeyError(starter_weapon_id)
+
         strength = 10 + (level - 1) * 2
         agility = 10 + (level - 1) * 2
         actor_id = _id("pc")
         hp = default_max_hp(level, strength, agility)
+        weapon_template = self.catalog.weapons[starter_weapon_id]
+        weapon_skill_id = weapon_template.weapon_class.value
         actor = CombatantState(
             actor_id=actor_id,
             name=name.strip(),
@@ -58,17 +84,26 @@ class GameRuntime:
             strength=strength,
             agility=agility,
             location_id="floor_1_town_of_beginnings",
-            equipped_skills=["one_hand_sword", "searching"],
-            skill_proficiencies={"one_hand_sword": 0.0, "searching": 0.0, "parry": 0.0},
+            equipped_skills=[weapon_skill_id, "searching"],
+            skill_proficiencies={weapon_skill_id: 0.0, "searching": 0.0, "parry": 0.0},
+            metadata={"experience": experience_to_reach_level(level)},
         )
-        starter = self.catalog.weapons["starter_one_hand_sword"]
-        sword = ItemInstance(
+
+        weapon = ItemInstance(
             instance_id=_id("item"),
-            template_id=starter.template_id,
+            template_id=weapon_template.template_id,
             owner_id=actor_id,
-            durability=starter.base_durability,
-            max_durability=starter.base_durability,
+            durability=weapon_template.base_durability,
+            max_durability=weapon_template.base_durability,
             max_enhancement_attempts=5,
+        )
+        coat_template = self.catalog.armors["starter_leather_coat"]
+        coat = ItemInstance(
+            instance_id=_id("item"),
+            template_id=coat_template.template_id,
+            owner_id=actor_id,
+            durability=coat_template.base_durability,
+            max_durability=coat_template.base_durability,
         )
         potion = ItemInstance(
             instance_id=_id("item"),
@@ -76,9 +111,11 @@ class GameRuntime:
             owner_id=actor_id,
             quantity=3,
         )
-        actor.inventory[sword.instance_id] = sword
+        actor.inventory[weapon.instance_id] = weapon
+        actor.inventory[coat.instance_id] = coat
         actor.inventory[potion.instance_id] = potion
-        actor.equipment["weapon"] = sword.instance_id
+        equip(actor, weapon.instance_id, self.catalog)
+        equip(actor, coat.instance_id, self.catalog)
         self.actors[actor_id] = actor
         return actor
 
@@ -101,6 +138,7 @@ class GameRuntime:
             cursor=CursorColor.RED,
             location_id="floor_1_west_field",
             skill_proficiencies={"one_hand_sword": min(1000.0, 80.0 + level * 5)},
+            metadata={"loot_table_id": "floor1_frenzy_boar"},
         )
         natural = self.catalog.weapons["starter_one_hand_sword"]
         attack = ItemInstance(
@@ -147,10 +185,86 @@ class GameRuntime:
         instance = actor.inventory[instance_id]
         return instance, self.catalog.weapons[instance.template_id]
 
-    def _append(self, encounter: EncounterState, event_type: str, actor_id: str | None, target_id: str | None, **payload) -> CombatEvent:
+    def _append(
+        self,
+        encounter: EncounterState,
+        event_type: str,
+        actor_id: str | None,
+        target_id: str | None,
+        **payload,
+    ) -> CombatEvent:
         event = CombatEvent(encounter.time_ms, event_type, actor_id, target_id, payload)
         encounter.events.append(event)
         return event
+
+    def _reward_recipients(self, encounter: EncounterState, killer: CombatantState) -> list[CombatantState]:
+        if not killer.party_id:
+            return [killer]
+        members = [
+            actor
+            for actor in encounter.participants.values()
+            if actor.kind is EntityKind.PLAYER and actor.party_id == killer.party_id and actor.alive
+        ]
+        return members or [killer]
+
+    def _grant_defeat_rewards(
+        self,
+        encounter: EncounterState,
+        target: CombatantState,
+        killer: CombatantState,
+    ) -> dict | None:
+        table_id = target.metadata.get("loot_table_id")
+        if not table_id or table_id not in CORE_LOOT_TABLES:
+            return None
+        rolled = roll_loot(CORE_LOOT_TABLES[table_id], self.rng)
+        recipients = self._reward_recipients(encounter, killer)
+        count = max(1, len(recipients))
+        details: list[dict] = []
+        for index, recipient in enumerate(recipients):
+            # Simulation policy: Col/XP are party-shared, item drops go to the killer.
+            col_share = rolled.col // count + (rolled.col % count if index == 0 else 0)
+            xp_share = rolled.xp // count + (rolled.xp % count if index == 0 else 0)
+            share = LootRoll(
+                rolled.table_id,
+                col_share,
+                xp_share,
+                rolled.drops if recipient.actor_id == killer.actor_id else (),
+            )
+            granted: GrantedLoot = grant_loot(recipient, share, self.catalog, allow_overweight=True)
+            details.append(
+                {
+                    "actor_id": recipient.actor_id,
+                    "col": granted.col,
+                    "xp": granted.experience.amount,
+                    "new_level": granted.experience.new_level,
+                    "items": list(granted.item_instance_ids),
+                }
+            )
+        payload = {
+            "table_id": rolled.table_id,
+            "policy": "party_share_col_xp_killer_owns_items_v1",
+            "drops": [asdict(drop) for drop in rolled.drops],
+            "recipients": details,
+        }
+        self._append(encounter, "loot_awarded", killer.actor_id, target.actor_id, **payload)
+        return payload
+
+    def _resolve_defeat(
+        self,
+        encounter: EncounterState,
+        target: CombatantState,
+        killer_id: str | None,
+    ) -> None:
+        if target.metadata.get("defeat_resolved"):
+            return
+        target.metadata["defeat_resolved"] = True
+        self._append(encounter, "defeated", killer_id, target.actor_id)
+        if target.kind not in (EntityKind.MONSTER, EntityKind.BOSS) or not killer_id:
+            return
+        killer = encounter.participants.get(killer_id)
+        if killer is None or killer.kind is not EntityKind.PLAYER:
+            return
+        self._grant_defeat_rewards(encounter, target, killer)
 
     def _advance_encounter_to(self, encounter: EncounterState, new_time_ms: int) -> None:
         if new_time_ms <= encounter.time_ms:
@@ -158,11 +272,30 @@ class GameRuntime:
         elapsed = new_time_ms - encounter.time_ms
         encounter.time_ms = new_time_ms
         for actor in encounter.participants.values():
+            was_alive = actor.alive
             changes = tick_statuses(actor, elapsed)
             for status_type, delta in changes:
-                self._append(encounter, "status_tick", actor.actor_id, actor.actor_id, status=status_type.value, hp_delta=delta)
-            if not actor.alive:
-                self._append(encounter, "defeated", None, actor.actor_id)
+                self._append(
+                    encounter,
+                    "status_tick",
+                    actor.actor_id,
+                    actor.actor_id,
+                    status=status_type.value,
+                    hp_delta=delta,
+                )
+            if was_alive and not actor.alive:
+                self._resolve_defeat(
+                    encounter,
+                    actor,
+                    encounter.last_attacker_by_target.get(actor.actor_id),
+                )
+
+    def advance_encounter(self, encounter_id: str, elapsed_ms: int) -> EncounterState:
+        if elapsed_ms < 0:
+            raise ValueError("elapsed_ms must be >= 0")
+        encounter = self.encounters[encounter_id]
+        self._advance_encounter_to(encounter, encounter.time_ms + elapsed_ms)
+        return encounter
 
     def attack(
         self,
@@ -202,12 +335,10 @@ class GameRuntime:
             self._append(encounter, "attack_illegal", attacker_id, target_id, reason=result.reason)
             return result
 
-        # Crime state is a consequence of a legal hostile action, including a miss,
-        # not of merely submitting an invalid/out-of-range attack request.
         apply_unlawful_hostile_action(attacker, target, safe_zone=encounter.safe_zone)
-
         attacker.committed_until_ms = result.action_end_ms
         attacker.recovery_until_ms = result.recovery_end_ms
+        weapon_before = weapon_item.durability
         if weapon_item.durability is not None:
             weapon_item.durability = max(0, weapon_item.durability - result.attacker_durability_loss)
 
@@ -215,12 +346,19 @@ class GameRuntime:
             target.hp = max(0, target.hp - result.damage)
             target.alive = target.hp > 0
             if result.stagger_ms:
-                target.recovery_until_ms = max(target.recovery_until_ms, encounter.time_ms + result.stagger_ms)
+                target.recovery_until_ms = max(
+                    target.recovery_until_ms,
+                    encounter.time_ms + result.stagger_ms,
+                )
             body_id = target.equipment.get("body")
             if body_id and body_id in target.inventory:
                 body = target.inventory[body_id]
+                body_before = body.durability
                 if body.durability is not None:
                     body.durability = max(0, body.durability - result.defender_durability_pressure)
+                if body_before and body.durability == 0:
+                    recompute_equipment_stats(target, self.catalog)
+                    self._append(encounter, "equipment_broken", target_id, target_id, instance_id=body_id)
             if target.kind in (EntityKind.MONSTER, EntityKind.BOSS):
                 target_threat = encounter.threat.setdefault(target_id, {})
                 target_threat[attacker_id] = target_threat.get(attacker_id, 0.0) + result.threat_generated
@@ -242,12 +380,20 @@ class GameRuntime:
             sword_skill=sword_skill_id,
             weapon_durability=weapon_item.durability,
         )
+        if weapon_before and weapon_item.durability == 0:
+            self._append(encounter, "equipment_broken", attacker_id, attacker_id, instance_id=weapon_item.instance_id)
         self._advance_encounter_to(encounter, result.action_end_ms)
         if not target.alive:
-            self._append(encounter, "defeated", attacker_id, target_id)
+            self._resolve_defeat(encounter, target, attacker_id)
         return result
 
-    def switch(self, encounter_id: str, outgoing_id: str, incoming_id: str, target_id: str) -> CombatEvent:
+    def switch(
+        self,
+        encounter_id: str,
+        outgoing_id: str,
+        incoming_id: str,
+        target_id: str,
+    ) -> CombatEvent:
         encounter = self.encounters[encounter_id]
         outgoing = encounter.participants[outgoing_id]
         incoming = encounter.participants[incoming_id]
@@ -290,21 +436,83 @@ class GameRuntime:
         }
         if legal:
             return max(legal, key=legal.get)
-        candidates = [a.actor_id for a in encounter.participants.values() if a.alive and a.kind is EntityKind.PLAYER]
+        candidates = [
+            a.actor_id
+            for a in encounter.participants.values()
+            if a.alive and a.kind is EntityKind.PLAYER
+        ]
         return candidates[0] if candidates else None
 
-    def use_inventory_item(self, actor_id: str, instance_id: str, *, encounter_id: str | None = None) -> ConsumableResolution:
+    def use_inventory_item(
+        self,
+        actor_id: str,
+        instance_id: str,
+        *,
+        encounter_id: str | None = None,
+    ) -> ConsumableResolution:
         actor = self.actors[actor_id]
         item = actor.inventory[instance_id]
         template = self.catalog.consumables[item.template_id]
         encounter = self.encounters.get(encounter_id) if encounter_id else None
         now = encounter.time_ms if encounter else self.world.now_ms
-        result = use_consumable(actor, item, template, now_ms=now, anti_crystal=bool(encounter and encounter.anti_crystal))
+        result = use_consumable(
+            actor,
+            item,
+            template,
+            now_ms=now,
+            anti_crystal=bool(encounter and encounter.anti_crystal),
+        )
         if result.consumed and item.quantity <= 0:
             actor.inventory.pop(instance_id, None)
         if encounter:
-            self._append(encounter, "use_item", actor_id, actor_id, template_id=template.template_id, consumed=result.consumed, reason=result.reason)
+            self._append(
+                encounter,
+                "use_item",
+                actor_id,
+                actor_id,
+                template_id=template.template_id,
+                consumed=result.consumed,
+                reason=result.reason,
+            )
         return result
+
+    def equip_item(self, actor_id: str, instance_id: str) -> EquipmentChange:
+        return equip(self.actors[actor_id], instance_id, self.catalog)
+
+    def unequip_item(self, actor_id: str, slot: str) -> EquipmentChange:
+        return unequip(self.actors[actor_id], slot, self.catalog)
+
+    def transfer_inventory_item(
+        self,
+        source_id: str,
+        destination_id: str,
+        instance_id: str,
+        *,
+        quantity: int | None = None,
+    ) -> ItemInstance:
+        return transfer_item(
+            self.actors[source_id],
+            self.actors[destination_id],
+            instance_id,
+            self.catalog,
+            quantity=quantity,
+        )
+
+    def repair_inventory_item(
+        self,
+        actor_id: str,
+        instance_id: str,
+        *,
+        smith_proficiency: float,
+        pay_from_actor: bool = True,
+    ) -> RepairResolution:
+        return repair_item(
+            self.actors[actor_id],
+            instance_id,
+            self.catalog,
+            smith_proficiency=smith_proficiency,
+            pay_from_actor=pay_from_actor,
+        )
 
     def enhance_item(
         self,
