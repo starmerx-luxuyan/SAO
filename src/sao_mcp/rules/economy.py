@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+from typing import Callable
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.economy import CORE_VENDORS, VendorDefinition
@@ -70,6 +71,17 @@ class EconomyRuntime:
     def __init__(self, vendors: dict[str, VendorDefinition] | None = None) -> None:
         self.vendors = dict(vendors or CORE_VENDORS)
         self.player_listings: dict[str, PlayerListing] = {}
+        self.on_income: Callable[[CombatantState, int, str], None] | None = None
+        self.on_expense: Callable[[CombatantState, int, str], None] | None = None
+        self.validate_player_purchase: Callable[[CombatantState, CombatantState, int], None] | None = None
+
+    def _income(self, actor: CombatantState, amount: int, source: str) -> None:
+        if self.on_income is not None and amount:
+            self.on_income(actor, amount, source)
+
+    def _expense(self, actor: CombatantState, amount: int, source: str) -> None:
+        if self.on_expense is not None and amount:
+            self.on_expense(actor, amount, source)
 
     def vendor_catalog(self, vendor_id: str) -> VendorDefinition:
         return self.vendors[vendor_id]
@@ -111,6 +123,7 @@ class EconomyRuntime:
         buyer.col -= total
         for item in created:
             add_item(buyer, item, catalog)
+        self._expense(buyer, total, "vendor_purchase")
         return VendorPurchaseResolution(
             vendor_id,
             buyer.actor_id,
@@ -161,6 +174,7 @@ class EconomyRuntime:
         if item.quantity <= 0:
             seller.inventory.pop(instance_id)
         seller.col += received
+        self._income(seller, received, "vendor_sale")
         return VendorSaleResolution(vendor_id, seller.actor_id, item.template_id, qty, received)
 
     def create_player_listing(
@@ -237,6 +251,8 @@ class EconomyRuntime:
         total = listing.unit_price_col * qty
         if buyer.col < total:
             raise ValueError("insufficient Col")
+        if self.validate_player_purchase is not None:
+            self.validate_player_purchase(buyer, seller, total)
 
         moving = deepcopy(listing.item)
         moving.instance_id = f"item_{uuid.uuid4().hex[:12]}"
@@ -252,6 +268,8 @@ class EconomyRuntime:
         closed = listing.item.quantity <= 0
         if closed:
             self.player_listings.pop(listing_id)
+        self._expense(buyer, total, "player_market_purchase")
+        self._income(seller, total, "player_market_sale")
         return PlayerPurchaseResolution(
             listing_id,
             seller.actor_id,
