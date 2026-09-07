@@ -50,4 +50,33 @@ BEGINNER_VENDOR = VendorDefinition(
 )
 
 
-CORE_VENDORS: dict[str, VendorDefinition] = {BEGINNER_VENDOR.vendor_id: BEGINNER_VENDOR}
+BEGINNER_REINFORCEMENT_VENDOR = VendorDefinition(
+    vendor_id="npc_reinforcement_supplier_town_of_beginnings",
+    name="Town of Beginnings Reinforcement Supplier",
+    location_id="floor_1_town_of_beginnings",
+    listings=(
+        VendorListingDefinition("reinforcement_base_material", 14),
+        VendorListingDefinition("reinforcement_sharpness_material", 24),
+        VendorListingDefinition("reinforcement_quickness_material", 24),
+        VendorListingDefinition("reinforcement_accuracy_material", 24),
+        VendorListingDefinition("reinforcement_heaviness_material", 24),
+        VendorListingDefinition("reinforcement_durability_material", 24),
+        VendorListingDefinition("iron_ingot", 26),
+    ),
+    buyback_rate=0.35,
+    infinite_stock=True,
+    provenance=Provenance(
+        ProvenanceKind.SIMULATION,
+        sources=("Sword Art Online Progressive Volume 1: Rondo of a Fragile Blade",),
+        notes=(
+            "Base/additional reinforcement material roles are canon. This low-floor system supplier, "
+            "its assortment and its Col prices are runtime scaffolding for a closed playable loop."
+        ),
+    ),
+)
+
+
+CORE_VENDORS: dict[str, VendorDefinition] = {
+    BEGINNER_VENDOR.vendor_id: BEGINNER_VENDOR,
+    BEGINNER_REINFORCEMENT_VENDOR.vendor_id: BEGINNER_REINFORCEMENT_VENDOR,
+}
