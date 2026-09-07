@@ -94,6 +94,7 @@ def test_blacksmith_valid_recipe_always_creates_maker_marked_weapon():
     remove_skill(actor, "searching")
     equip_skill(actor, "blacksmithing")
     actor.skill_proficiencies["blacksmithing"] = 500
+    actor.strength = 30  # Enough post-craft capacity for the test's second sword.
     _give_ingots(runtime, actor.actor_id, 3)
     result = craft_weapon(
         actor,
@@ -108,6 +109,25 @@ def test_blacksmith_valid_recipe_always_creates_maker_marked_weapon():
     assert product.quality > 0
     assert product.metadata["crafted"] is True
     assert product.template_id == "starter_one_hand_sword"
+
+
+def test_blacksmith_capacity_rejection_does_not_consume_materials():
+    runtime = GameRuntime(seed=1)
+    actor = runtime.create_character("Smith")
+    remove_skill(actor, "searching")
+    equip_skill(actor, "blacksmithing")
+    actor.skill_proficiencies["blacksmithing"] = 500
+    ingots = _give_ingots(runtime, actor.actor_id, 3)
+    with pytest.raises(ValueError, match="carrying capacity"):
+        craft_weapon(
+            actor,
+            WEAPON_RECIPES["iron_one_hand_sword"],
+            runtime.catalog,
+            smith_proficiency=500,
+            material_quality=1.0,
+            rng=random.Random(5),
+        )
+    assert actor.inventory[ingots.instance_id].quantity == 3
 
 
 def test_reclaim_weapon_returns_ingot():
