@@ -1,5 +1,6 @@
 import pytest
 
+from sao_mcp.runtime.floor22_runtime import Floor22QuestAincradRuntime
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime, PROPERTY_ENTRY_TIME_MS
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 
@@ -42,9 +43,9 @@ def test_married_joint_residence_uses_shared_wallet_and_both_are_owners():
 
 
 def test_forest_house_k4_purchase_requires_quest_and_is_unique():
-    runtime = HousingAincradRuntime(seed=1)
+    runtime = Floor22QuestAincradRuntime(seed=1)
     buyer = runtime.create_character("Buyer")
-    buyer.location_id = "floor_22_coral"
+    buyer.location_id = "floor_22_forest_house_site"
     buyer.col = 6_000_000
     runtime.world.floors[22].unlocked = True
     with pytest.raises(ValueError, match="prerequisites are incomplete"):
