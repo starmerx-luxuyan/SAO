@@ -27,6 +27,48 @@ def register_timeline_tools(mcp, runtime) -> None:
         return _json(runtime.timeline_state(encounter_id))
 
     @mcp.tool()
+    def timeline_attack(
+        encounter_id: str,
+        attacker_id: str,
+        target_id: str,
+        sword_skill_id: str | None = None,
+        defense: str = "auto",
+        seed: int | None = None,
+    ) -> str:
+        """Timeline-aware formal attack: resolve immediately or queue when it crosses a Boss execution point."""
+        result = runtime.attack_or_queue_authoritative(
+            encounter_id,
+            attacker_id,
+            target_id,
+            sword_skill_id=sword_skill_id,
+            defense=DefenseMode(defense),
+            seed=seed,
+        )
+        encounter = runtime.encounters[encounter_id]
+        if result.get("queued"):
+            action = result["action"]
+            return _json(
+                {
+                    "mode": "queued",
+                    "action": asdict(action),
+                    "resolvedDistanceM": round(float(result["distance"]), 4),
+                    "timeMs": encounter.time_ms,
+                    "targetHp": encounter.participants[target_id].hp,
+                }
+            )
+        resolution = result["resolution"]
+        mode = "immediate" if resolution.legal else "blocked"
+        return _json(
+            {
+                "mode": mode,
+                "resolution": asdict(resolution),
+                "resolvedDistanceM": round(float(result["distance"]), 4),
+                "timeMs": encounter.time_ms,
+                "targetHp": encounter.participants[target_id].hp,
+            }
+        )
+
+    @mcp.tool()
     def begin_timeline_attack(
         encounter_id: str,
         attacker_id: str,
@@ -35,7 +77,7 @@ def register_timeline_tools(mcp, runtime) -> None:
         defense: str = "auto",
         seed: int | None = None,
     ) -> str:
-        """Begin an attack without resolving it immediately; useful for actions overlapping Boss telegraphs."""
+        """Explicitly begin an attack without resolving it immediately."""
         action = runtime.queue_player_attack(
             encounter_id,
             attacker_id,
