@@ -300,6 +300,8 @@ class EncounterState:
     last_attacker_by_target: dict[str, str] = field(default_factory=dict)
     last_attack_time_by_target: dict[str, int] = field(default_factory=dict)
     events: list[CombatEvent] = field(default_factory=list)
+    positions: dict[str, tuple[float, float]] = field(default_factory=dict)
+    arena_radius_m: float = 30.0
 
 
 @dataclass(slots=True)
