@@ -7,6 +7,8 @@ from sao_mcp.domain.models import (
     ItemTemplate,
     Provenance,
     ProvenanceKind,
+    SkillDefinition,
+    SkillKind,
     WeaponClass,
     WeaponTemplate,
 )
@@ -56,6 +58,40 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
                 ProvenanceKind.CANON,
                 sources=("Sword Art Online Volume 8: First Day",),
                 notes="Required rare drop for the Floor 1 Secret Medicine of the Forest quest.",
+            ),
+        ),
+    )
+    catalog.skills.setdefault(
+        "blacksmithing",
+        SkillDefinition(
+            skill_id="blacksmithing",
+            name="Blacksmithing / Weapon Creation",
+            kind=SkillKind.LIFE,
+            description="Runtime umbrella for the canon family of weapon-production and smithing skills.",
+            provenance=Provenance(
+                ProvenanceKind.CANON_INFERRED,
+                sources=(
+                    "Sword Art Online Volume 2: Warmth of the Heart",
+                    "Sword Art Online Progressive Volume 2: Concerto of Black and White",
+                ),
+                notes=(
+                    "Player blacksmiths and specialised weapon-creation skills are canon. This umbrella skill ID "
+                    "keeps the first runtime compact; later corpus expansion can split it into specialised creation skills."
+                ),
+            ),
+        ),
+    )
+    catalog.skills.setdefault(
+        "appraisal",
+        SkillDefinition(
+            skill_id="appraisal",
+            name="Appraisal",
+            kind=SkillKind.LIFE,
+            description="Identifies item properties and player-made provenance.",
+            provenance=Provenance(
+                ProvenanceKind.CANON,
+                sources=("Sword Art Online skill system; Volume 2: Warmth of the Heart",),
+                notes="The exact numeric appraisal thresholds remain a future corpus/tuning task.",
             ),
         ),
     )
