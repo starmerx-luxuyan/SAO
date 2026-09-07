@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-
 from sao_mcp.domain.models import CursorColor, EntityKind
-from sao_mcp.rules.duels import DuelMode, DuelRuntime, DuelStatus
+from sao_mcp.rules.duels import DuelMode, DuelRuntime
 from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
 
 
@@ -29,6 +27,8 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
         duel = self.duels.duels[duel_id]
         challenger = self.actors[duel.challenger_id]
         target = self.actors[duel.target_id]
+        if challenger.location_id != target.location_id or challenger.location_id is None:
+            raise ValueError("duel participants must remain colocated when accepting")
         accepted = self.duels.accept(
             duel_id,
             challenger,
@@ -36,8 +36,6 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
             accepter_id=target_id,
             now_ms=self.world.now_ms,
         )
-        if challenger.location_id != target.location_id or challenger.location_id is None:
-            raise ValueError("duel participants must remain colocated when accepting")
         encounter = self.start_encounter(
             [challenger.actor_id, target.actor_id],
             zone_id=challenger.location_id,
