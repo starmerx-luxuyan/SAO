@@ -48,11 +48,69 @@ class WorldMapCatalog:
         self.adjacency = adjacency
 
 
+_CANON_MAIN_SETTLEMENTS: dict[int, tuple[str, str, Provenance]] = {
+    22: (
+        "floor_22_coral",
+        "Coral",
+        Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 19",),
+            notes="Main settlement of Floor 22; a small village near a large lake.",
+        ),
+    ),
+    48: (
+        "floor_48_lindarth",
+        "Lindarth",
+        Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 2: Warmth of the Heart, Part 1",),
+            notes="Main settlement of Floor 48; canals, waterwheels and support-class shops.",
+        ),
+    ),
+    50: (
+        "floor_50_algade",
+        "Algade",
+        Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 5",),
+            notes="Major Floor 50 city and the location of Agil's player-run item shop.",
+        ),
+    ),
+    55: (
+        "floor_55_granzam",
+        "Granzam",
+        Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 12",),
+            notes="Main settlement of Floor 55, the Steel City and later Knights of the Blood headquarters.",
+        ),
+    ),
+    61: (
+        "floor_61_selmburg",
+        "Selmburg",
+        Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 6",),
+            notes="Main settlement of Floor 61, a castle city on an island in a lake.",
+        ),
+    ),
+    75: (
+        "floor_75_collinia",
+        "Collinia",
+        Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 13",),
+            notes="Main settlement of Floor 75, a busy city with an Ancient-Rome-like appearance.",
+        ),
+    ),
+}
+
+
 def build_world_map_catalog() -> WorldMapCatalog:
     locations: dict[str, LocationDefinition] = {}
     connections: list[TravelConnection] = []
 
-    # Floor 1 contains a few named/functional anchors; unnamed geometry remains simulation scaffolding.
+    # Floor 1 contains named/functional anchors; unnamed geometry remains simulation scaffolding.
     locations["floor_1_town_of_beginnings"] = LocationDefinition(
         "floor_1_town_of_beginnings",
         1,
@@ -76,7 +134,7 @@ def build_world_map_catalog() -> WorldMapCatalog:
         safe_zone=True,
         provenance=Provenance(
             ProvenanceKind.CANON,
-            sources=("Sword Art Online Aincrad Floor 1 setting",),
+            sources=("Sword Art Online Volume 8: First Day",),
         ),
     )
     locations["floor_1_tolbana"] = LocationDefinition(
@@ -87,7 +145,7 @@ def build_world_map_catalog() -> WorldMapCatalog:
         safe_zone=True,
         provenance=Provenance(
             ProvenanceKind.CANON,
-            sources=("Sword Art Online Aincrad Floor 1 setting",),
+            sources=("Sword Art Online Progressive Volume 1",),
         ),
     )
     locations["floor_1_labyrinth"] = LocationDefinition(
@@ -106,15 +164,31 @@ def build_world_map_catalog() -> WorldMapCatalog:
         )
     )
 
-    # Every floor gets functional nodes so the runtime can progress to Floor 100 even where canon
-    # never supplies a settlement or detailed map. These IDs/names are explicitly simulation scaffolding.
+    # Every floor retains functional field/labyrinth/boss nodes so the runtime can progress to Floor 100.
+    # Where the novels identify the main settlement, the canonical name/identity replaces the generic town.
     for floor in range(2, 101):
-        town_id = f"floor_{floor}_main_town"
+        settlement = _CANON_MAIN_SETTLEMENTS.get(floor)
+        if settlement:
+            town_id, town_name, town_provenance = settlement
+        else:
+            town_id = f"floor_{floor}_main_town"
+            town_name = f"Floor {floor} Main Settlement"
+            town_provenance = Provenance(
+                ProvenanceKind.SIMULATION,
+                notes="Functional placeholder until a canon settlement identity is verified and seeded.",
+            )
         field_id = f"floor_{floor}_field"
         labyrinth_id = f"floor_{floor}_labyrinth"
         boss_id = f"floor_{floor}_boss_room"
         locations[town_id] = LocationDefinition(
-            town_id, floor, f"Floor {floor} Main Settlement", ZoneKind.SAFE_TOWN, True, False, True
+            town_id,
+            floor,
+            town_name,
+            ZoneKind.SAFE_TOWN,
+            True,
+            False,
+            True,
+            town_provenance,
         )
         locations[field_id] = LocationDefinition(field_id, floor, f"Floor {floor} Field", ZoneKind.FIELD)
         locations[labyrinth_id] = LocationDefinition(
@@ -130,5 +204,78 @@ def build_world_map_catalog() -> WorldMapCatalog:
                 TravelConnection(labyrinth_id, boss_id, 60 * 60_000),
             )
         )
+
+    # Canon player-run shops are real world nodes rather than lore-only labels. The short in-city
+    # travel times below are simulation conveniences; shop identity and floor/city are canon.
+    locations["floor_48_lisbeth_smith_shop"] = LocationDefinition(
+        "floor_48_lisbeth_smith_shop",
+        48,
+        "Lisbeth's Smith Shop",
+        ZoneKind.SAFE_TOWN,
+        safe_zone=True,
+        provenance=Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 2: Warmth of the Heart",),
+            notes="Player-run smith/armour shop in Lindarth on Floor 48.",
+        ),
+    )
+    connections.append(
+        TravelConnection(
+            "floor_48_lindarth",
+            "floor_48_lisbeth_smith_shop",
+            2 * 60_000,
+            provenance=Provenance(
+                ProvenanceKind.SIMULATION,
+                notes="In-city travel time is runtime calibration.",
+            ),
+        )
+    )
+
+    locations["floor_50_agil_shop"] = LocationDefinition(
+        "floor_50_agil_shop",
+        50,
+        "Agil's Shop",
+        ZoneKind.SAFE_TOWN,
+        safe_zone=True,
+        provenance=Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 1, Chapter 5",),
+            notes="Agil's player-run item shop in Algade on Floor 50.",
+        ),
+    )
+    connections.append(
+        TravelConnection(
+            "floor_50_algade",
+            "floor_50_agil_shop",
+            2 * 60_000,
+            provenance=Provenance(
+                ProvenanceKind.SIMULATION,
+                notes="In-city travel time is runtime calibration.",
+            ),
+        )
+    )
+
+    locations["floor_55_west_mountain"] = LocationDefinition(
+        "floor_55_west_mountain",
+        55,
+        "West Mountain",
+        ZoneKind.DUNGEON,
+        provenance=Provenance(
+            ProvenanceKind.CANON,
+            sources=("Sword Art Online Volume 2: Warmth of the Heart, Part 2",),
+            notes="Snowy western field dungeon associated with the high-grade metal quest.",
+        ),
+    )
+    connections.append(
+        TravelConnection(
+            "floor_55_field",
+            "floor_55_west_mountain",
+            35 * 60_000,
+            provenance=Provenance(
+                ProvenanceKind.SIMULATION,
+                notes="Exact travel duration is runtime calibration.",
+            ),
+        )
+    )
 
     return WorldMapCatalog(locations, tuple(connections))
