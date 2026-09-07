@@ -7,10 +7,12 @@ from enum import Enum
 from typing import Any
 
 from sao_mcp.corpus.recipes import WEAPON_RECIPES
+from sao_mcp.domain.models import EnhancementTrack
 from sao_mcp.rules.economy import EconomyRuntime
 from sao_mcp.rules.production import craft_weapon, reclaim_weapon_to_ingot
 from sao_mcp.rules.progression import gain_skill_proficiency
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.reinforcement import preview_reinforcement, reinforce_item
 
 
 FORGE_LOCATIONS = {
@@ -36,6 +38,11 @@ def _require_blacksmith(actor) -> float:
     if "blacksmithing" not in actor.equipped_skills:
         raise ValueError("blacksmithing must occupy an equipped skill slot")
     return actor.skill_proficiencies.get("blacksmithing", 0.0)
+
+
+def _require_forge(actor) -> None:
+    if actor.location_id not in FORGE_LOCATIONS:
+        raise ValueError("operation requires an available forge/workshop")
 
 
 def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
@@ -193,8 +200,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
     ) -> str:
         """Forge a weapon at a workshop; valid crafting always produces a product with variable quality."""
         actor = runtime.actors[actor_id]
-        if actor.location_id not in FORGE_LOCATIONS:
-            raise ValueError("weapon crafting requires an available forge/workshop")
+        _require_forge(actor)
         proficiency = _require_blacksmith(actor)
         recipe = WEAPON_RECIPES[recipe_id]
         local_rng = runtime.rng if seed is None else random.Random(seed)
@@ -218,9 +224,67 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
     def reclaim_weapon(actor_id: str, instance_id: str) -> str:
         """Reclaim an unequipped weapon into an ingot for later crafting."""
         actor = runtime.actors[actor_id]
-        if actor.location_id not in FORGE_LOCATIONS:
-            raise ValueError("weapon reclamation requires an available forge/workshop")
+        _require_forge(actor)
         _require_blacksmith(actor)
         result = reclaim_weapon_to_ingot(actor, instance_id, runtime.catalog)
         gain_skill_proficiency(actor, "blacksmithing", 1.5)
+        return _json(asdict(result))
+
+    @mcp.tool()
+    def preview_detailed_reinforcement(
+        actor_id: str,
+        instance_id: str,
+        track: str,
+        additional_material_quantity: int = 1,
+    ) -> str:
+        """Preview canon-structured reinforcement: materials, +4 penalty, ten strikes and success chance."""
+        actor = runtime.actors[actor_id]
+        _require_forge(actor)
+        proficiency = _require_blacksmith(actor)
+        item = actor.inventory[instance_id]
+        result = preview_reinforcement(
+            item,
+            EnhancementTrack(track),
+            smith_proficiency=proficiency,
+            additional_material_quantity=additional_material_quantity,
+        )
+        return _json(asdict(result))
+
+    @mcp.tool()
+    def reinforce_weapon_detailed(
+        actor_id: str,
+        instance_id: str,
+        track: str,
+        additional_material_quantity: int = 1,
+        hammer_hits: int = 10,
+        elapsed_since_first_hit_ms: int = 60_000,
+        seed: int | None = None,
+        force_end_product: bool = False,
+    ) -> str:
+        """Perform a material-consuming SAO reinforcement with ten-hit/three-minute and failure-side-effect rules."""
+        actor = runtime.actors[actor_id]
+        _require_forge(actor)
+        proficiency = _require_blacksmith(actor)
+        item = actor.inventory[instance_id]
+        local_rng = runtime.rng if seed is None else random.Random(seed)
+        result = reinforce_item(
+            actor,
+            item,
+            EnhancementTrack(track),
+            runtime.catalog,
+            smith_proficiency=proficiency,
+            additional_material_quantity=additional_material_quantity,
+            hammer_hits=hammer_hits,
+            elapsed_since_first_hit_ms=elapsed_since_first_hit_ms,
+            rng=local_rng,
+            force_end_product=force_end_product,
+        )
+        if result.attempted:
+            gain_skill_proficiency(actor, "blacksmithing", 2.0 if result.success else 1.0)
+        if result.success:
+            runtime.quests.record_event(
+                actor_id,
+                kind=QuestObjectiveKind.ENHANCE,
+                target_id=item.template_id,
+            )
         return _json(asdict(result))
