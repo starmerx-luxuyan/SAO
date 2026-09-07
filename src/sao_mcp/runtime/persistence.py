@@ -48,6 +48,7 @@ def export_runtime(runtime: GameRuntime) -> str:
 
     economy = getattr(runtime, "economy", None)
     timeline_dump = getattr(runtime, "dump_timeline_state", None)
+    duel_dump = getattr(runtime, "dump_duel_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -58,6 +59,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "npc_state": runtime.npcs.dump_state(),
         "economy_state": economy.dump_state() if economy is not None else {},
         "timeline_state": timeline_dump() if timeline_dump is not None else {},
+        "duel_state": duel_dump() if duel_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -68,11 +70,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        # Feature-complete saves restore to the raid/spatial/timeline runtime. Older v1 saves that
-        # predate positions or queued actions are upgraded in memory with empty/default state.
-        from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
+        # v1 remains backward-compatible while new optional sections restore richer runtime layers.
+        from sao_mcp.runtime.social_runtime import SocialTimelineAincradRuntime
 
-        runtime: GameRuntime = TimelineRaidAincradRuntime()
+        runtime: GameRuntime = SocialTimelineAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -123,4 +124,7 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     timeline_load = getattr(runtime, "load_timeline_state", None)
     if timeline_load is not None:
         timeline_load(payload.get("timeline_state", {}))
+    duel_load = getattr(runtime, "load_duel_state", None)
+    if duel_load is not None:
+        duel_load(payload.get("duel_state", {}))
     return runtime
