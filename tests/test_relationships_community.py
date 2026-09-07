@@ -2,10 +2,10 @@ import random
 
 import pytest
 
-from sao_mcp.domain.models import DefenseMode, ItemInstance
+from sao_mcp.domain.models import DefenseMode
 from sao_mcp.rules.combat import resolve_physical_attack
 from sao_mcp.rules.economy import EconomyRuntime
-from sao_mcp.rules.inventory import add_item, carry_capacity, inventory_weight
+from sao_mcp.rules.inventory import carry_capacity, inventory_weight
 from sao_mcp.runtime.community_hooks import attach_community_economy
 from sao_mcp.runtime.community_runtime import CommunityAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
@@ -91,7 +91,7 @@ def test_same_guild_same_party_sets_simulation_bonus_and_changes_damage():
     runtime.accept_guild_invite(invite.invite_id, b.actor_id)
     party = runtime.create_party(a.actor_id)
     runtime.join_party(party.party_id, b.actor_id)
-    encounter = runtime.start_encounter([a.actor_id, b.actor_id, monster.actor_id])
+    runtime.start_encounter([a.actor_id, b.actor_id, monster.actor_id])
     assert a.metadata["guild_party_stat_bonus"] == pytest.approx(0.02)
     assert b.metadata["guild_party_stat_bonus"] == pytest.approx(0.02)
 
@@ -194,9 +194,6 @@ def test_relationships_shared_inventory_wallet_and_guild_vault_round_trip():
     guild = runtime.create_guild(a.actor_id, "PersistGuild", tax_rate=0.15)
     invite = runtime.invite_to_guild(guild.guild_id, a.actor_id, b.actor_id)
     runtime.accept_guild_invite(invite.invite_id, b.actor_id)
-    # Guilds and marriage are independent systems; for this fixture leave the guild, then marry.
-    runtime.relationships.leave_guild(a)
-    runtime.relationships.leave_guild(b)
     a.col = 70
     b.col = 30
     marriage_req = runtime.request_marriage(a.actor_id, b.actor_id)
@@ -209,4 +206,5 @@ def test_relationships_shared_inventory_wallet_and_guild_vault_round_trip():
     assert ra.col == rb.col == marriage.shared_wallet_col == 100
     assert restored.relationships.are_friends(a.actor_id, b.actor_id)
     assert restored.relationships.marriage_for(a.actor_id).marriage_id == marriage.marriage_id
+    assert restored.relationships.guilds[guild.guild_id].member_ids == [a.actor_id, b.actor_id]
     assert restored.economy.on_income is not None
