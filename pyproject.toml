@@ -1,0 +1,33 @@
+[project]
+name = "starmerx-sao-mcp"
+version = "0.1.0"
+description = "Sword Art Online Aincrad rules runtime and ChatGPT MCP plugin"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [{name = "starmerx-luxuyan"}]
+dependencies = [
+    "mcp[cli]>=2.0,<3",
+    "pydantic>=2.11,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.12,<1"]
+
+[project.scripts]
+sao-mcp = "sao_mcp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sao_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
