@@ -66,11 +66,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        # Feature-complete saves restore to the spatial boss-aware runtime. Older v1 saves that
+        # Feature-complete saves restore to the raid-scale spatial boss runtime. Older v1 saves that
         # predate positions are upgraded in memory by assigning the deterministic default formation.
-        from sao_mcp.runtime.spatial_runtime import SpatialAincradRuntime
+        from sao_mcp.runtime.raid_spatial_runtime import RaidSpatialAincradRuntime
 
-        runtime: GameRuntime = SpatialAincradRuntime()
+        runtime: GameRuntime = RaidSpatialAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
