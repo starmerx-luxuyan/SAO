@@ -22,7 +22,8 @@ def test_default_encounter_formation_and_authoritative_range():
         monster.actor_id,
         seed=2,
     )
-    assert resolved_distance == pytest.approx(4.0)
+    assert runtime.encounter_center_distance(encounter.encounter_id, player.actor_id, monster.actor_id) == pytest.approx(4.0)
+    assert resolved_distance == pytest.approx(3.2)
     assert not result.legal
     assert "outside attack reach" in (result.reason or "")
 
@@ -38,7 +39,7 @@ def test_encounter_movement_consumes_time_and_changes_distance():
     result = runtime.move_encounter_actor(
         encounter.encounter_id,
         player.actor_id,
-        target_x - 0.8,
+        target_x - 1.8,
         target_y,
     )
     assert result.completed
@@ -46,7 +47,32 @@ def test_encounter_movement_consumes_time_and_changes_distance():
     assert encounter.time_ms == start_time + result.elapsed_ms
     after_distance = runtime.encounter_distance(encounter.encounter_id, player.actor_id, monster.actor_id)
     assert after_distance < before_distance
-    assert after_distance == pytest.approx(0.8, abs=1e-4)
+    assert after_distance == pytest.approx(1.0, abs=1e-4)
+
+
+def test_living_actor_blocks_straight_movement_path():
+    runtime = SpatialAincradRuntime(seed=1)
+    mover = runtime.create_character("Mover")
+    tank = runtime.create_character("Tank")
+    monster = runtime.create_training_monster(level=1)
+    encounter = runtime.start_encounter([mover.actor_id, tank.actor_id, monster.actor_id])
+    encounter.positions[mover.actor_id] = (-3.0, 0.0)
+    encounter.positions[tank.actor_id] = (0.0, 0.0)
+    encounter.positions[monster.actor_id] = (8.0, 8.0)
+    with pytest.raises(ValueError, match="movement path is blocked"):
+        runtime.move_encounter_actor(encounter.encounter_id, mover.actor_id, 3.0, 0.0)
+    assert encounter.positions[mover.actor_id] == (-3.0, 0.0)
+
+
+def test_destination_cannot_overlap_living_actor():
+    runtime = SpatialAincradRuntime(seed=1)
+    mover = runtime.create_character("Mover")
+    blocker = runtime.create_character("Blocker")
+    encounter = runtime.start_encounter([mover.actor_id, blocker.actor_id])
+    encounter.positions[mover.actor_id] = (-2.0, 0.0)
+    encounter.positions[blocker.actor_id] = (2.0, 0.0)
+    with pytest.raises(ValueError, match="overlaps living actor"):
+        runtime.move_encounter_actor(encounter.encounter_id, mover.actor_id, 2.0, 0.0)
 
 
 def _start_spatial_illfang():
@@ -66,7 +92,7 @@ def test_player_can_spatially_escape_boss_telegraph_before_deadline():
         "illfang_sweeping_axe",
         [player.actor_id],
     )
-    runtime.move_encounter_actor(encounter.encounter_id, player.actor_id, -2.0, 0.0)
+    runtime.move_encounter_actor(encounter.encounter_id, player.actor_id, -4.0, 0.0)
     assert runtime.encounter_distance(encounter.encounter_id, boss.actor_id, player.actor_id) > 3.0
     result = runtime.resolve_boss_action(encounter.encounter_id, boss.actor_id, seed=1)
     assert result["resolved"]
@@ -139,5 +165,5 @@ def test_public_attack_tool_ignores_fake_distance_when_spatial_runtime_is_bootst
         )
     )
     assert payload["callerDistanceIgnored"] is True
-    assert payload["resolvedDistanceM"] == pytest.approx(4.0)
+    assert payload["resolvedDistanceM"] == pytest.approx(3.2)
     assert payload["resolution"]["legal"] is False
