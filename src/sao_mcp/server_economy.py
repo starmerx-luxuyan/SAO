@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import asdict
 from enum import Enum
 from typing import Any
@@ -13,7 +14,9 @@ from sao_mcp.rules.quests import QuestObjectiveKind
 
 
 FORGE_LOCATIONS = {
-    "floor_1_town_of_beginnings",
+    "floor_1_town_of_beginnings",  # simulation starter workshop
+    "floor_48_lisbeth_smith_shop",  # canon player smith shop
+    "floor_55_granzam",  # canon city with many blacksmiths
 }
 
 
@@ -91,17 +94,23 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
         )
 
     @mcp.tool()
-    def list_player_market(template_id: str | None = None) -> str:
-        """List player-vendor escrow listings, optionally filtered by item template."""
+    def list_player_market(
+        template_id: str | None = None,
+        location_id: str | None = None,
+    ) -> str:
+        """List physical player-vendor escrow listings, optionally filtered by item or location."""
         rows = []
         for listing in economy.player_listings.values():
             if template_id is not None and listing.item.template_id != template_id:
+                continue
+            if location_id is not None and listing.location_id != location_id:
                 continue
             template = runtime.catalog.item(listing.item.template_id)
             rows.append(
                 {
                     "listingId": listing.listing_id,
                     "sellerId": listing.seller_id,
+                    "locationId": listing.location_id,
                     "templateId": listing.item.template_id,
                     "name": template.name,
                     "quantity": listing.item.quantity,
@@ -122,7 +131,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
         unit_price_col: int,
         quantity: int | None = None,
     ) -> str:
-        """Place an unequipped item into player-vendor escrow at a chosen unit price."""
+        """Place an unequipped item into player-vendor escrow at the seller's current safe location."""
         seller = runtime.actors[seller_id]
         location = runtime.world_map.locations.get(seller.location_id or "")
         if location is None or not location.safe_zone:
@@ -130,6 +139,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
         listing = economy.create_player_listing(
             seller,
             instance_id,
+            location_id=location.location_id,
             unit_price_col=unit_price_col,
             quantity=quantity,
             now_ms=runtime.world.now_ms,
@@ -152,7 +162,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
         listing_id: str,
         quantity: int | None = None,
     ) -> str:
-        """Buy from a player-vendor listing and transfer Col directly to the seller."""
+        """Buy from a player-vendor listing only while physically at its listed location."""
         listing = economy.player_listings[listing_id]
         seller = runtime.actors[listing.seller_id]
         buyer = runtime.actors[buyer_id]
@@ -163,6 +173,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
                     seller,
                     listing_id,
                     runtime.catalog,
+                    buyer_location_id=buyer.location_id,
                     quantity=quantity,
                 )
             )
@@ -186,7 +197,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
             raise ValueError("weapon crafting requires an available forge/workshop")
         proficiency = _require_blacksmith(actor)
         recipe = WEAPON_RECIPES[recipe_id]
-        local_rng = runtime.rng if seed is None else __import__("random").Random(seed)
+        local_rng = runtime.rng if seed is None else random.Random(seed)
         result = craft_weapon(
             actor,
             recipe,
