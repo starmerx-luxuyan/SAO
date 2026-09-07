@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from sao_mcp.domain.models import CombatEvent, CombatantState, EncounterState, WorldState
+from sao_mcp.rules.economy import EconomyRuntime
 from sao_mcp.runtime.engine import GameRuntime
 
 
@@ -39,6 +40,7 @@ def export_runtime(runtime: GameRuntime) -> str:
             "events": EVENTS_ADAPTER.dump_python(encounter.events, mode="json"),
         }
 
+    economy = getattr(runtime, "economy", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -47,6 +49,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "rng_state": runtime.rng.getstate(),
         "quest_state": runtime.quests.dump_state(),
         "npc_state": runtime.npcs.dump_state(),
+        "economy_state": economy.dump_state() if economy is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -88,4 +91,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
+    economy = getattr(runtime, "economy", None)
+    if economy is None:
+        economy = EconomyRuntime()
+        runtime.economy = economy
+    economy.load_state(payload.get("economy_state", {}))
     return runtime
