@@ -33,6 +33,7 @@ class VendorSaleResolution:
 class PlayerListing:
     listing_id: str
     seller_id: str
+    location_id: str
     item: ItemInstance
     unit_price_col: int
     created_at_ms: int
@@ -43,6 +44,7 @@ class PlayerPurchaseResolution:
     listing_id: str
     seller_id: str
     buyer_id: str
+    location_id: str
     template_id: str
     quantity: int
     total_col: int
@@ -166,12 +168,15 @@ class EconomyRuntime:
         seller: CombatantState,
         instance_id: str,
         *,
+        location_id: str,
         unit_price_col: int,
         quantity: int | None,
         now_ms: int,
     ) -> PlayerListing:
         if unit_price_col < 1:
             raise ValueError("unit_price_col must be >= 1")
+        if not location_id:
+            raise ValueError("player listing requires a physical location")
         if instance_id not in seller.inventory:
             raise KeyError(instance_id)
         if instance_id in seller.equipment.values():
@@ -190,6 +195,7 @@ class EconomyRuntime:
         listing = PlayerListing(
             f"listing_{uuid.uuid4().hex[:12]}",
             seller.actor_id,
+            location_id,
             escrow,
             unit_price_col,
             now_ms,
@@ -215,6 +221,7 @@ class EconomyRuntime:
         listing_id: str,
         catalog: Catalog,
         *,
+        buyer_location_id: str | None,
         quantity: int | None = None,
     ) -> PlayerPurchaseResolution:
         listing = self.player_listings[listing_id]
@@ -222,6 +229,8 @@ class EconomyRuntime:
             raise ValueError("listing seller state does not match")
         if buyer.actor_id == seller.actor_id:
             raise ValueError("seller cannot buy own listing")
+        if buyer_location_id != listing.location_id:
+            raise ValueError("buyer is not at the player-vendor listing location")
         qty = listing.item.quantity if quantity is None else quantity
         if qty < 1 or qty > listing.item.quantity:
             raise ValueError("invalid purchase quantity")
@@ -247,6 +256,7 @@ class EconomyRuntime:
             listing_id,
             seller.actor_id,
             buyer.actor_id,
+            listing.location_id,
             moving.template_id,
             qty,
             total,
@@ -260,6 +270,7 @@ class EconomyRuntime:
                 listing_id: {
                     "listing_id": listing.listing_id,
                     "seller_id": listing.seller_id,
+                    "location_id": listing.location_id,
                     "item": asdict(listing.item),
                     "unit_price_col": listing.unit_price_col,
                     "created_at_ms": listing.created_at_ms,
@@ -279,6 +290,7 @@ class EconomyRuntime:
             self.player_listings[listing_id] = PlayerListing(
                 listing_id=value["listing_id"],
                 seller_id=value["seller_id"],
+                location_id=value.get("location_id", "floor_1_town_of_beginnings"),
                 item=ItemInstance(**item_payload),
                 unit_price_col=int(value["unit_price_col"]),
                 created_at_ms=int(value["created_at_ms"]),
