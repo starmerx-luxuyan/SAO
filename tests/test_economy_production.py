@@ -61,7 +61,7 @@ def test_vendor_wrong_location_does_not_mutate_col():
     assert actor.col == 100
 
 
-def test_player_market_escrow_moves_col_and_item():
+def test_player_market_escrow_moves_col_and_item_at_same_location():
     runtime = GameRuntime(seed=1)
     seller = runtime.create_character("Seller")
     buyer = runtime.create_character("Buyer")
@@ -75,16 +75,60 @@ def test_player_market_escrow_moves_col_and_item():
     listing = economy.create_player_listing(
         seller,
         potion_id,
+        location_id=seller.location_id,
         unit_price_col=25,
         quantity=2,
         now_ms=123,
     )
     assert listing.item.quantity == 2
+    assert listing.location_id == "floor_1_town_of_beginnings"
     seller_before = seller.col
-    result = economy.buy_player_listing(buyer, seller, listing.listing_id, runtime.catalog, quantity=1)
+    result = economy.buy_player_listing(
+        buyer,
+        seller,
+        listing.listing_id,
+        runtime.catalog,
+        buyer_location_id=buyer.location_id,
+        quantity=1,
+    )
     assert result.total_col == 25
     assert buyer.col == 475
     assert seller.col == seller_before + 25
+    assert economy.player_listings[listing.listing_id].item.quantity == 1
+
+
+def test_player_market_rejects_remote_purchase_without_mutation():
+    runtime = GameRuntime(seed=1)
+    seller = runtime.create_character("Seller")
+    buyer = runtime.create_character("Buyer")
+    buyer.col = 500
+    economy = EconomyRuntime()
+    potion_id = next(
+        instance_id
+        for instance_id, item in seller.inventory.items()
+        if item.template_id == "healing_potion_basic"
+    )
+    listing = economy.create_player_listing(
+        seller,
+        potion_id,
+        location_id=seller.location_id,
+        unit_price_col=25,
+        quantity=1,
+        now_ms=123,
+    )
+    buyer.location_id = "floor_1_horunka"
+    buyer_before = buyer.col
+    seller_before = seller.col
+    with pytest.raises(ValueError, match="listing location"):
+        economy.buy_player_listing(
+            buyer,
+            seller,
+            listing.listing_id,
+            runtime.catalog,
+            buyer_location_id=buyer.location_id,
+        )
+    assert buyer.col == buyer_before
+    assert seller.col == seller_before
     assert economy.player_listings[listing.listing_id].item.quantity == 1
 
 
@@ -153,6 +197,7 @@ def test_market_state_round_trips_with_save():
     listing = runtime.economy.create_player_listing(
         seller,
         potion_id,
+        location_id=seller.location_id,
         unit_price_col=23,
         quantity=1,
         now_ms=777,
@@ -163,3 +208,4 @@ def test_market_state_round_trips_with_save():
     loaded = restored.economy.player_listings[listing.listing_id]
     assert loaded.unit_price_col == 23
     assert loaded.item.quantity == 1
+    assert loaded.location_id == seller.location_id
