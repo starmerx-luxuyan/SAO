@@ -84,18 +84,16 @@ def attempt_enhancement(
                 new_track_level=item.enhancements.get(track, 0),
                 reason="item is already an enhancement end product",
             )
-        # Canon establishes break risk; exact probability is simulation calibration.
-        destroyed = rng.random() < 0.75
-        if destroyed:
-            item.durability = 0
+        # In the finished SAO ruleset, attempting to reinforce an end product shatters it.
+        item.durability = 0
         return EnhancementResolution(
             attempted=True,
             success=False,
-            destroyed=destroyed,
+            destroyed=True,
             probability=0.0,
             attempts_remaining_after=0,
             new_track_level=item.enhancements.get(track, 0),
-            reason="forced enhancement beyond the attempt limit",
+            reason="forced enhancement of an end product shattered the item",
         )
 
     item.enhancement_attempts_used += 1
