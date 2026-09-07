@@ -7,6 +7,13 @@ from typing import Any
 
 from sao_mcp.corpus.bosses import CORE_BOSS_ACTIONS, CORE_BOSSES
 from sao_mcp.domain.models import DefenseMode, EntityKind
+from sao_mcp.rules.raids import (
+    RAID_ROLES,
+    assign_raid_role,
+    boss_raid_status,
+    retreat_from_boss_room,
+    set_party_rotation,
+)
 
 
 def _default(value: Any):
@@ -61,6 +68,7 @@ def register_boss_tools(mcp, runtime) -> None:
                 "openingMinionIds": minions,
                 "playerIds": player_ids,
                 "zoneId": encounter.zone_id,
+                "raidStatus": boss_raid_status(runtime, encounter.encounter_id),
             }
         )
 
@@ -84,6 +92,57 @@ def register_boss_tools(mcp, runtime) -> None:
                 raise ValueError("encounter has no registered boss")
             boss_id = candidates[0]
         return _json(runtime.boss_bar_state(boss_id))
+
+    @mcp.tool()
+    def get_boss_raid_status(encounter_id: str) -> str:
+        """Return raid casualties, wipe state, retreat capabilities, threat leader and command assignments."""
+        return _json(boss_raid_status(runtime, encounter_id))
+
+    @mcp.tool()
+    def assign_boss_raid_role(encounter_id: str, actor_id: str, role: str) -> str:
+        """Assign a tactical raid role: tank, attacker, support or minion_control."""
+        encounter = runtime.encounters[encounter_id]
+        actor = encounter.participants.get(actor_id)
+        if actor is None or actor.kind is not EntityKind.PLAYER:
+            raise ValueError("raid role requires a participating player")
+        if role not in RAID_ROLES:
+            raise ValueError(f"unknown raid role: {role}")
+        return _json(assign_raid_role(runtime.world, encounter_id, actor_id, role))
+
+    @mcp.tool()
+    def set_boss_party_rotation(encounter_id: str, party_ids: list[str]) -> str:
+        """Set an ordered party rotation plan for tank/attack/potion-cycle coordination."""
+        encounter = runtime.encounters[encounter_id]
+        encounter_party_ids = {
+            actor.party_id
+            for actor in encounter.participants.values()
+            if actor.kind is EntityKind.PLAYER and actor.party_id
+        }
+        if any(party_id not in encounter_party_ids for party_id in party_ids):
+            raise ValueError("party rotation contains a party absent from this encounter")
+        return _json(set_party_rotation(runtime.world, encounter_id, party_ids))
+
+    @mcp.tool()
+    def retreat_from_floor_boss(
+        encounter_id: str,
+        actor_id: str,
+        method: str = "door",
+        teleport_crystal_instance_id: str | None = None,
+        teleport_destination_id: str | None = None,
+    ) -> str:
+        """Retreat through the boss-room entrance or by Teleport Crystal when the room permits it."""
+        return _json(
+            asdict(
+                retreat_from_boss_room(
+                    runtime,
+                    encounter_id,
+                    actor_id,
+                    method=method,
+                    teleport_crystal_instance_id=teleport_crystal_instance_id,
+                    teleport_destination_id=teleport_destination_id,
+                )
+            )
+        )
 
     @mcp.tool()
     def choose_boss_action(encounter_id: str, boss_id: str) -> str:
