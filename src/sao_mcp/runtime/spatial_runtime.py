@@ -4,6 +4,7 @@ import math
 from dataclasses import asdict
 
 from sao_mcp.domain.models import DefenseMode, EntityKind
+from sao_mcp.rules.combat import AttackResolution, effective_attack_speed_ms
 from sao_mcp.rules.spatial import (
     MovementResolution,
     actor_center_distance,
@@ -145,6 +146,16 @@ class SpatialAincradRuntime(AincradRuntime):
             True,
         )
 
+    def _formal_attack_duration_ms(self, attacker_id: str, sword_skill_id: str | None) -> int:
+        attacker = self.actors[attacker_id]
+        weapon_item, weapon = self._equipped_weapon(attacker)
+        if sword_skill_id:
+            skill = self.catalog.sword_skills.get(sword_skill_id)
+            if skill is None:
+                return 0
+            return max(1, skill.windup_ms + skill.active_ms)
+        return effective_attack_speed_ms(weapon, weapon_item)
+
     def attack_authoritative(
         self,
         encounter_id: str,
@@ -155,7 +166,24 @@ class SpatialAincradRuntime(AincradRuntime):
         defense: DefenseMode | str = DefenseMode.AUTO,
         seed: int | None = None,
     ):
+        encounter = self.encounters[encounter_id]
         distance = self.encounter_distance(encounter_id, attacker_id, target_id)
+        deadline = earliest_pending_execution_ms(encounter)
+        if deadline is not None:
+            if deadline <= encounter.time_ms:
+                return (
+                    AttackResolution(False, reason="a pending boss telegraph is due and must resolve before another attack"),
+                    distance,
+                )
+            action_end = encounter.time_ms + self._formal_attack_duration_ms(attacker_id, sword_skill_id)
+            if action_end > deadline:
+                return (
+                    AttackResolution(
+                        False,
+                        reason="attack would cross a pending boss telegraph execution; resolve or evade the telegraph first",
+                    ),
+                    distance,
+                )
         result = self.attack(
             encounter_id,
             attacker_id,
@@ -166,6 +194,21 @@ class SpatialAincradRuntime(AincradRuntime):
             seed=seed,
         )
         return result, distance
+
+    def switch(self, encounter_id: str, outgoing_id: str, incoming_id: str, target_id: str):
+        encounter = self.encounters[encounter_id]
+        incoming = encounter.participants[incoming_id]
+        weapon_item, weapon = self._equipped_weapon(incoming)
+        if weapon_item.broken:
+            raise ValueError("incoming Switch member has a broken weapon")
+        distance = self.encounter_distance(encounter_id, incoming_id, target_id)
+        # Switch is a player-devised tactic with a short rush/entry; this extra allowance is simulation tuning.
+        switch_entry_reach = weapon.reach_m + 0.75
+        if distance > switch_entry_reach:
+            raise ValueError(
+                f"incoming Switch member is outside striking range ({distance:.2f} m > {switch_entry_reach:.2f} m)"
+            )
+        return super().switch(encounter_id, outgoing_id, incoming_id, target_id)
 
     def choose_boss_action(self, encounter_id: str, boss_id: str) -> dict:
         encounter = self.encounters[encounter_id]
