@@ -14,8 +14,29 @@ from sao_mcp.domain.models import (
 )
 
 
+def _reinforcement_material(template_id: str, name: str, track: str | None = None) -> ItemTemplate:
+    tags = ("reinforcement", "base") if track is None else ("reinforcement", "additional", track)
+    return ItemTemplate(
+        template_id=template_id,
+        name=name,
+        kind=ItemKind.MATERIAL,
+        weight=0.15,
+        stack_limit=99,
+        base_value_col=20 if track is None else 30,
+        tags=tags,
+        provenance=Provenance(
+            ProvenanceKind.SIMULATION,
+            sources=("Sword Art Online Progressive Volume 1: Rondo of a Fragile Blade",),
+            notes=(
+                "SAO canon distinguishes fixed base materials and property-specific additional materials. "
+                "This generic material identity/name/value is runtime scaffolding rather than a canon item name."
+            ),
+        ),
+    )
+
+
 def apply_canon_seed(catalog: Catalog) -> Catalog:
-    """Add compact canon identities that need provenance more specific than generic templates."""
+    """Add compact canon identities plus clearly-labelled simulation scaffolding needed by canon systems."""
     catalog.weapons.setdefault(
         "anneal_blade",
         WeaponTemplate(
@@ -61,6 +82,32 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
             ),
         ),
     )
+
+    # Generic runtime identities for the canon reinforcement-material roles. The property colours and
+    # base/additional split are canon, while these names/prices are intentionally simulation data.
+    reinforcement_materials = {
+        "reinforcement_base_material": _reinforcement_material(
+            "reinforcement_base_material", "Reinforcement Base Material"
+        ),
+        "reinforcement_sharpness_material": _reinforcement_material(
+            "reinforcement_sharpness_material", "Sharpness Additional Material", "sharpness"
+        ),
+        "reinforcement_quickness_material": _reinforcement_material(
+            "reinforcement_quickness_material", "Quickness Additional Material", "quickness"
+        ),
+        "reinforcement_accuracy_material": _reinforcement_material(
+            "reinforcement_accuracy_material", "Accuracy Additional Material", "accuracy"
+        ),
+        "reinforcement_heaviness_material": _reinforcement_material(
+            "reinforcement_heaviness_material", "Heaviness Additional Material", "heaviness"
+        ),
+        "reinforcement_durability_material": _reinforcement_material(
+            "reinforcement_durability_material", "Durability Additional Material", "durability"
+        ),
+    }
+    for template_id, template in reinforcement_materials.items():
+        catalog.items.setdefault(template_id, template)
+
     catalog.skills.setdefault(
         "blacksmithing",
         SkillDefinition(
