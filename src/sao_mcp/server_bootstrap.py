@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sao_mcp.server as core_server
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
-from sao_mcp.rules.economy import EconomyRuntime
 from sao_mcp.runtime.community_hooks import attach_community_economy
-from sao_mcp.runtime.family_runtime import FamilyCommunityAincradRuntime
+from sao_mcp.runtime.property_economy import make_runtime_economy
+from sao_mcp.runtime.property_runtime import PropertyFamilyAincradRuntime
 from sao_mcp.server_adventure import register_adventure_tools
 from sao_mcp.server_duels import register_duel_tools
 from sao_mcp.server_economy import register_economy_tools
@@ -15,16 +15,17 @@ from sao_mcp.server_relationships import register_relationship_tools
 from sao_mcp.server_spatial import register_spatial_tools
 from sao_mcp.server_timeline import register_timeline_tools
 
-# One authoritative state retains Boss, raid-spatial, timeline, duel, death, community and family layers.
-if not isinstance(core_server.runtime, FamilyCommunityAincradRuntime):
-    core_server.runtime = FamilyCommunityAincradRuntime(seed=0xA1C0)
+# One authoritative state retains Boss, raid-spatial, timeline, duel, death, community, family and
+# cross-actor shared-inventory occupancy rules.
+if not isinstance(core_server.runtime, PropertyFamilyAincradRuntime):
+    core_server.runtime = PropertyFamilyAincradRuntime(seed=0xA1C0)
 
 mcp = core_server.mcp
 runtime = core_server.runtime
 apply_social_catalog_seed(runtime.catalog)
 
 if not hasattr(runtime, "economy"):
-    runtime.economy = EconomyRuntime()
+    runtime.economy = make_runtime_economy(runtime)
 attach_community_economy(runtime, runtime.economy)
 
 register_adventure_tools(mcp, runtime)
