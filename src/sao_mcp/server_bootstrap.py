@@ -15,4 +15,7 @@ register_inventory_tools(mcp, runtime)
 register_progression_tools(mcp, runtime)
 register_economy_tools(mcp, runtime, runtime.economy)
 
+# Import after the economy/runtime groups exist so the unified view can expose all panels.
+from sao_mcp import server_ui as _server_ui  # noqa: E402,F401
+
 __all__ = ["mcp", "runtime"]
