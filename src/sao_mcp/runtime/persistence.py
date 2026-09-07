@@ -50,6 +50,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     duel_dump = getattr(runtime, "dump_duel_state", None)
     relationship_dump = getattr(runtime, "dump_relationship_state", None)
     family_dump = getattr(runtime, "dump_family_state", None)
+    communications_dump = getattr(runtime, "dump_communications_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -63,6 +64,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "duel_state": duel_dump() if duel_dump is not None else {},
         "relationship_state": relationship_dump() if relationship_dump is not None else {},
         "family_state": family_dump() if family_dump is not None else {},
+        "communications_state": communications_dump() if communications_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -73,9 +75,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        from sao_mcp.runtime.property_runtime import PropertyFamilyAincradRuntime
+        from sao_mcp.runtime.communications_runtime import CommunicatingAincradRuntime
 
-        runtime: GameRuntime = PropertyFamilyAincradRuntime()
+        runtime: GameRuntime = CommunicatingAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -137,6 +139,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     family_load = getattr(runtime, "load_family_state", None)
     if family_load is not None:
         family_load(payload.get("family_state", {}))
+    communications_load = getattr(runtime, "load_communications_state", None)
+    if communications_load is not None:
+        communications_load(payload.get("communications_state", {}))
     if hasattr(runtime, "relationships"):
         from sao_mcp.runtime.community_hooks import attach_community_economy
 
