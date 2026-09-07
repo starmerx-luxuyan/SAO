@@ -6,7 +6,6 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from sao_mcp.domain.models import CombatEvent, CombatantState, EncounterState, WorldState
-from sao_mcp.rules.economy import EconomyRuntime
 from sao_mcp.rules.spatial import default_formation
 from sao_mcp.runtime.engine import GameRuntime
 
@@ -74,9 +73,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        from sao_mcp.runtime.family_runtime import FamilyCommunityAincradRuntime
+        from sao_mcp.runtime.property_runtime import PropertyFamilyAincradRuntime
 
-        runtime: GameRuntime = FamilyCommunityAincradRuntime()
+        runtime: GameRuntime = PropertyFamilyAincradRuntime()
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -119,11 +118,13 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
-    economy = getattr(runtime, "economy", None)
-    if economy is None:
-        economy = EconomyRuntime()
-        runtime.economy = economy
+
+    from sao_mcp.runtime.property_economy import make_runtime_economy
+
+    economy = make_runtime_economy(runtime)
+    runtime.economy = economy
     economy.load_state(payload.get("economy_state", {}))
+
     timeline_load = getattr(runtime, "load_timeline_state", None)
     if timeline_load is not None:
         timeline_load(payload.get("timeline_state", {}))
