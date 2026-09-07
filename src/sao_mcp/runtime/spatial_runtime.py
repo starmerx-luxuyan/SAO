@@ -11,6 +11,7 @@ from sao_mcp.rules.spatial import (
     actor_collision_radius_m,
     actor_distance,
     default_formation,
+    distance_between_points,
     earliest_pending_execution_ms,
     movement_duration_ms,
     movement_speed_mps,
@@ -257,14 +258,41 @@ class SpatialAincradRuntime(AincradRuntime):
             },
         }
 
+    def _point_inside_locked_area(self, encounter, actor_id: str, center: tuple[float, float], radius_m: float) -> bool:
+        if actor_id not in encounter.positions or actor_id not in encounter.participants:
+            return False
+        actor = encounter.participants[actor_id]
+        if not actor.alive:
+            return False
+        center_distance = distance_between_points(center, encounter.positions[actor_id])
+        return center_distance - actor_collision_radius_m(actor) <= radius_m
+
     def telegraph_boss_action(self, encounter_id: str, boss_id: str, action_id: str, target_ids):
         encounter = self.encounters[encounter_id]
         boss = encounter.participants[boss_id]
         action = self._boss_action(boss, action_id)
-        for target_id in target_ids:
+        targets = list(dict.fromkeys(target_ids))
+        for target_id in targets:
             if self.encounter_distance(encounter_id, boss_id, target_id) > action.reach_m:
                 raise ValueError("boss cannot telegraph this action against a target outside its current reach")
-        return super().telegraph_boss_action(encounter_id, boss_id, action_id, target_ids)
+        event = super().telegraph_boss_action(encounter_id, boss_id, action_id, targets)
+        pending = boss.metadata["pending_boss_action"]
+        pending["initial_target_ids"] = list(targets)
+        if "area" in action.tags:
+            center = encounter.positions[boss_id]
+            # Lock the boss-centred danger zone at telegraph start. Add the boss body radius so the
+            # zone matches the effective surface-distance reach used by ordinary combat checks.
+            radius = action.reach_m + actor_collision_radius_m(boss)
+            pending["spatial_mode"] = "locked_radius"
+            pending["area_center"] = [float(center[0]), float(center[1])]
+            pending["area_radius_m"] = float(radius)
+            event.payload["spatial_mode"] = "locked_radius"
+            event.payload["area_center"] = list(pending["area_center"])
+            event.payload["area_radius_m"] = radius
+        else:
+            pending["spatial_mode"] = "locked_targets"
+            event.payload["spatial_mode"] = "locked_targets"
+        return event
 
     def resolve_boss_action(self, encounter_id: str, boss_id: str, *, defenses=None, seed=None) -> dict:
         encounter = self.encounters[encounter_id]
@@ -273,19 +301,63 @@ class SpatialAincradRuntime(AincradRuntime):
         if not pending:
             raise ValueError("boss has no pending telegraphed action")
         action = self._boss_action(boss, str(pending["action_id"]))
-        original_targets = list(pending["target_ids"])
-        in_range = []
-        escaped = []
-        for target_id in original_targets:
-            target = encounter.participants.get(target_id)
-            if target is None or not target.alive or target_id not in encounter.positions:
-                continue
-            distance = self.encounter_distance(encounter_id, boss_id, target_id)
-            if distance <= action.reach_m:
-                in_range.append(target_id)
-            else:
-                escaped.append((target_id, distance))
-        pending["target_ids"] = in_range
+        initial_targets = list(pending.get("initial_target_ids", pending["target_ids"]))
+        spatial_mode = str(pending.get("spatial_mode", "locked_targets"))
+        escaped: list[tuple[str, float]] = []
+        entered: list[str] = []
+
+        if spatial_mode == "locked_radius":
+            center_raw = pending.get("area_center")
+            if not center_raw or len(center_raw) != 2:
+                raise ValueError("area telegraph is missing its locked spatial center")
+            center = (float(center_raw[0]), float(center_raw[1]))
+            radius = float(pending.get("area_radius_m", action.reach_m))
+            living_players = [
+                actor
+                for actor in encounter.participants.values()
+                if actor.kind is EntityKind.PLAYER and actor.alive and actor.actor_id in encounter.positions
+            ]
+            eligible_ids = [
+                actor.actor_id
+                for actor in living_players
+                if self._point_inside_locked_area(encounter, actor.actor_id, center, radius)
+            ]
+            eligible_set = set(eligible_ids)
+            for target_id in initial_targets:
+                if target_id not in eligible_set and target_id in encounter.positions:
+                    distance = max(
+                        0.0,
+                        distance_between_points(center, encounter.positions[target_id])
+                        - actor_collision_radius_m(encounter.participants[target_id]),
+                    )
+                    escaped.append((target_id, distance))
+
+            threat = encounter.threat.get(boss_id, {})
+            retained = [target_id for target_id in initial_targets if target_id in eligible_set]
+            newcomers = [target_id for target_id in eligible_ids if target_id not in set(initial_targets)]
+            newcomers.sort(
+                key=lambda target_id: (
+                    -threat.get(target_id, 0.0),
+                    distance_between_points(center, encounter.positions[target_id]),
+                    target_id,
+                )
+            )
+            selected = (retained + newcomers)[: max(1, action.max_targets)]
+            entered = [target_id for target_id in selected if target_id not in initial_targets]
+            pending["target_ids"] = selected
+        else:
+            in_range = []
+            for target_id in initial_targets:
+                target = encounter.participants.get(target_id)
+                if target is None or not target.alive or target_id not in encounter.positions:
+                    continue
+                distance = self.encounter_distance(encounter_id, boss_id, target_id)
+                if distance <= action.reach_m:
+                    in_range.append(target_id)
+                else:
+                    escaped.append((target_id, distance))
+            pending["target_ids"] = in_range
+
         result = super().resolve_boss_action(
             encounter_id,
             boss_id,
@@ -299,13 +371,16 @@ class SpatialAincradRuntime(AincradRuntime):
                 "hit": False,
                 "spatiallyEscaped": True,
                 "distanceM": round(distance, 4),
-                "reason": "target moved outside the telegraphed action reach before execution",
+                "reason": "target moved outside the telegraphed danger zone before execution",
             }
             for target_id, distance in escaped
         ]
         if result.get("resolved"):
             result["targets"] = escaped_rows + list(result.get("targets", []))
+            result["spatialMode"] = spatial_mode
             result["spatialEscapes"] = len(escaped_rows)
+            result["spatialEntrants"] = len(entered)
+            result["enteredTargetIds"] = entered
         return result
 
     def spatial_state(self, encounter_id: str) -> dict:
