@@ -27,6 +27,7 @@ class QuestObjectiveDefinition:
     target_id: str
     required: int = 1
     consume_on_turn_in: bool = False
+    required_for_completion: bool = True
 
 
 @dataclass(slots=True, frozen=True)
@@ -154,6 +155,7 @@ class QuestRuntime:
         return all(
             progress.counters.get(objective.objective_id, 0) >= objective.required
             for objective in definition.objectives
+            if objective.required_for_completion
         )
 
     def _consume_template(self, actor: CombatantState, template_id: str, quantity: int) -> None:
@@ -190,7 +192,10 @@ class QuestRuntime:
 
         definition = self.definitions[quest_id]
         for objective in definition.objectives:
-            if objective.consume_on_turn_in:
+            if (
+                objective.consume_on_turn_in
+                and progress.counters.get(objective.objective_id, 0) >= objective.required
+            ):
                 self._consume_template(actor, objective.target_id, objective.required)
 
         actor.col += definition.reward.col
