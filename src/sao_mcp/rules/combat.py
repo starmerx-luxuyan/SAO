@@ -74,6 +74,11 @@ def _weapon_proficiency(actor: CombatantState, weapon: WeaponTemplate) -> float:
     return actor.skill_proficiencies.get(weapon.weapon_class.value, 0.0)
 
 
+def _guild_party_bonus(actor: CombatantState) -> float:
+    """Canon says same-guild party members receive a slight stat increase; magnitude is runtime tuning."""
+    return _clamp(float(actor.metadata.get("guild_party_stat_bonus", 0.0)), 0.0, 0.15)
+
+
 def effective_attack_speed_ms(
     weapon: WeaponTemplate,
     item: ItemInstance,
@@ -197,6 +202,7 @@ def resolve_physical_attack(
     power = 1.0 + strength_over_req * tuning.strength_damage_scale
     power += proficiency * tuning.proficiency_damage_scale
     power += _enhancement(weapon_item, EnhancementTrack.SHARPNESS) * tuning.sharpness_damage_scale
+    power *= 1.0 + _guild_party_bonus(attacker)
     skill_multiplier = sword_skill.total_multiplier if sword_skill else 1.0
     raw = rolled * power * skill_multiplier * weapon_item.quality
 
@@ -207,7 +213,8 @@ def resolve_physical_attack(
     if critical:
         raw *= 1.55
 
-    armor_mitigation = defender.armor / (defender.armor + tuning.armor_constant) if defender.armor > 0 else 0.0
+    effective_armor = defender.armor * (1.0 + _guild_party_bonus(defender))
+    armor_mitigation = effective_armor / (effective_armor + tuning.armor_constant) if effective_armor > 0 else 0.0
     damage = raw * (1.0 - armor_mitigation)
 
     if can_react and chosen_defense is DefenseMode.GUARD:
