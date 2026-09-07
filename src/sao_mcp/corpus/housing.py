@@ -41,7 +41,7 @@ CORE_PROPERTY_LISTINGS: dict[str, PropertyListingDefinition] = {
         listing_id="floor22_forest_house_k4",
         name="Forest House K4",
         kind=PropertyKind.RESIDENCE,
-        parent_location_id="floor_22_coral",
+        parent_location_id="floor_22_forest_house_site",
         price_col=5_000_000,
         storage_slots=180,
         unique_world_asset=True,
@@ -53,7 +53,7 @@ CORE_PROPERTY_LISTINGS: dict[str, PropertyListingDefinition] = {
                 "Sword Art Online: The Day Before",
             ),
             notes=(
-                "Identity, Floor 22 location, player-home status and quest-gated purchase are canon. "
+                "Identity, southwestern Floor 22 forest location, player-home status and quest-gated purchase are canon. "
                 "The runtime price and storage capacity are simulation calibration, not treated as locked canon numbers."
             ),
         ),
