@@ -6,12 +6,15 @@ from dataclasses import asdict
 from sao_mcp.domain.models import DefenseMode, EntityKind
 from sao_mcp.rules.spatial import (
     MovementResolution,
+    actor_center_distance,
+    actor_collision_radius_m,
     actor_distance,
     default_formation,
     earliest_pending_execution_ms,
     movement_duration_ms,
     movement_speed_mps,
     validate_destination,
+    validate_movement_path,
     validate_movement_ready,
 )
 from sao_mcp.runtime.aincrad_runtime import AincradRuntime
@@ -52,7 +55,11 @@ class SpatialAincradRuntime(AincradRuntime):
         return spawned
 
     def encounter_distance(self, encounter_id: str, actor_id: str, target_id: str) -> float:
+        """Return effective surface-to-surface combat distance."""
         return actor_distance(self.encounters[encounter_id], actor_id, target_id)
+
+    def encounter_center_distance(self, encounter_id: str, actor_id: str, target_id: str) -> float:
+        return actor_center_distance(self.encounters[encounter_id], actor_id, target_id)
 
     def move_encounter_actor(
         self,
@@ -69,7 +76,8 @@ class SpatialAincradRuntime(AincradRuntime):
             default_formation(encounter)
         validate_movement_ready(actor, now_ms=encounter.time_ms)
         destination = (float(x), float(y))
-        validate_destination(encounter, destination)
+        validate_destination(encounter, actor_id, destination)
+        validate_movement_path(encounter, actor_id, destination)
         origin = encounter.positions[actor_id]
         distance = actor_distance_between(origin, destination)
         elapsed = movement_duration_ms(actor, distance)
@@ -272,6 +280,7 @@ class SpatialAincradRuntime(AincradRuntime):
                     "alive": actor.alive,
                     "x": position[0],
                     "y": position[1],
+                    "collisionRadiusM": round(actor_collision_radius_m(actor), 4),
                     "movementSpeedMps": round(movement_speed_mps(actor), 4),
                 }
             )
