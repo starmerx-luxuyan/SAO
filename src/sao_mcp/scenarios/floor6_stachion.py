@@ -3,6 +3,12 @@ from __future__ import annotations
 import uuid
 
 from sao_mcp.corpus.floor6 import apply_floor6_world_seed
+from sao_mcp.corpus.floor6_ambush import (
+    GAS_MASK_ID,
+    IRON_KEY_ID,
+    JOE_DAGGER_ID,
+    MORTE_HATCHET_ID,
+)
 from sao_mcp.corpus.floor6_stachion import (
     CYLON_ID,
     GOLDEN_KEY_ID,
@@ -33,13 +39,14 @@ TRAVELLER_GRAVE = "floor_6_traveller_grave"
 SURIBUS = "floor_6_suribus"
 PITHAGRUS_HOUSE = "floor_6_pithagrus_suribus_house"
 CYLON_TRANSPORT = "floor_6_cylon_transport_carriage"
-HOUSE_SEARCH_MS = 75 * 60_000  # Simulation abstraction for exploring the haunted/puzzle-filled second house.
-TRANSPORT_TO_AMBUSH_MS = 18 * 60_000  # Simulation only; canon says the carriage is intercepted shortly after leaving Suribus.
-SCRIPTED_PARALYSIS_MS = 2 * 60 * 60_000  # Long enough to span the scripted transport/ambush sequence; exact duration is not canon.
+HOUSE_SEARCH_MS = 75 * 60_000
+TRANSPORT_TO_AMBUSH_MS = 18 * 60_000
+SCRIPTED_PARALYSIS_MS = 2 * 60 * 60_000
+POST_CYLON_DEATH_PARALYSIS_MS = 90_000
 
 
 class Floor6StachionScenario:
-    """Release-side Curse of Stachion from Cylon's request through his scripted Suribus capture."""
+    """Release-side Curse of Stachion through Cylon's death and the opening state of the Morte/Joe ambush."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
@@ -155,6 +162,11 @@ class Floor6StachionScenario:
                 "transport_encounter_id": None,
                 "confiscated_key_instance_id": None,
                 "ambush_site_reached_at_ms": None,
+                "morte_actor_id": None,
+                "joe_actor_id": None,
+                "ground_cache_actor_id": None,
+                "cylon_killed_at_ms": None,
+                "poison_cloud_active": False,
             },
         )
         return self.status(actor_id)
@@ -168,7 +180,6 @@ class Floor6StachionScenario:
         if witness_id not in WITNESSES:
             raise KeyError(witness_id)
         self.runtime.interact_npc(actor_id, witness_id)
-
         interviewed = state["witnesses_interviewed"]
         if witness_id not in interviewed:
             interviewed.append(witness_id)
@@ -177,7 +188,6 @@ class Floor6StachionScenario:
                 kind=QuestObjectiveKind.DISCOVER,
                 target_id="stachion_old_household_testimony",
             )
-
         if len(interviewed) == len(WITNESSES) and state["suribus_house_revealed_at_ms"] is None:
             state["stage"] = "travel_to_suribus_second_home"
             state["suribus_house_revealed_at_ms"] = self.runtime.world.now_ms
@@ -196,11 +206,7 @@ class Floor6StachionScenario:
             raise ValueError("the golden key is found at Pithagrus's second home in Suribus")
         if len(state["witnesses_interviewed"]) < len(WITNESSES):
             raise ValueError("the Stachion interviews have not yet revealed Pithagrus's Suribus house")
-
-        existing = next(
-            (item for item in actor.inventory.values() if item.template_id == GOLDEN_KEY_ID),
-            None,
-        )
+        existing = next((item for item in actor.inventory.values() if item.template_id == GOLDEN_KEY_ID), None)
         if existing is None:
             self.runtime.advance_world(HOUSE_SEARCH_MS)
             existing = ItemInstance(
@@ -240,14 +246,19 @@ class Floor6StachionScenario:
                 "combat_stats_provenance": "simulation",
             },
         )
-        jar = ItemInstance(
-            instance_id=f"questitem_{uuid.uuid4().hex[:12]}",
-            template_id=POISON_JAR_ID,
-            owner_id=actor_id,
-            quantity=1,
-            metadata={"scripted_capture_tool": True},
-        )
-        cylon.inventory[jar.instance_id] = jar
+        for template_id, metadata in (
+            (POISON_JAR_ID, {"scripted_capture_tool": True}),
+            (IRON_KEY_ID, {"cylon_quest_valuable": True}),
+            (GAS_MASK_ID, {"paralysis_gas_protection": True}),
+        ):
+            item = ItemInstance(
+                instance_id=f"questitem_{uuid.uuid4().hex[:12]}",
+                template_id=template_id,
+                owner_id=actor_id,
+                quantity=1,
+                metadata=metadata,
+            )
+            cylon.inventory[item.instance_id] = item
         self.runtime.actors[actor_id] = cylon
         return cylon
 
@@ -259,17 +270,14 @@ class Floor6StachionScenario:
             raise ValueError("Cylon's scripted capture triggers as the player attempts to leave the Suribus house")
         if state["stage"] != "golden_key_obtained_capture_pending":
             raise ValueError("the golden key must be obtained before Cylon's capture event")
-
         key = next((item for item in actor.inventory.values() if item.template_id == GOLDEN_KEY_ID), None)
         if key is None:
             raise ValueError("the player no longer carries Pithagrus's golden key")
         cylon = self._create_cylon_actor()
-
         actor.inventory.pop(key.instance_id)
         key.owner_id = cylon.actor_id
         key.metadata["confiscated_by_cylon"] = True
         cylon.inventory[key.instance_id] = key
-
         actor.statuses = [status for status in actor.statuses if status.stack_key != "scripted_cylon_paralysis"]
         actor.statuses.append(
             StatusEffectState(
@@ -287,11 +295,7 @@ class Floor6StachionScenario:
         actor.metadata["scripted_capture"] = "cylon_transport"
         actor.location_id = CYLON_TRANSPORT
         cylon.location_id = CYLON_TRANSPORT
-        encounter = self.runtime.start_encounter(
-            [actor_id, cylon.actor_id],
-            zone_id=CYLON_TRANSPORT,
-            safe_zone=False,
-        )
+        encounter = self.runtime.start_encounter([actor_id, cylon.actor_id], zone_id=CYLON_TRANSPORT, safe_zone=False)
         self.runtime._append(
             encounter,
             "cylon_scripted_capture",
@@ -300,7 +304,6 @@ class Floor6StachionScenario:
             poison_jar_template_id=POISON_JAR_ID,
             confiscated_key_instance_id=key.instance_id,
         )
-
         state["stage"] = "captured_transport_to_stachion"
         state["capture_event_started"] = True
         state["captured_at_ms"] = self.runtime.world.now_ms
@@ -318,13 +321,156 @@ class Floor6StachionScenario:
         self.runtime.advance_encounter(encounter_id, TRANSPORT_TO_AMBUSH_MS)
         state["stage"] = "morte_joe_ambush_pending"
         state["ambush_site_reached_at_ms"] = self.runtime.world.now_ms
-        encounter = self.runtime.encounters[encounter_id]
         self.runtime._append(
-            encounter,
+            self.runtime.encounters[encounter_id],
             "transport_reaches_ambush_site",
             state["cylon_actor_id"],
             actor_id,
         )
+        return self.status(actor_id)
+
+    def _create_hostile_player(self, name: str, weapon_template_id: str, *, level: int, strength: int, agility: int) -> CombatantState:
+        actor_id = f"namedplayer_{name.lower()}_{uuid.uuid4().hex[:10]}"
+        player = CombatantState(
+            actor_id=actor_id,
+            name=name,
+            kind=EntityKind.PLAYER,
+            level=level,
+            max_hp=5200 + level * 100,
+            hp=5200 + level * 100,
+            strength=strength,
+            agility=agility,
+            armor=145,
+            evasion=12,
+            cursor=CursorColor.GREEN,
+            location_id=CYLON_TRANSPORT,
+            skill_proficiencies={
+                self.runtime.catalog.weapons[weapon_template_id].weapon_class.value: 620.0,
+                "parry": 420.0,
+            },
+            metadata={
+                "named_player_npc": True,
+                "hostile_scene_actor": True,
+                "combat_stats_provenance": "simulation",
+            },
+        )
+        weapon_template = self.runtime.catalog.weapons[weapon_template_id]
+        weapon = ItemInstance(
+            instance_id=f"weapon_{uuid.uuid4().hex[:12]}",
+            template_id=weapon_template_id,
+            owner_id=actor_id,
+            durability=weapon_template.base_durability,
+            max_durability=weapon_template.base_durability,
+        )
+        player.inventory[weapon.instance_id] = weapon
+        player.equipment["weapon"] = weapon.instance_id
+        if name == "Morte" and "anneal_blade" in self.runtime.catalog.weapons:
+            alt = self.runtime.catalog.weapons["anneal_blade"]
+            alt_item = ItemInstance(
+                instance_id=f"weapon_{uuid.uuid4().hex[:12]}",
+                template_id="anneal_blade",
+                owner_id=actor_id,
+                durability=alt.base_durability,
+                max_durability=alt.base_durability,
+                metadata={"quick_change_alternate": True},
+            )
+            player.inventory[alt_item.instance_id] = alt_item
+        self.runtime.actors[actor_id] = player
+        return player
+
+    def _drop_cylon_inventory(self, cylon: CombatantState) -> CombatantState:
+        cache_id = f"groundloot_cylon_{uuid.uuid4().hex[:10]}"
+        cache = CombatantState(
+            actor_id=cache_id,
+            name="Cylon's Dropped Valuables",
+            kind=EntityKind.NPC,
+            level=1,
+            max_hp=1,
+            hp=1,
+            strength=1,
+            agility=1,
+            cursor=CursorColor.YELLOW,
+            location_id=CYLON_TRANSPORT,
+            metadata={"ground_loot_cache": True, "noncombatant": True, "source_actor_id": cylon.actor_id},
+        )
+        for instance_id, item in list(cylon.inventory.items()):
+            cylon.inventory.pop(instance_id)
+            item.owner_id = None
+            item.metadata["ground_drop_reason"] = "Cylon killed in Morte/Joe carriage ambush"
+            cache.inventory[instance_id] = item
+        self.runtime.actors[cache_id] = cache
+        return cache
+
+    def trigger_morte_joe_ambush(self, actor_id: str) -> dict:
+        state = self._state(actor_id)
+        if state["stage"] != "morte_joe_ambush_pending":
+            raise ValueError("the carriage has not reached the Morte/Joe ambush point")
+        encounter = self.runtime.encounters[state["transport_encounter_id"]]
+        cylon = self.runtime.actors[state["cylon_actor_id"]]
+        morte = self._create_hostile_player("Morte", MORTE_HATCHET_ID, level=24, strength=52, agility=47)
+        joe = self._create_hostile_player("Joe", JOE_DAGGER_ID, level=22, strength=38, agility=56)
+        encounter.participants[morte.actor_id] = morte
+        encounter.participants[joe.actor_id] = joe
+
+        self.runtime._append(encounter, "morte_joe_ambush", morte.actor_id, cylon.actor_id, joe_actor_id=joe.actor_id)
+        cylon.hp = 0
+        cylon.alive = False
+        self.runtime._resolve_defeat(encounter, cylon, morte.actor_id)
+        cache = self._drop_cylon_inventory(cylon)
+        for status in self.runtime.actors[actor_id].statuses:
+            if status.stack_key == "scripted_cylon_paralysis":
+                status.remaining_ms = min(status.remaining_ms, POST_CYLON_DEATH_PARALYSIS_MS)
+                status.until_next_tick_ms = min(status.until_next_tick_ms, status.remaining_ms)
+
+        state["stage"] = "ambush_cylon_dead"
+        state["morte_actor_id"] = morte.actor_id
+        state["joe_actor_id"] = joe.actor_id
+        state["ground_cache_actor_id"] = cache.actor_id
+        state["cylon_killed_at_ms"] = self.runtime.world.now_ms
+        return self.status(actor_id)
+
+    def topple_poison_jar(self, actor_id: str) -> dict:
+        state = self._state(actor_id)
+        if state["stage"] != "ambush_cylon_dead":
+            raise ValueError("the poison jar can be used after Cylon has been killed and his valuables spill onto the road")
+        actor = self.runtime.actors[actor_id]
+        if not any(status.status_type is StatusType.PARALYSIS for status in actor.statuses):
+            raise ValueError("this scene action represents blowing the jar over while still paralysed")
+        cache = self.runtime.actors[state["ground_cache_actor_id"]]
+        jar = next((item for item in cache.inventory.values() if item.template_id == POISON_JAR_ID), None)
+        if jar is None:
+            raise ValueError("Namnepenth's Poison Jar is not among Cylon's ground loot")
+        jar.metadata["toppled"] = True
+        jar.metadata["paralysis_cloud_active"] = True
+        morte = self.runtime.actors[state["morte_actor_id"]]
+        joe = self.runtime.actors[state["joe_actor_id"]]
+        morte.metadata["avoiding_paralysis_cloud"] = True
+        joe.metadata["avoiding_paralysis_cloud"] = True
+        state["poison_cloud_active"] = True
+        state["stage"] = "poison_cloud_deployed"
+        self.runtime._append(
+            self.runtime.encounters[state["transport_encounter_id"]],
+            "poison_jar_toppled_by_breath",
+            actor_id,
+            None,
+            poison_jar_instance_id=jar.instance_id,
+        )
+        return self.status(actor_id)
+
+    def advance_to_paralysis_release(self, actor_id: str) -> dict:
+        state = self._state(actor_id)
+        if state["stage"] != "poison_cloud_deployed":
+            raise ValueError("the poison-cloud diversion has not been created")
+        actor = self.runtime.actors[actor_id]
+        remaining = max(
+            (status.remaining_ms for status in actor.statuses if status.stack_key == "scripted_cylon_paralysis"),
+            default=0,
+        )
+        if remaining:
+            self.runtime.advance_world(remaining)
+            self.runtime.advance_encounter(state["transport_encounter_id"], remaining)
+        actor.metadata.pop("scripted_capture", None)
+        state["stage"] = "morte_joe_pvp_active"
         return self.status(actor_id)
 
     def status(self, actor_id: str) -> dict:
@@ -337,6 +483,20 @@ class Floor6StachionScenario:
             cylon = self.runtime.actors[state["cylon_actor_id"]]
             confiscated = cylon.inventory.get(state.get("confiscated_key_instance_id"))
             key_owner_id = confiscated.owner_id if confiscated else None
+        ground_items: list[dict] = []
+        cache_id = state.get("ground_cache_actor_id")
+        if cache_id in self.runtime.actors:
+            cache = self.runtime.actors[cache_id]
+            for item in cache.inventory.values():
+                ground_items.append(
+                    {
+                        "instance_id": item.instance_id,
+                        "template_id": item.template_id,
+                        "owner_id": item.owner_id,
+                    }
+                )
+                if item.instance_id == state.get("confiscated_key_instance_id"):
+                    key_owner_id = item.owner_id
         paralysed = any(status.status_type is StatusType.PARALYSIS for status in actor.statuses)
         return {
             **state,
@@ -345,11 +505,16 @@ class Floor6StachionScenario:
             "has_golden_key": player_key is not None,
             "golden_key_owner_id": key_owner_id,
             "paralysed": paralysed,
+            "ground_items": sorted(ground_items, key=lambda row: (row["template_id"], row["instance_id"])),
             "quest_progress": dict(progress.counters) if progress else None,
             "ready_to_claim": self.runtime.quests.ready_to_claim(actor, QUEST_ID) if progress else False,
             "next_canon_stage": (
                 "Morte and Joe ambush Cylon's carriage"
                 if state["stage"] == "morte_joe_ambush_pending"
+                else "blow over Namnepenth's Poison Jar while paralysed"
+                if state["stage"] == "ambush_cylon_dead"
+                else "wait for scripted paralysis to expire, then fight or escape"
+                if state["stage"] == "poison_cloud_deployed"
                 else "compulsory Cylon capture event"
                 if state["stage"] == "golden_key_obtained_capture_pending"
                 else None
@@ -362,6 +527,9 @@ def install_floor6_stachion_scenario(runtime) -> Floor6StachionScenario:
         raise RuntimeError("Curse of Stachion corpus was not loaded")
     if CYLON_ID not in runtime.npcs.definitions:
         raise RuntimeError("Cylon NPC corpus was not loaded")
-    if GOLDEN_KEY_ID not in runtime.catalog.items or POISON_JAR_ID not in runtime.catalog.items:
+    required_items = {GOLDEN_KEY_ID, POISON_JAR_ID, IRON_KEY_ID, GAS_MASK_ID}
+    if any(template_id not in runtime.catalog.items for template_id in required_items):
         raise RuntimeError("Floor 6 Stachion quest-item corpus was not loaded")
+    if MORTE_HATCHET_ID not in runtime.catalog.weapons or JOE_DAGGER_ID not in runtime.catalog.weapons:
+        raise RuntimeError("Floor 6 ambush weapon corpus was not loaded")
     return Floor6StachionScenario(runtime)
