@@ -2,329 +2,458 @@ from __future__ import annotations
 
 import uuid
 
-from sao_mcp.corpus.floor6_elfwar import KIZMEL_ID
-from sao_mcp.corpus.floor7 import NIRRNIR_ID
-from sao_mcp.corpus.floor7_pursuit import GREENLEAF_CAPE_ID, MAP_OF_SCYIA_ID
+from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
+from sao_mcp.corpus.floor7_monsters import AINCRAD_MONSTERS
+from sao_mcp.corpus.floor7_pursuit import (
+    ANT_TUNNEL_VALLEY,
+    FIELD_OF_BONES,
+    LABYRINTH,
+    MAP_OF_SCYIA_ID,
+    install_floor7_pursuit_route,
+)
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.duels import DuelMode
+from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.rules.inventory import add_item
 
 
 CASINO = "floor_7_volupta_grand_casino"
 VOLUPTA = "floor_7_volupta"
-WATCH_HILL = "floor_7_field_of_bones_watch_hill"
-DRAGON_BONE = "floor_7_dragon_bone"
-ANT_VALLEY = "floor_7_ant_tunnel_valley"
-PLATEAU = "floor_7_ant_tunnel_plateau"
-LABYRINTH = "floor_7_labyrinth"
-SAFEROOM = "floor_7_labyrinth_saferoom"
+BOSS_ROOM = "floor_7_boss_room"
 
 MAP_RESPONSE_MS = 3 * 60_000
-MAP_ACCEPT_DELAY_MS = 2 * 60_000
 MAP_CONFIRM_WAIT_MS = 5 * 60_000
-REST_AND_APPROACH_MS = 5 * 60 * 60_000 + 20 * 60_000
-WAIT_FOR_FALLEN_DEPARTURE_MS = 35 * 60_000
-DRAGON_BONE_TO_VALLEY_MS = 90 * 60_000
-VALLEY_TO_LABYRINTH_MS = 60 * 60_000
-LABYRINTH_PURSUIT_TO_0400_MS = 18 * 60 * 60_000 + 25 * 60_000
+RENDEZVOUS_PREPARATION_MS = 30 * 60_000
+FALLEN_RENDEZVOUS_OBSERVE_MS = 5 * 60_000
+TRAIL_MARGIN_MS = 3 * 60_000
 
 
 class Floor7PursuitScenario:
-    """Sacred-key pursuit from the Map of Scyia exchange to the January-8 Labyrinth saferoom."""
+    """Continue the Harin Elf War state through the Scyia-map Fallen Elf pursuit."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        install_floor7_pursuit_route(runtime.world_map)
 
-    def _states(self) -> dict:
-        return self.runtime.world.global_flags.setdefault("floor7_fallen_pursuit_instances", {})
+    def _harin_states(self) -> dict:
+        try:
+            return self.runtime.world.global_flags["floor7_harin_escape_instances"]
+        except KeyError as exc:
+            raise RuntimeError("Floor 7 Harin escape state has not been created") from exc
 
     def _state(self, instance_id: str) -> dict:
-        try:
-            return self._states()[instance_id]
-        except KeyError as exc:
-            raise KeyError(f"unknown Floor 7 Fallen Elf pursuit instance: {instance_id}") from exc
+        return self._harin_states()[instance_id]
 
-    def _actor_for_npc(self, npc_definition_id: str) -> CombatantState | None:
-        for actor in self.runtime.actors.values():
-            if actor.alive and actor.metadata.get("npc_definition_id") == npc_definition_id:
-                return actor
-        return None
+    def _eligible_harin_state(self, lead_actor_id: str, duel_partner_id: str) -> dict:
+        participant_ids = {lead_actor_id, duel_partner_id}
+        matches = [
+            state
+            for state in self._harin_states().values()
+            if state["stage"] == "returned_to_volupta_with_kizmel"
+            and participant_ids.issubset(set(state["player_ids"]))
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                "Scyia negotiation requires exactly one returned Harin escape instance containing both duel players"
+            )
+        return matches[0]
 
-    def _kizmel(self) -> CombatantState:
-        kizmel = self._actor_for_npc(KIZMEL_ID)
-        if kizmel is None:
-            raise ValueError("Kizmel must already be present from the continuing Elf War route")
+    def _kizmel(self, state: dict) -> CombatantState:
+        kizmel = self.runtime.actors[state["kizmel_actor_id"]]
+        if not kizmel.alive:
+            raise ValueError("Kizmel must be alive to continue the sacred-key pursuit")
         if not kizmel.metadata.get("must_recover_sacred_keys_to_clear_name"):
-            raise ValueError("Kizmel has not yet reached the fugitive sacred-key recovery stage")
+            raise ValueError("Kizmel has not reached the fugitive sacred-key recovery stage")
         return kizmel
 
-    def _ensure_greenleaf_cape(self, kizmel: CombatantState) -> ItemInstance:
-        existing = next(
-            (item for item in kizmel.inventory.values() if item.template_id == GREENLEAF_CAPE_ID),
-            None,
-        )
-        if existing is None:
-            existing = ItemInstance(
-                instance_id=f"greenleaf_{uuid.uuid4().hex[:12]}",
-                template_id=GREENLEAF_CAPE_ID,
-                owner_id=kizmel.actor_id,
-                metadata={"borrowed_from_castle_galey_treasury": True, "authorised_by_bouhroum": True},
+    def _target_key_bag(self) -> tuple[CombatantState, ItemInstance]:
+        matches: list[tuple[CombatantState, ItemInstance]] = []
+        for actor in self.runtime.actors.values():
+            if actor.metadata.get("npc_definition_id") != KYSARAH_ID:
+                continue
+            for item in actor.inventory.values():
+                if (
+                    item.template_id == SACRED_KEY_BAG_ID
+                    and item.metadata.get("stolen_by_kysarah") is True
+                ):
+                    matches.append((actor, item))
+        if not matches:
+            raise ValueError(
+                "the actual Floor 6 four-sacred-key bag stolen by Kysarah is absent; "
+                "the Floor 7 sacred-key pursuit cannot proceed"
             )
-            add_item(kizmel, existing, self.runtime.catalog, allow_overweight=True)
-        kizmel.metadata["arid_weakness_suppressed_by"] = existing.instance_id
-        return existing
+        if len(matches) != 1:
+            raise RuntimeError("multiple authoritative Kysarah four-sacred-key bags exist")
+        return matches[0]
 
-    def _map_item(self, actor_id: str) -> ItemInstance:
-        actor = self.runtime.actors[actor_id]
-        item = next((item for item in actor.inventory.values() if item.template_id == MAP_OF_SCYIA_ID), None)
-        if item is None:
-            item = ItemInstance(
-                instance_id=f"scyia_{uuid.uuid4().hex[:12]}",
-                template_id=MAP_OF_SCYIA_ID,
-                owner_id=actor_id,
-                metadata={"contact_party": "fallen_elves"},
+    def _map_owner(self, map_instance_id: str) -> CombatantState:
+        owners = [
+            actor
+            for actor in self.runtime.actors.values()
+            if map_instance_id in actor.inventory
+        ]
+        if len(owners) != 1:
+            raise RuntimeError("the Map of Scyia must have exactly one inventory owner")
+        return owners[0]
+
+    def _spawn_fallen_scouts(self) -> list[str]:
+        scout_ids: list[str] = []
+        for role in ("messenger", "escort"):
+            actor_id = f"fallen7_{role}_{uuid.uuid4().hex[:10]}"
+            scout = CombatantState(
+                actor_id=actor_id,
+                name=f"Fallen Elf {role.title()}",
+                kind=EntityKind.NPC,
+                level=22,
+                max_hp=5200,
+                hp=5200,
+                strength=58,
+                agility=68,
+                armor=118,
+                evasion=15,
+                cursor=CursorColor.YELLOW,
+                location_id=FIELD_OF_BONES,
+                metadata={
+                    "fallen_elf": True,
+                    "unnamed_canon_scout": True,
+                    "pursuit_role": role,
+                    "combat_stats_provenance": "simulation",
+                    "paired_scyia_map_carrier": role == "messenger",
+                },
             )
-            add_item(actor, item, self.runtime.catalog, allow_overweight=True)
-        return item
+            self.runtime.actors[actor_id] = scout
+            scout_ids.append(actor_id)
+        return scout_ids
+
+    def _spawn_labyrinth_blockers(self, travelling_actor_ids: list[str]):
+        blockers = []
+        for monster_id in ("tiny_lurking_spider", "armor_plated_monitor"):
+            definition = AINCRAD_MONSTERS[monster_id]
+            monster = self.runtime._create_monster(
+                name=definition.name,
+                level=definition.level,
+                location_id=LABYRINTH,
+                hp_factor=definition.hp_factor,
+                loot_table_id=definition.loot_table_id,
+                quest_kill_id=definition.quest_kill_id,
+            )
+            monster.metadata["monster_id"] = monster_id
+            monster.metadata["floor7_fallen_pursuit_blocker"] = True
+            blockers.append(monster)
+        encounter = self.runtime.start_encounter(
+            travelling_actor_ids + [monster.actor_id for monster in blockers],
+            zone_id=LABYRINTH,
+            safe_zone=False,
+        )
+        return encounter, blockers
 
     def negotiate_scyia_counteroffer(self, lead_actor_id: str, duel_partner_id: str) -> dict:
+        if lead_actor_id == duel_partner_id:
+            raise ValueError("the safe-zone blood-marking method requires two different players")
+        state = self._eligible_harin_state(lead_actor_id, duel_partner_id)
+        if "pursuit" in state:
+            raise ValueError("this Harin instance already has a sacred-key pursuit state")
+
         lead = self.runtime.actors[lead_actor_id]
         partner = self.runtime.actors[duel_partner_id]
         if lead.location_id != CASINO or partner.location_id != CASINO:
-            raise ValueError("the Scyia blood-map negotiation is prepared in the Volupta casino hotel safe zone")
-        if lead_actor_id == duel_partner_id:
-            raise ValueError("the safe-zone blood workaround requires a second player for a duel")
-        kizmel = self._kizmel()
-        if kizmel.location_id not in (VOLUPTA, CASINO):
-            raise ValueError("Kizmel must be with the group in Volupta before contacting the Fallen Elves")
+            raise ValueError("both Scyia duel players must search Bardun's room in the Volupta Grand Casino")
 
-        map_item = self._map_item(lead_actor_id)
+        kizmel = self._kizmel(state)
+        if kizmel.location_id != VOLUPTA:
+            raise ValueError("Kizmel must already be waiting in Volupta after the Harin escape")
+        for actor_id in state["player_ids"]:
+            if actor_id not in {lead_actor_id, duel_partner_id} and self.runtime.actors[actor_id].location_id != VOLUPTA:
+                raise ValueError("other Harin party players must already be assembled in Volupta")
+
+        intrigue_states = self.runtime.world.global_flags.get("floor7_casino_intrigue_states")
+        if intrigue_states is None or lead_actor_id not in intrigue_states:
+            raise ValueError("the Bardun-room search requires the existing Volupta cheating investigation")
+        if intrigue_states[lead_actor_id]["true_species_revealed"] is not True:
+            raise ValueError("the disguised Storm Lykaon must be exposed before Bardun's room is searched")
+
+        kysarah, key_bag = self._target_key_bag()
+        existing_maps = [
+            item
+            for actor in self.runtime.actors.values()
+            for item in actor.inventory.values()
+            if item.template_id == MAP_OF_SCYIA_ID
+        ]
+        if existing_maps:
+            raise RuntimeError("a Map of Scyia instance already exists in the campaign")
+
+        map_item = ItemInstance(
+            instance_id=f"scyia_{uuid.uuid4().hex[:12]}",
+            template_id=MAP_OF_SCYIA_ID,
+            owner_id=lead_actor_id,
+            metadata={
+                "recovered_from": "bardun_room",
+                "paired_counterpart_held_by_fallen_elves": True,
+                "blood_marks": [],
+            },
+        )
+        add_item(lead, map_item, self.runtime.catalog, allow_overweight=True)
+
+        travel_together(self.runtime, [lead_actor_id, duel_partner_id], VOLUPTA)
         duel = self.runtime.challenge_duel(lead_actor_id, duel_partner_id, DuelMode.FIRST_STRIKE)
         accepted, encounter = self.runtime.accept_duel(duel.duel_id, duel_partner_id)
-        map_item.metadata.update(
-            {
-                "blood_authorisation_duel_id": accepted.duel_id,
-                "proposed_location": "pair of aspen trees on the Volupta-Looserock route",
-                "proposed_time": "03:00",
-                "proposal_blood_marked": True,
-            }
-        )
 
-        self.runtime.advance_world(MAP_RESPONSE_MS)
-        map_item.metadata.update(
+        map_item.metadata["blood_authorisation_duel_id"] = accepted.duel_id
+        map_item.metadata["blood_marks"].append(
             {
-                "fallen_counteroffer_location_id": DRAGON_BONE,
-                "fallen_counteroffer_time": "07:00",
-                "counteroffer_received": True,
+                "kind": "proposal",
+                "location": "aspen_pair_on_volupta_looserock_route",
+                "time": "03:00",
+                "marked_at_ms": self.runtime.world.now_ms,
             }
         )
-        self.runtime.advance_world(MAP_ACCEPT_DELAY_MS)
-        map_item.metadata["response_mark"] = "Y"
-        map_item.metadata["counteroffer_accepted"] = True
+        self.runtime.advance_world(MAP_RESPONSE_MS)
+        map_item.metadata["paired_map_counteroffer"] = {
+            "location": "dragon_bone_in_field_of_bones",
+            "time": "07:00",
+        }
+        map_item.metadata["counteroffer_received_at_ms"] = self.runtime.world.now_ms
+        map_item.metadata["blood_marks"].append(
+            {
+                "kind": "acceptance",
+                "mark": "Y",
+                "marked_at_ms": self.runtime.world.now_ms,
+            }
+        )
         self.runtime.advance_world(MAP_CONFIRM_WAIT_MS)
+        map_item.metadata["counteroffer_accepted_at_ms"] = self.runtime.world.now_ms
         self.runtime.draw_duel(duel.duel_id)
 
-        instance_id = f"pursuit7_{uuid.uuid4().hex[:12]}"
-        state = {
-            "instance_id": instance_id,
-            "player_ids": [lead_actor_id, duel_partner_id],
+        state["pursuit"] = {
             "lead_actor_id": lead_actor_id,
             "duel_partner_id": duel_partner_id,
             "duel_id": duel.duel_id,
             "duel_encounter_id": encounter.encounter_id,
             "map_instance_id": map_item.instance_id,
-            "stage": "counteroffer_accepted_rest_and_depart",
-            "started_at_ms": self.runtime.world.now_ms,
-            "meeting_location_id": DRAGON_BONE,
-            "meeting_time_clock": "07:00",
+            "target_key_bag_instance_id": key_bag.instance_id,
+            "target_key_bag_holder_id": kysarah.actor_id,
+            "travelling_actor_ids": [],
             "fallen_scout_ids": [],
-            "sacred_keys_recovered": 0,
-            "fallen_hideout_found": False,
-            "fallen_lost_in_labyrinth": False,
-            "suspected_fallen_base_in_labyrinth": False,
-            "reached_saferoom_at_ms": None,
+            "blocker_actor_ids": [],
+            "blocker_encounter_id": None,
+            "blocker_encounter_started_at_ms": None,
+            "blocker_world_synced_ms": None,
+            "trail_outcome": None,
+            "boss_room_reached_at_ms": None,
         }
-        self._states()[instance_id] = state
-        return self.status(instance_id)
-
-    def _spawn_fallen_scouts(self) -> list[str]:
-        ids: list[str] = []
-        for index in range(2):
-            actor_id = f"fallen_scout7_{uuid.uuid4().hex[:10]}"
-            scout = CombatantState(
-                actor_id=actor_id,
-                name=f"Fallen Elf Scout {index + 1}",
-                kind=EntityKind.NPC,
-                level=28,
-                max_hp=7600,
-                hp=7600,
-                strength=65,
-                agility=72,
-                armor=180,
-                evasion=17,
-                cursor=CursorColor.YELLOW,
-                location_id=DRAGON_BONE,
-                metadata={
-                    "fallen_elf": True,
-                    "unnamed_canon_scout": True,
-                    "taboo_branch_arid_protection": True,
-                    "combat_stats_provenance": "simulation",
-                },
-            )
-            template = self.runtime.catalog.weapons["starter_one_hand_sword"]
-            weapon = ItemInstance(
-                instance_id=f"fallen_weapon_{uuid.uuid4().hex[:12]}",
-                template_id=template.template_id,
-                owner_id=actor_id,
-                durability=template.base_durability,
-                max_durability=template.base_durability,
-                metadata={"descriptive_weapon": True},
-            )
-            scout.inventory[weapon.instance_id] = weapon
-            scout.equipment["weapon"] = weapon.instance_id
-            self.runtime.actors[actor_id] = scout
-            ids.append(actor_id)
-        return ids
+        state["stage"] = "scyia_counteroffer_accepted"
+        return self.status(state["instance_id"])
 
     def rest_and_reach_dragon_bone_watch(self, instance_id: str) -> dict:
         state = self._state(instance_id)
-        if state["stage"] != "counteroffer_accepted_rest_and_depart":
-            raise ValueError("the Fallen Elf counteroffer has not been accepted")
-        players = [self.runtime.actors[actor_id] for actor_id in state["player_ids"]]
-        if any(actor.location_id != CASINO for actor in players):
-            raise ValueError("the map-negotiation players must depart from the Volupta casino hotel")
-        kizmel = self._kizmel()
-        cape = self._ensure_greenleaf_cape(kizmel)
+        if state["stage"] != "scyia_counteroffer_accepted":
+            raise ValueError("the Scyia counteroffer has not been accepted")
+        self._target_key_bag()
+        kizmel = self._kizmel(state)
+        travelling_actor_ids = list(state["player_ids"]) + [kizmel.actor_id]
+        if any(self.runtime.actors[actor_id].location_id != VOLUPTA for actor_id in travelling_actor_ids):
+            raise ValueError("every Harin player and Kizmel must be assembled in Volupta before departure")
 
-        self.runtime.advance_world(REST_AND_APPROACH_MS)
-        for actor in players:
-            actor.location_id = WATCH_HILL
-        kizmel.location_id = WATCH_HILL
-        nirrnir_story = self.runtime.world.global_flags.get("floor7_nirrnir_poison_story", {})
-        nirrnir_id = nirrnir_story.get("nirrnir_actor_id")
-        if nirrnir_id in self.runtime.actors:
-            nirrnir = self.runtime.actors[nirrnir_id]
-            nirrnir.location_id = WATCH_HILL
-            nirrnir.metadata["carried_during_fallen_pursuit"] = True
-
-        scout_ids = self._spawn_fallen_scouts()
-        state["fallen_scout_ids"] = scout_ids
-        state["stage"] = "watching_dragon_bone_rendezvous"
-        state["watch_hill_distance_yards"] = 300
-        state["greenleaf_cape_instance_id"] = cape.instance_id
-        state["nirrnir_actor_id"] = nirrnir_id if nirrnir_id in self.runtime.actors else None
-        state["arrival_clock"] = "06:30"
+        self.runtime.advance_world(RENDEZVOUS_PREPARATION_MS)
+        resolution = travel_together(self.runtime, travelling_actor_ids, FIELD_OF_BONES)
+        pursuit = state["pursuit"]
+        pursuit["travelling_actor_ids"] = travelling_actor_ids
+        pursuit["field_of_bones_travel_ms"] = resolution.elapsed_ms
+        pursuit["field_of_bones_arrived_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "waiting_at_field_of_bones_rendezvous"
         return self.status(instance_id)
 
     def observe_fallen_departure(self, instance_id: str) -> dict:
         state = self._state(instance_id)
-        if state["stage"] != "watching_dragon_bone_rendezvous":
-            raise ValueError("the party is not watching the Dragon Bone rendezvous")
-        self.runtime.advance_world(WAIT_FOR_FALLEN_DEPARTURE_MS)
+        if state["stage"] != "waiting_at_field_of_bones_rendezvous":
+            raise ValueError("the party is not waiting at the Field of Bones rendezvous")
+        pursuit = state["pursuit"]
+        if any(
+            self.runtime.actors[actor_id].location_id != FIELD_OF_BONES
+            for actor_id in pursuit["travelling_actor_ids"]
+        ):
+            raise ValueError("the entire pursuit group must remain at the Field of Bones rendezvous")
+
+        self.runtime.advance_world(FALLEN_RENDEZVOUS_OBSERVE_MS)
+        pursuit["fallen_scout_ids"] = self._spawn_fallen_scouts()
+        pursuit["fallen_first_seen_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "fallen_departed_begin_tail"
-        state["fallen_departure_clock"] = "07:05"
         return self.status(instance_id)
 
     def pursue_to_ant_tunnel_valley(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "fallen_departed_begin_tail":
-            raise ValueError("the two Fallen Elves have not begun returning from Dragon Bone")
-        self.runtime.advance_world(DRAGON_BONE_TO_VALLEY_MS)
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = ANT_VALLEY
-        kizmel = self._kizmel()
-        kizmel.location_id = ANT_VALLEY
-        for scout_id in state["fallen_scout_ids"]:
-            self.runtime.actors[scout_id].location_id = ANT_VALLEY
-        nirrnir_id = state.get("nirrnir_actor_id")
-        if nirrnir_id in self.runtime.actors:
-            self.runtime.actors[nirrnir_id].location_id = ANT_VALLEY
+            raise ValueError("the two Fallen Elves have not begun leaving the rendezvous")
+        pursuit = state["pursuit"]
+        resolution = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            ANT_TUNNEL_VALLEY,
+        )
+        for scout_id in pursuit["fallen_scout_ids"]:
+            self.runtime.actors[scout_id].location_id = ANT_TUNNEL_VALLEY
+        pursuit["field_to_ant_travel_ms"] = resolution.elapsed_ms
         state["stage"] = "tracking_through_ant_tunnel_valley"
-        state["tracks_visible_in_soft_ground"] = True
-        state["hideout_found_in_valley"] = False
         return self.status(instance_id)
 
     def follow_through_valley_into_labyrinth(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "tracking_through_ant_tunnel_valley":
             raise ValueError("the Fallen Elf trail has not reached Ant Tunnel Valley")
-        self.runtime.advance_world(VALLEY_TO_LABYRINTH_MS)
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = LABYRINTH
-        kizmel = self._kizmel()
-        kizmel.location_id = LABYRINTH
-        for scout_id in state["fallen_scout_ids"]:
-            self.runtime.actors[scout_id].location_id = LABYRINTH
-        nirrnir_id = state.get("nirrnir_actor_id")
-        if nirrnir_id in self.runtime.actors:
-            self.runtime.actors[nirrnir_id].location_id = LABYRINTH
-        state["stage"] = "pursuing_inside_floor7_labyrinth"
-        state["fallen_passed_valley_without_hideout"] = True
-        state["fallen_passed_plateau"] = True
-        return self.status(instance_id)
-
-    def pursue_until_saferoom(self, instance_id: str) -> dict:
-        state = self._state(instance_id)
-        if state["stage"] != "pursuing_inside_floor7_labyrinth":
-            raise ValueError("the two Fallen Elves have not entered the Floor 7 Labyrinth")
-        self.runtime.advance_world(LABYRINTH_PURSUIT_TO_0400_MS)
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = SAFEROOM
-        kizmel = self._kizmel()
-        kizmel.location_id = SAFEROOM
-        for scout_id in state["fallen_scout_ids"]:
+        pursuit = state["pursuit"]
+        resolution = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            LABYRINTH,
+        )
+        for scout_id in pursuit["fallen_scout_ids"]:
             scout = self.runtime.actors[scout_id]
             scout.location_id = LABYRINTH
-            scout.metadata["lost_from_pursuers_after_monster_battles"] = True
-        nirrnir_id = state.get("nirrnir_actor_id")
-        if nirrnir_id in self.runtime.actors:
-            self.runtime.actors[nirrnir_id].location_id = SAFEROOM
-        state["stage"] = "labyrinth_saferoom_no_keys"
-        state["fallen_lost_in_labyrinth"] = True
-        state["suspected_fallen_base_in_labyrinth"] = True
-        state["sacred_keys_recovered"] = 0
-        state["reached_saferoom_at_ms"] = self.runtime.world.now_ms
-        state["reference_clock"] = "January 8 04:00"
+            scout.metadata["ahead_of_pursuers"] = True
+
+        encounter, blockers = self._spawn_labyrinth_blockers(pursuit["travelling_actor_ids"])
+        pursuit["ant_to_labyrinth_travel_ms"] = resolution.elapsed_ms
+        pursuit["blocker_actor_ids"] = [monster.actor_id for monster in blockers]
+        pursuit["blocker_encounter_id"] = encounter.encounter_id
+        pursuit["blocker_encounter_started_at_ms"] = encounter.time_ms
+        state["stage"] = "labyrinth_blocker_battle"
+        return self.status(instance_id)
+
+    def resolve_labyrinth_pursuit(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "labyrinth_blocker_battle":
+            raise ValueError("the pursuit is not waiting on the Labyrinth blocker encounter")
+        pursuit = state["pursuit"]
+        encounter = self.runtime.encounters[pursuit["blocker_encounter_id"]]
+
+        if any(
+            encounter.participants[actor_id].alive or encounter.participants[actor_id].hp > 0
+            for actor_id in pursuit["blocker_actor_ids"]
+        ):
+            raise ValueError("the Labyrinth blockers are still alive")
+        if any(
+            not self.runtime.actors[actor_id].alive
+            for actor_id in pursuit["travelling_actor_ids"]
+        ):
+            raise ValueError("the pursuit group cannot continue with a defeated traveller")
+        if pursuit["blocker_world_synced_ms"] is not None:
+            raise RuntimeError("the Labyrinth blocker encounter has already been synchronized to world time")
+
+        combat_elapsed_ms = encounter.time_ms - pursuit["blocker_encounter_started_at_ms"]
+        if combat_elapsed_ms < 0:
+            raise RuntimeError("Labyrinth encounter time moved backwards")
+        if combat_elapsed_ms:
+            self.runtime.advance_world(combat_elapsed_ms)
+        pursuit["blocker_world_synced_ms"] = combat_elapsed_ms
+        pursuit["trail_margin_ms"] = TRAIL_MARGIN_MS
+        pursuit["trail_outcome"] = "maintained" if combat_elapsed_ms <= TRAIL_MARGIN_MS else "lost"
+
+        for scout_id in pursuit["fallen_scout_ids"]:
+            self.runtime.actors[scout_id].metadata["pursuit_trail_outcome"] = pursuit["trail_outcome"]
+        state["stage"] = (
+            "trail_maintained_in_labyrinth"
+            if pursuit["trail_outcome"] == "maintained"
+            else "trail_lost_in_labyrinth"
+        )
+        return self.status(instance_id)
+
+    def advance_to_boss_room(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] not in {"trail_maintained_in_labyrinth", "trail_lost_in_labyrinth"}:
+            raise ValueError("the Labyrinth pursuit must be resolved before advancing to the Floor Boss")
+        pursuit = state["pursuit"]
+        resolution = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            BOSS_ROOM,
+        )
+        for scout_id in pursuit["fallen_scout_ids"]:
+            self.runtime.actors[scout_id].metadata["pursuit_deferred_for_floor_boss"] = True
+        pursuit["boss_room_travel_ms"] = resolution.elapsed_ms
+        pursuit["boss_room_reached_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "boss_room_reached"
         return self.status(instance_id)
 
     def status(self, instance_id: str) -> dict:
         state = self._state(instance_id)
-        lead = self.runtime.actors[state["lead_actor_id"]]
-        map_item = lead.inventory.get(state["map_instance_id"])
-        kizmel = self._actor_for_npc(KIZMEL_ID)
-        nirrnir_id = state.get("nirrnir_actor_id")
-        nirrnir = self.runtime.actors.get(nirrnir_id) if nirrnir_id else None
-        poison_story = self.runtime.world.global_flags.get("floor7_nirrnir_poison_story", {})
-        deadline = poison_story.get("deadline_ms")
-        nirrnir_remaining = (
-            max(0, int(deadline) - self.runtime.world.now_ms)
-            if deadline is not None and nirrnir is not None and poison_story.get("stage") != "cured"
-            else None
-        )
+        pursuit = state.get("pursuit")
+        if pursuit is None:
+            return {
+                "instance_id": instance_id,
+                "stage": state["stage"],
+                "pursuit_started": False,
+            }
+
+        map_owner = self._map_owner(pursuit["map_instance_id"])
+        map_item = map_owner.inventory[pursuit["map_instance_id"]]
+        key_bag_matches = []
+        for actor in self.runtime.actors.values():
+            for item in actor.inventory.values():
+                if item.instance_id == pursuit["target_key_bag_instance_id"]:
+                    key_bag_matches.append(
+                        {
+                            "owner_id": actor.actor_id,
+                            "owner_npc_definition_id": actor.metadata.get("npc_definition_id"),
+                            "stolen_by_kysarah": item.metadata.get("stolen_by_kysarah"),
+                        }
+                    )
+
+        blocker_state = {}
+        encounter_id = pursuit["blocker_encounter_id"]
+        if encounter_id is not None:
+            encounter = self.runtime.encounters[encounter_id]
+            blocker_state = {
+                actor_id: {
+                    "hp": encounter.participants[actor_id].hp,
+                    "alive": encounter.participants[actor_id].alive,
+                }
+                for actor_id in pursuit["blocker_actor_ids"]
+            }
+
         return {
-            **state,
-            "map_metadata": dict(map_item.metadata) if map_item else None,
-            "kizmel_actor_id": kizmel.actor_id if kizmel else None,
-            "kizmel_location_id": kizmel.location_id if kizmel else None,
-            "nirrnir_remaining_ms": nirrnir_remaining,
+            "instance_id": instance_id,
+            "stage": state["stage"],
+            "pursuit_started": True,
+            "world_now_ms": self.runtime.world.now_ms,
+            "map_instance_id": pursuit["map_instance_id"],
+            "map_owner_id": map_owner.actor_id,
+            "map_metadata": dict(map_item.metadata),
+            "target_key_bag_instance_id": pursuit["target_key_bag_instance_id"],
+            "target_key_bag_matches": key_bag_matches,
+            "travelling_actor_locations": {
+                actor_id: self.runtime.actors[actor_id].location_id
+                for actor_id in pursuit["travelling_actor_ids"]
+            },
             "fallen_scout_locations": {
                 scout_id: self.runtime.actors[scout_id].location_id
-                for scout_id in state.get("fallen_scout_ids", ())
-                if scout_id in self.runtime.actors
+                for scout_id in pursuit["fallen_scout_ids"]
             },
+            "blocker_encounter_id": encounter_id,
+            "blockers": blocker_state,
+            "trail_outcome": pursuit["trail_outcome"],
+            "ready_for_aghyellr": state["stage"] == "boss_room_reached",
+            "pursuit": dict(pursuit),
             "next_stage": (
-                "rest, leave Volupta at 04:30 and reach the Dragon Bone watch hill" if state["stage"] == "counteroffer_accepted_rest_and_depart"
-                else "wait for the seven-o'clock Fallen Elf rendezvous" if state["stage"] == "watching_dragon_bone_rendezvous"
-                else "tail the two Fallen Elves toward Ant Tunnel Valley" if state["stage"] == "fallen_departed_begin_tail"
-                else "follow the tracks through Ant Tunnel Valley" if state["stage"] == "tracking_through_ant_tunnel_valley"
-                else "continue the pursuit inside the Floor 7 Labyrinth" if state["stage"] == "pursuing_inside_floor7_labyrinth"
-                else "the sacred keys are still missing; the Fallen base is now suspected to be somewhere in the Labyrinth" if state["stage"] == "labyrinth_saferoom_no_keys"
+                "assemble the Harin party with Kizmel in Volupta and depart for the Field of Bones"
+                if state["stage"] == "scyia_counteroffer_accepted"
+                else "observe the Fallen Elf pair at the Field of Bones rendezvous"
+                if state["stage"] == "waiting_at_field_of_bones_rendezvous"
+                else "tail the Fallen Elves into Ant Tunnel Valley"
+                if state["stage"] == "fallen_departed_begin_tail"
+                else "follow the Fallen Elves into the Floor 7 Labyrinth"
+                if state["stage"] == "tracking_through_ant_tunnel_valley"
+                else "defeat the Labyrinth blockers through ordinary encounter combat"
+                if state["stage"] == "labyrinth_blocker_battle"
+                else "advance to the Floor 7 Boss Room"
+                if state["stage"] in {"trail_maintained_in_labyrinth", "trail_lost_in_labyrinth"}
                 else None
             ),
         }
 
 
 def install_floor7_pursuit_scenario(runtime) -> Floor7PursuitScenario:
-    if MAP_OF_SCYIA_ID not in runtime.catalog.items or GREENLEAF_CAPE_ID not in runtime.catalog.items:
-        raise RuntimeError("Floor 7 sacred-key pursuit item corpus was not loaded")
+    if MAP_OF_SCYIA_ID not in runtime.catalog.items:
+        raise RuntimeError("Floor 7 Scyia map corpus was not loaded")
+    if SACRED_KEY_BAG_ID not in runtime.catalog.items:
+        raise RuntimeError("Floor 6 sacred-key bag corpus was not loaded")
     return Floor7PursuitScenario(runtime)

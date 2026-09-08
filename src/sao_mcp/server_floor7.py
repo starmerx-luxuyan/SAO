@@ -165,37 +165,42 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> 
 
     @mcp.tool()
     def negotiate_floor7_scyia_counteroffer(lead_actor_id: str, duel_partner_id: str) -> str:
-        """Use a First Strike duel in Volupta's safe zone to blood-mark the Map of Scyia, receive the Fallen Elves' Dragon Bone 07:00 counteroffer and accept it with Y."""
+        """Recover Bardun's Scyia map after the Lykaon reveal, return together to Volupta, and use a First-Strike duel to exchange blood-marked rendezvous data."""
         return _json(pursuit.negotiate_scyia_counteroffer(lead_actor_id, duel_partner_id))
 
     @mcp.tool()
-    def rest_and_reach_floor7_dragon_bone_watch(instance_id: str) -> str:
-        """Rest after the Scyia exchange, depart at the canon-scale early-morning window and reach the watch hill before the Dragon Bone rendezvous."""
+    def reach_floor7_field_of_bones_rendezvous(instance_id: str) -> str:
+        """Prepare in Volupta, then move the complete Harin player party and Kizmel to the Field of Bones with one shared travel-time cost."""
         return _json(pursuit.rest_and_reach_dragon_bone_watch(instance_id))
 
     @mcp.tool()
     def observe_floor7_fallen_departure(instance_id: str) -> str:
-        """Watch the two unnamed Fallen Elves reach Dragon Bone and begin leaving at about 07:05."""
+        """Observe the two unnamed Fallen Elves answer the Scyia rendezvous and begin leaving the Field of Bones."""
         return _json(pursuit.observe_fallen_departure(instance_id))
 
     @mcp.tool()
     def pursue_floor7_fallen_to_ant_valley(instance_id: str) -> str:
-        """Tail the two Fallen Elves across the Field of Bones into Ant Tunnel Valley while preserving the party's world-time pressure."""
+        """Tail the two Fallen Elves from the Field of Bones into Ant Tunnel Valley using shared party travel time."""
         return _json(pursuit.pursue_to_ant_tunnel_valley(instance_id))
 
     @mcp.tool()
     def follow_floor7_fallen_into_labyrinth(instance_id: str) -> str:
-        """Follow the Fallen Elves through Ant Tunnel Valley and the plateau when they bypass any local hideout and enter the Floor 7 Labyrinth."""
+        """Follow the Fallen Elves into the Floor 7 Labyrinth and open an ordinary combat encounter against pursuit-blocking monsters."""
         return _json(pursuit.follow_through_valley_into_labyrinth(instance_id))
 
     @mcp.tool()
-    def pursue_floor7_fallen_until_saferoom(instance_id: str) -> str:
-        """Continue through Labyrinth battles until the scouts are lost and the party reaches the January-8 saferoom state with zero sacred keys recovered."""
-        return _json(pursuit.pursue_until_saferoom(instance_id))
+    def resolve_floor7_labyrinth_pursuit(instance_id: str) -> str:
+        """After ordinary combat kills the Labyrinth blockers, synchronize actual encounter time and determine whether the Fallen trail was maintained or lost."""
+        return _json(pursuit.resolve_labyrinth_pursuit(instance_id))
+
+    @mcp.tool()
+    def advance_floor7_pursuit_to_boss_room(instance_id: str) -> str:
+        """Advance the surviving pursuit group from the Labyrinth to the Floor 7 Boss Room for the existing Aghyellr raid."""
+        return _json(pursuit.advance_to_boss_room(instance_id))
 
     @mcp.tool()
     def get_floor7_fallen_pursuit_state(instance_id: str) -> str:
-        """Inspect Scyia map metadata, Kizmel/Greenleaf status, Fallen scout locations, Nirrnir deadline and sacred-key recovery state."""
+        """Inspect the Harin-linked Scyia map, real Floor-6 key-bag continuity, pursuit positions, blocker encounter and trail outcome."""
         return _json(pursuit.status(instance_id))
 
     @mcp.tool()

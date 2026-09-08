@@ -1,133 +1,157 @@
-from sao_mcp.corpus.floor6_elfwar import KIZMEL_ID
-from sao_mcp.corpus.floor7_pursuit import GREENLEAF_CAPE_ID, MAP_OF_SCYIA_ID
-from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
+from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.inventory import add_item
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
-from sao_mcp.scenarios.floor7_aghyellr import KORLOY_STABLES, install_floor7_aghyellr_scenario
+from sao_mcp.scenarios.floor7_elfwar import PALACE, VOLUPTA, install_floor7_elfwar_scenario
 from sao_mcp.scenarios.floor7_pursuit import (
-    ANT_VALLEY,
+    BOSS_ROOM,
     CASINO,
-    LABYRINTH_PURSUIT_TO_0400_MS,
-    MAP_ACCEPT_DELAY_MS,
-    MAP_CONFIRM_WAIT_MS,
-    MAP_RESPONSE_MS,
-    PLATEAU,
-    REST_AND_APPROACH_MS,
-    SAFEROOM,
-    VALLEY_TO_LABYRINTH_MS,
-    WAIT_FOR_FALLEN_DEPARTURE_MS,
-    DRAGON_BONE_TO_VALLEY_MS,
+    FIELD_OF_BONES,
+    LABYRINTH,
+    TRAIL_MARGIN_MS,
     install_floor7_pursuit_scenario,
 )
 
 
-def test_scyia_blood_map_pursuit_reaches_saferoom_with_zero_keys_and_live_nirrnir_deadline():
-    runtime = HousingAincradRuntime(seed=61)
-    aghyellr = install_floor7_aghyellr_scenario(runtime)
-    pursuit = install_floor7_pursuit_scenario(runtime)
-    runtime.world.floors[7].unlocked = True
+def _finish_harin_escape(runtime, elfwar, player_ids):
+    state = elfwar.arrive_and_be_arrested(player_ids)
+    instance_id = state["instance_id"]
+    elfwar.burn_cell_lock(instance_id)
+    elfwar.recover_confiscated_weapons(instance_id)
+    elfwar.meet_lavik(instance_id)
+    elfwar.lavik_subdues_guard_post(instance_id)
+    elfwar.rejoin_kizmel(instance_id)
+    elfwar.convince_kizmel_to_escape(instance_id)
+    elfwar.blackout_and_escape(instance_id)
+    elfwar.gather_narsos_and_part_with_lavik(instance_id, player_ids[0])
+    return elfwar.return_to_volupta_with_kizmel(instance_id)
 
-    lead = runtime.create_character("ScyiaLead", level=28)
-    partner = runtime.create_character("ScyiaPartner", level=27)
 
-    kizmel = CombatantState(
-        actor_id="floor7_pursuit_kizmel",
-        name="Kizmel",
+def _seed_kysarah_key_bag(runtime):
+    kysarah = CombatantState(
+        actor_id="fixture_kysarah_floor7",
+        name="Kysarah",
         kind=EntityKind.NPC,
-        level=43,
-        max_hp=9000,
-        hp=9000,
-        strength=72,
-        agility=70,
-        armor=285,
-        evasion=15,
+        level=30,
+        max_hp=8000,
+        hp=8000,
+        strength=70,
+        agility=72,
         cursor=CursorColor.YELLOW,
-        location_id=CASINO,
-        metadata={
-            "npc_definition_id": KIZMEL_ID,
-            "harin_status": "fugitive_clearing_own_name",
-            "must_recover_sacred_keys_to_clear_name": True,
-        },
+        location_id="floor_7_field",
+        metadata={"npc_definition_id": KYSARAH_ID},
     )
-    runtime.actors[kizmel.actor_id] = kizmel
-    runtime.npcs.states[KIZMEL_ID].location_id = CASINO
-
-    # Nirrnir is poisoned nine hours before the Scyia negotiation. The pursuit then consumes
-    # another twenty-seven hours, leaving exactly twelve hours of the existing 48-hour deadline.
-    lead.location_id = KORLOY_STABLES
-    poison = aghyellr.trigger_nirrnir_poisoning(lead.actor_id)
-    assert poison["remaining_ms"] == 48 * 60 * 60 * 1000
-    runtime.advance_world(9 * 60 * 60 * 1000)
-
-    lead.location_id = CASINO
-    partner.location_id = CASINO
-    negotiation_start = runtime.world.now_ms
-    state = pursuit.negotiate_scyia_counteroffer(lead.actor_id, partner.actor_id)
-    assert state["stage"] == "counteroffer_accepted_rest_and_depart"
-    assert state["meeting_location_id"] == "floor_7_dragon_bone"
-    assert state["meeting_time_clock"] == "07:00"
-
-    map_item = next(item for item in lead.inventory.values() if item.template_id == MAP_OF_SCYIA_ID)
-    assert map_item.metadata["proposed_time"] == "03:00"
-    assert map_item.metadata["fallen_counteroffer_location_id"] == "floor_7_dragon_bone"
-    assert map_item.metadata["fallen_counteroffer_time"] == "07:00"
-    assert map_item.metadata["response_mark"] == "Y"
-    assert map_item.metadata["counteroffer_accepted"] is True
-
-    duel = runtime.duels.duels[state["duel_id"]]
-    duel_encounter = runtime.encounters[state["duel_encounter_id"]]
-    assert duel.status.value == "completed"
-    assert duel.winner_id is None and duel.loser_id is None
-    assert duel.completion_reason == "draw"
-    assert duel_encounter.participants == {}
-    assert not runtime._in_live_encounter(lead.actor_id)
-    assert "authorized_duel_opponents" not in lead.metadata
-    assert "authorized_duel_opponents" not in partner.metadata
-
-    state = pursuit.rest_and_reach_dragon_bone_watch(state["instance_id"])
-    cape = next(item for item in kizmel.inventory.values() if item.template_id == GREENLEAF_CAPE_ID)
-    assert kizmel.metadata["arid_weakness_suppressed_by"] == cape.instance_id
-    assert state["stage"] == "watching_dragon_bone_rendezvous"
-    assert state["watch_hill_distance_yards"] == 300
-    assert len(state["fallen_scout_ids"]) == 2
-    assert all(runtime.actors[scout_id].location_id == "floor_7_dragon_bone" for scout_id in state["fallen_scout_ids"])
-
-    state = pursuit.observe_fallen_departure(state["instance_id"])
-    assert state["fallen_departure_clock"] == "07:05"
-    state = pursuit.pursue_to_ant_tunnel_valley(state["instance_id"])
-    assert lead.location_id == ANT_VALLEY
-    assert state["tracks_visible_in_soft_ground"] is True
-    assert state["hideout_found_in_valley"] is False
-
-    state = pursuit.follow_through_valley_into_labyrinth(state["instance_id"])
-    assert state["fallen_passed_valley_without_hideout"] is True
-    assert state["fallen_passed_plateau"] is True
-    assert runtime.world_map.locations[PLATEAU].floor_number == 7
-
-    state = pursuit.pursue_until_saferoom(state["instance_id"])
-    assert state["stage"] == "labyrinth_saferoom_no_keys"
-    assert lead.location_id == SAFEROOM
-    assert partner.location_id == SAFEROOM
-    assert kizmel.location_id == SAFEROOM
-    assert state["sacred_keys_recovered"] == 0
-    assert state["fallen_hideout_found"] is False
-    assert state["fallen_lost_in_labyrinth"] is True
-    assert state["suspected_fallen_base_in_labyrinth"] is True
-    assert all(runtime.actors[scout_id].metadata["lost_from_pursuers_after_monster_battles"] for scout_id in state["fallen_scout_ids"])
-
-    expected_pursuit_elapsed = (
-        MAP_RESPONSE_MS
-        + MAP_ACCEPT_DELAY_MS
-        + MAP_CONFIRM_WAIT_MS
-        + REST_AND_APPROACH_MS
-        + WAIT_FOR_FALLEN_DEPARTURE_MS
-        + DRAGON_BONE_TO_VALLEY_MS
-        + VALLEY_TO_LABYRINTH_MS
-        + LABYRINTH_PURSUIT_TO_0400_MS
+    runtime.actors[kysarah.actor_id] = kysarah
+    bag = ItemInstance(
+        instance_id="fixture_four_sacred_keys",
+        template_id=SACRED_KEY_BAG_ID,
+        owner_id=kysarah.actor_id,
+        metadata={"stolen_by_kysarah": True},
     )
-    assert expected_pursuit_elapsed == 27 * 60 * 60 * 1000
-    assert runtime.world.now_ms - negotiation_start == expected_pursuit_elapsed
+    add_item(kysarah, bag, runtime.catalog, allow_overweight=True)
+    return kysarah, bag
 
-    nirrnir = aghyellr.nirrnir_status()
-    assert nirrnir["stage"] == "stabilised_silver_poison"
-    assert nirrnir["remaining_ms"] == 12 * 60 * 60 * 1000
-    assert state["nirrnir_remaining_ms"] == 12 * 60 * 60 * 1000
+
+def _setup(seed=83):
+    runtime = HousingAincradRuntime(seed=seed)
+    runtime.world.floors[7].unlocked = True
+    elfwar = install_floor7_elfwar_scenario(runtime)
+    pursuit = install_floor7_pursuit_scenario(runtime)
+
+    a = runtime.create_character("PursuerA", level=27)
+    b = runtime.create_character("PursuerB", level=27)
+    a.location_id = PALACE
+    b.location_id = PALACE
+    harin = _finish_harin_escape(runtime, elfwar, [a.actor_id, b.actor_id])
+    instance_id = harin["instance_id"]
+    kizmel = runtime.actors[elfwar._state(instance_id)["kizmel_actor_id"]]
+
+    kysarah, bag = _seed_kysarah_key_bag(runtime)
+    runtime.world.global_flags.setdefault("floor7_casino_intrigue_states", {})[a.actor_id] = {
+        "true_species_revealed": True,
+    }
+
+    travel_together(runtime, [a.actor_id, b.actor_id], CASINO)
+    state = pursuit.negotiate_scyia_counteroffer(a.actor_id, b.actor_id)
+
+    assert state["instance_id"] == instance_id
+    assert elfwar._state(instance_id)["stage"] == "scyia_counteroffer_accepted"
+    assert a.location_id == VOLUPTA
+    assert b.location_id == VOLUPTA
+    assert kizmel.location_id == VOLUPTA
+    assert bag.instance_id in kysarah.inventory
+    return runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag
+
+
+def _reach_blocker_encounter(seed=83):
+    runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag = _setup(seed)
+    before_depart = runtime.world.now_ms
+    state = pursuit.rest_and_reach_dragon_bone_watch(instance_id)
+    expected = state["pursuit"]["field_of_bones_travel_ms"] + 30 * 60_000
+    assert runtime.world.now_ms - before_depart == expected
+    assert {a.location_id, b.location_id, kizmel.location_id} == {FIELD_OF_BONES}
+
+    pursuit.observe_fallen_departure(instance_id)
+    pursuit.pursue_to_ant_tunnel_valley(instance_id)
+    state = pursuit.follow_through_valley_into_labyrinth(instance_id)
+    assert {a.location_id, b.location_id, kizmel.location_id} == {LABYRINTH}
+    assert len(state["blockers"]) == 2
+    return runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, state["blocker_encounter_id"]
+
+
+def _defeat_blockers(runtime, pursuit, instance_id, encounter_id, elapsed_ms):
+    encounter = runtime.encounters[encounter_id]
+    state = pursuit.status(instance_id)
+    for blocker_id in state["pursuit"]["blocker_actor_ids"]:
+        blocker = encounter.participants[blocker_id]
+        blocker.hp = 0
+        blocker.alive = False
+    runtime.advance_encounter(encounter_id, elapsed_ms)
+    return pursuit.resolve_labyrinth_pursuit(instance_id)
+
+
+def test_floor7_pursuit_uses_harin_state_real_key_bag_and_shared_travel_time():
+    runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter()
+    before_resolution = runtime.world.now_ms
+    state = _defeat_blockers(runtime, pursuit, instance_id, encounter_id, TRAIL_MARGIN_MS - 1)
+
+    assert state["trail_outcome"] == "maintained"
+    assert runtime.world.now_ms - before_resolution == TRAIL_MARGIN_MS - 1
+    assert bag.instance_id in kysarah.inventory
+    assert state["target_key_bag_matches"] == [
+        {
+            "owner_id": kysarah.actor_id,
+            "owner_npc_definition_id": KYSARAH_ID,
+            "stolen_by_kysarah": True,
+        }
+    ]
+
+    state = pursuit.advance_to_boss_room(instance_id)
+    assert state["ready_for_aghyellr"] is True
+    assert {a.location_id, b.location_id, kizmel.location_id} == {BOSS_ROOM}
+
+
+def test_floor7_pursuit_can_lose_fallen_trail_from_actual_combat_delay():
+    runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter(seed=97)
+    state = _defeat_blockers(runtime, pursuit, instance_id, encounter_id, TRAIL_MARGIN_MS + 1)
+
+    assert state["trail_outcome"] == "lost"
+    assert state["stage"] == "trail_lost_in_labyrinth"
+    assert bag.instance_id in kysarah.inventory
+
+
+def test_group_travel_advances_one_edge_for_a_colocated_party():
+    runtime = HousingAincradRuntime(seed=101)
+    runtime.world.floors[7].unlocked = True
+    a = runtime.create_character("GroupA", level=20)
+    b = runtime.create_character("GroupB", level=20)
+    a.location_id = VOLUPTA
+    b.location_id = VOLUPTA
+
+    started = runtime.world.now_ms
+    resolution = travel_together(runtime, [a.actor_id, b.actor_id], FIELD_OF_BONES)
+
+    assert runtime.world.now_ms - started == resolution.elapsed_ms
+    assert a.location_id == FIELD_OF_BONES
+    assert b.location_id == FIELD_OF_BONES

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sao_mcp.corpus.core import Catalog
+from sao_mcp.corpus.world import TravelConnection
 from sao_mcp.domain.models import ItemKind, ItemTemplate, Provenance, ProvenanceKind
 from sao_mcp.rules.npcs import CORE_NPCS, NPCDefinition
 
@@ -9,6 +10,10 @@ PROGRESSIVE_8 = "Sword Art Online Progressive Volume 8: Rhapsody of Crimson Heat
 MAP_OF_SCYIA_ID = "map_of_scyia"
 GREENLEAF_CAPE_ID = "greenleaf_cape"
 ARGO_ID = "pc_argo"
+
+FIELD_OF_BONES = "floor_7_field_of_bones"
+ANT_TUNNEL_VALLEY = "floor_7_ant_tunnel_valley"
+LABYRINTH = "floor_7_labyrinth"
 
 
 def _canon(notes: str) -> Provenance:
@@ -24,9 +29,19 @@ def apply_floor7_pursuit_corpus(catalog: Catalog) -> Catalog:
             kind=ItemKind.TOOL,
             weight=0.08,
             stack_limit=1,
-            tags=("floor_7", "elf_war", "fallen_elf_contact", "blood_map", "yes_no_response"),
+            tags=(
+                "floor_7",
+                "elf_war",
+                "fallen_elf_contact",
+                "blood_map",
+                "location_marker",
+                "time_marker",
+                "yes_no_response",
+            ),
             provenance=_canon(
-                "Contact item used to negotiate with the Fallen Elves by placing blood on a map position/time. The map responds with a counteroffer and provides Y/N acceptance marks. Weight is simulation."
+                "Bardun's paired parchment map transfers fresh-blood marks to its counterpart; "
+                "the Floor 7 party uses it to exchange a rendezvous location/time with the Fallen Elves "
+                "and accept the counteroffer with Y. Weight is simulation."
             ),
         ),
     )
@@ -59,3 +74,60 @@ def apply_floor7_pursuit_corpus(catalog: Catalog) -> Catalog:
         ),
     )
     return catalog
+
+
+def install_floor7_pursuit_route(world_map) -> None:
+    edges = (
+        TravelConnection(
+            FIELD_OF_BONES,
+            ANT_TUNNEL_VALLEY,
+            35 * 60_000,
+            provenance=Provenance(
+                ProvenanceKind.CANON_INFERRED,
+                sources=(PROGRESSIVE_8,),
+                notes=(
+                    "The Fallen Elf pursuit crosses from the Field of Bones into Ant Tunnel Valley. "
+                    "The 35-minute travel duration is simulation calibration."
+                ),
+            ),
+        ),
+        TravelConnection(
+            ANT_TUNNEL_VALLEY,
+            LABYRINTH,
+            30 * 60_000,
+            provenance=Provenance(
+                ProvenanceKind.CANON_INFERRED,
+                sources=(PROGRESSIVE_8,),
+                notes=(
+                    "The pursuit continues from Ant Tunnel Valley to the Floor 7 Labyrinth. "
+                    "The 30-minute travel duration is simulation calibration."
+                ),
+            ),
+        ),
+    )
+
+    for edge in edges:
+        matches = [
+            current
+            for current in world_map.connections
+            if current.from_location_id == edge.from_location_id
+            and current.to_location_id == edge.to_location_id
+        ]
+        if matches:
+            if len(matches) != 1 or matches[0].travel_ms != edge.travel_ms:
+                raise RuntimeError(
+                    f"conflicting Floor 7 pursuit route: {edge.from_location_id} -> {edge.to_location_id}"
+                )
+            continue
+        world_map.connections = tuple(world_map.connections) + (edge,)
+        world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
+        world_map.adjacency.setdefault(edge.to_location_id, []).append(
+            TravelConnection(
+                edge.to_location_id,
+                edge.from_location_id,
+                edge.travel_ms,
+                True,
+                edge.requires_floor_unlocked,
+                edge.provenance,
+            )
+        )
