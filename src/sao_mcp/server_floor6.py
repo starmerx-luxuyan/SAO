@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor6_tools(mcp, cube, stachion, trials) -> None:
+def register_floor6_tools(mcp, cube, stachion, trials, south) -> None:
     @mcp.tool()
     def start_floor6_stachion_curse(actor_id: str) -> str:
         """Accept Cylon's Curse of Stachion quest at the Stachion lord's manor."""
@@ -112,6 +112,36 @@ def register_floor6_tools(mcp, cube, stachion, trials) -> None:
     def get_floor6_trials_state(actor_id: str) -> str:
         """Inspect Myia, paired-key, Terro secret-route and missing-Golden-Cube progress."""
         return _json(trials.status(actor_id))
+
+    @mcp.tool()
+    def receive_floor6_theano_south_sighting(actor_id: str) -> str:
+        """After the empty final chamber, establish Theano's Golden-Cube trail toward the fourth-area caves around Goskai."""
+        return _json(south.receive_south_sighting(actor_id))
+
+    @mcp.tool()
+    def start_floor6_basalt_morpha_event(actor_id: str) -> str:
+        """Catch up to Theano in the Goskai caves and start the Basalt Morpha mid-boss encounter."""
+        return _json(south.start_basalt_morpha_event(actor_id))
+
+    @mcp.tool()
+    def use_floor6_golden_cube_break_on_basalt(actor_id: str) -> str:
+        """Have Theano use Golden Cube Break to dismantle Basalt Morpha's stone armor without scripting its HP defeat."""
+        return _json(south.theano_break_basalt_armor(actor_id))
+
+    @mcp.tool()
+    def continue_floor6_theano_trail_to_murutsuki(actor_id: str) -> str:
+        """After Basalt Morpha is actually defeated, continue Theano's trail toward Murutsuki in the fifth area."""
+        return _json(south.continue_trail_to_murutsuki(actor_id))
+
+    @mcp.tool()
+    def breach_floor6_labyrinth_with_golden_cube(actor_id: str) -> str:
+        """At the Floor 6 Labyrinth, use Theano's Golden Cube Break trail to create the abnormal direct wall breach toward the boss room."""
+        return _json(south.breach_labyrinth_with_golden_cube(actor_id))
+
+    @mcp.tool()
+    def get_floor6_south_trail_state(actor_id: str) -> str:
+        """Inspect Theano, Golden Cube, Basalt Morpha and Murutsuki/Labyrinth pursuit state."""
+        return _json(south.status(actor_id))
 
     @mcp.tool()
     def activate_floor6_irrational_cube(
