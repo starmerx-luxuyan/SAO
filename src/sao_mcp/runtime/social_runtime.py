@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
 from sao_mcp.domain.models import CursorColor, EntityKind
-from sao_mcp.rules.duels import DuelMode, DuelRuntime
+from sao_mcp.rules.duels import DuelMode, DuelRuntime, DuelStatus
 from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
 
 
@@ -63,11 +63,36 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
             ):
                 yield encounter
 
+    def _duel_ids_for_encounter(self, encounter) -> tuple[str, ...]:
+        return tuple(
+            event.payload["duel_id"]
+            for event in encounter.events
+            if event.event_type == "duel_started"
+        )
+
     def _close_duel_encounters(self, duel_id: str) -> None:
         for encounter in self._duel_encounters(duel_id):
-            encounter.participants.clear()
-            encounter.positions.clear()
+            # Duel completion ends PvP authorization and threat, but the encounter remains the
+            # authoritative record for spatial state, End Phase timing, and revival actions.
             encounter.threat.clear()
+
+    def _in_live_encounter(self, actor_id: str) -> bool:
+        for encounter in self.encounters.values():
+            if actor_id not in encounter.participants:
+                continue
+            duel_ids = self._duel_ids_for_encounter(encounter)
+            if duel_ids and all(
+                self.duels.duels[duel_id].status is DuelStatus.COMPLETED
+                for duel_id in duel_ids
+            ):
+                continue
+            other_alive = any(
+                member_id != actor_id and member.alive
+                for member_id, member in encounter.participants.items()
+            )
+            if other_alive:
+                return True
+        return False
 
     def resign_duel(self, duel_id: str, actor_id: str):
         evaluation = self.duels.resign(duel_id, actor_id, self.actors, now_ms=self.world.now_ms)

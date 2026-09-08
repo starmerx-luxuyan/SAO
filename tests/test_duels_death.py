@@ -221,3 +221,20 @@ def test_active_duel_round_trips_through_save():
     assert loaded.status is DuelStatus.ACTIVE
     assert b.actor_id in restored.actors[a.actor_id].metadata["authorized_duel_opponents"]
     assert encounter.encounter_id in restored.encounters
+
+
+def test_draw_ends_duel_without_erasing_encounter_or_blocking_travel():
+    runtime = SocialTimelineAincradRuntime(seed=1)
+    a, b, duel, encounter = _safe_duel(runtime, DuelMode.FIRST_STRIKE)
+    positions_before = dict(encounter.positions)
+
+    evaluation = runtime.draw_duel(duel.duel_id)
+
+    assert evaluation.completed is True
+    assert runtime.duels.duels[duel.duel_id].status is DuelStatus.COMPLETED
+    assert set(encounter.participants) == {a.actor_id, b.actor_id}
+    assert encounter.positions == positions_before
+    assert not runtime._in_live_encounter(a.actor_id)
+
+    runtime.travel_actor(a.actor_id, "floor_1_west_field")
+    assert a.location_id == "floor_1_west_field"
