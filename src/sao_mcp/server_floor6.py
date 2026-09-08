@@ -17,7 +17,27 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor6_tools(mcp, cube) -> None:
+def register_floor6_tools(mcp, cube, stachion) -> None:
+    @mcp.tool()
+    def start_floor6_stachion_curse(actor_id: str) -> str:
+        """Accept Cylon's Curse of Stachion quest at the Stachion lord's manor."""
+        return _json(stachion.start_quest(actor_id))
+
+    @mcp.tool()
+    def interview_floor6_stachion_witness(actor_id: str, witness_id: str) -> str:
+        """Interview one of Pithagrus's seven former associates in Stachion."""
+        return _json(stachion.interview_witness(actor_id, witness_id))
+
+    @mcp.tool()
+    def search_floor6_pithagrus_suribus_house(actor_id: str) -> str:
+        """Search Pithagrus's second home in Suribus and obtain the golden key after the Stachion investigation."""
+        return _json(stachion.search_pithagrus_house(actor_id))
+
+    @mcp.tool()
+    def get_floor6_stachion_curse_state(actor_id: str) -> str:
+        """Inspect Curse of Stachion witness/key progress. Obtaining the key does not complete the quest."""
+        return _json(stachion.status(actor_id))
+
     @mcp.tool()
     def start_floor6_irrational_cube_puzzle(player_ids: list[str]) -> str:
         """Begin The Irrational Cube's invulnerable 3x3 number-face puzzle in the Floor 6 Boss Room."""
