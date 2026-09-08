@@ -69,6 +69,22 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 )
         return evaluation
 
+    def draw_duel(self, duel_id: str):
+        evaluation = self.duels.draw(duel_id, self.actors, now_ms=self.world.now_ms)
+        duel = self.duels.duels[duel_id]
+        for encounter in self.encounters.values():
+            if duel.challenger_id in encounter.participants and duel.target_id in encounter.participants:
+                self._append(
+                    encounter,
+                    "duel_completed",
+                    None,
+                    None,
+                    duel_id=duel_id,
+                    reason=evaluation.reason,
+                    mode=duel.mode.value,
+                )
+        return evaluation
+
     def _evaluate_duel_after_attack(self, encounter_id: str, attacker_id: str, target_id: str, result) -> None:
         if not result.legal:
             return
