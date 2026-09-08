@@ -53,7 +53,7 @@ def apply_floor7_corpus(catalog: Catalog) -> Catalog:
         SWORD_OF_VOLUPTA_ID,
         WeaponTemplate(
             template_id=SWORD_OF_VOLUPTA_ID,
-            name="Sword of Volupta / Doleful Nocturne",
+            name="Sword of Volupta",
             kind=ItemKind.WEAPON,
             weapon_class=WeaponClass.ONE_HAND_SWORD,
             damage_type=DamageType.SLASH,
@@ -69,7 +69,7 @@ def apply_floor7_corpus(catalog: Catalog) -> Catalog:
                 "floor_7",
                 "volupta_grand_casino_prize",
                 "advertised_name_sword_of_volupta",
-                "true_name_doleful_nocturne",
+                "sealed_true_identity",
                 "hp_regeneration",
                 "poison_nullification",
                 "guaranteed_critical",
@@ -77,7 +77,7 @@ def apply_floor7_corpus(catalog: Catalog) -> Catalog:
             ),
             provenance=_inferred(
                 "The casino advertises Falhari's Sword of Volupta for 100,000 Volcoins. Its listed effects are continuous wound/HP recovery, poison nullification and guaranteed critical hits. "
-                "The true identity Doleful Nocturne and its experience-drain penalty for non-Night users are revealed later. Attack, requirements, weight, durability and timing are simulation.",
+                "The weapon's later-revealed true identity is Doleful Nocturne, with an experience-drain penalty for non-Night users. The public template name intentionally remains Sword of Volupta so ordinary inventory/UI does not reveal that identity early. Attack, requirements, weight, durability and timing are simulation.",
                 PROGRESSIVE_7,
                 PROGRESSIVE_8,
             ),
@@ -92,7 +92,7 @@ def apply_floor7_corpus(catalog: Catalog) -> Catalog:
             home_location_id="floor_7_volupta_grand_casino",
             roles=("nachtoy_matriarch", "casino_co_ruler", "monster_handler", "dominus_nocte"),
             quest_ids=(),
-            knowledge_tags=("volupta", "monster_arena", "storm_lykaon", "korloy_conspiracy", "doleful_nocturne", "civis_nocte"),
+            knowledge_tags=("volupta", "monster_arena", "storm_lykaon", "korloy_conspiracy", "sealed_sword_identity", "civis_nocte"),
             provenance=_canon("Young head of House Nachtoy, one of the two families controlling the Volupta Grand Casino.", PROGRESSIVE_7),
         ),
     )
