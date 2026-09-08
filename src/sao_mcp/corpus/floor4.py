@@ -18,6 +18,7 @@ PROGRESSIVE_3 = "Sword Art Online Progressive Volume 3: Barcarolle of Froth"
 REFERENCE = "https://swordartonline.fandom.com/wiki/Shipwright_of_Yore"
 QUEST_ID = "shipwright_of_yore"
 ROMOLO_ID = "npc_floor4_romolo"
+YOFILIS_ID = "npc_floor4_yofilis"
 GONDOLA_TARGET = "floor4_personal_gondola_constructed"
 SECRET_TARGET = "floor4_water_carriers_secret_discovered"
 
@@ -110,7 +111,7 @@ def apply_floor4_shipwright_corpus(catalog: Catalog) -> Catalog:
             name="Shipwright of Yore",
             floor_number=4,
             giver_id=ROMOLO_ID,
-            turn_in_id=ROMOLO_ID,
+            turn_in_id=YOFILIS_ID,
             objectives=(
                 QuestObjectiveDefinition(
                     "construct_personal_gondola",
@@ -132,8 +133,9 @@ def apply_floor4_shipwright_corpus(catalog: Catalog) -> Catalog:
                 ProvenanceKind.CANON_INFERRED,
                 sources=(PROGRESSIVE_3, REFERENCE),
                 notes=(
-                    "Multi-stage Floor 4 quest. Building a personal gondola is a mid-quest reward; the later stealth/investigation "
-                    "stage follows a Water Carriers Guild boat to a submerged Fallen Elf hideout and ties back into Elf War."
+                    "Dark-Elf-route model of the multi-stage Floor 4 quest. Building a personal gondola is a mid-quest reward. "
+                    "The final stage follows the Water Carriers Guild to a submerged Fallen Elf hideout; the discovered shipbuilding "
+                    "plot is reported at Yofel Castle, where it leads into the Laketop Fortress continuation."
                 ),
             ),
         ),
@@ -151,6 +153,22 @@ def apply_floor4_shipwright_corpus(catalog: Catalog) -> Catalog:
                 ProvenanceKind.CANON,
                 sources=(PROGRESSIVE_3, "https://swordartonline.fandom.com/wiki/Romolo"),
                 notes="Former shipwright in Rovia and giver of Shipwright of Yore.",
+            ),
+        ),
+    )
+    CORE_NPCS.setdefault(
+        YOFILIS_ID,
+        NPCDefinition(
+            npc_id=YOFILIS_ID,
+            name="Leyshren Zed Yofilis",
+            home_location_id="floor_4_yofel_castle",
+            roles=("dark_elf", "viscount", "quest_turn_in", "elf_war"),
+            quest_ids=(),
+            knowledge_tags=("yofel_castle", "forest_elf_invasion", "fallen_elves", "lapis_key"),
+            provenance=Provenance(
+                ProvenanceKind.CANON,
+                sources=(PROGRESSIVE_3, "https://swordartonline.fandom.com/wiki/Yofel_Castle"),
+                notes="Dark Elven viscount controlling Yofel Castle; receives the report about the impending ship-borne invasion.",
             ),
         ),
     )
