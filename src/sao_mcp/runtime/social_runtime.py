@@ -55,34 +55,48 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
     def decline_duel(self, duel_id: str, target_id: str):
         return self.duels.decline(duel_id, target_id=target_id)
 
+    def _duel_encounters(self, duel_id: str):
+        for encounter in self.encounters.values():
+            if any(
+                event.event_type == "duel_started" and event.payload.get("duel_id") == duel_id
+                for event in encounter.events
+            ):
+                yield encounter
+
+    def _close_duel_encounters(self, duel_id: str) -> None:
+        for encounter in self._duel_encounters(duel_id):
+            encounter.participants.clear()
+            encounter.positions.clear()
+            encounter.threat.clear()
+
     def resign_duel(self, duel_id: str, actor_id: str):
         evaluation = self.duels.resign(duel_id, actor_id, self.actors, now_ms=self.world.now_ms)
-        for encounter in self.encounters.values():
-            if actor_id in encounter.participants and evaluation.winner_id in encounter.participants:
-                self._append(
-                    encounter,
-                    "duel_completed",
-                    evaluation.winner_id,
-                    evaluation.loser_id,
-                    duel_id=duel_id,
-                    reason=evaluation.reason,
-                )
+        for encounter in list(self._duel_encounters(duel_id)):
+            self._append(
+                encounter,
+                "duel_completed",
+                evaluation.winner_id,
+                evaluation.loser_id,
+                duel_id=duel_id,
+                reason=evaluation.reason,
+            )
+        self._close_duel_encounters(duel_id)
         return evaluation
 
     def draw_duel(self, duel_id: str):
         evaluation = self.duels.draw(duel_id, self.actors, now_ms=self.world.now_ms)
         duel = self.duels.duels[duel_id]
-        for encounter in self.encounters.values():
-            if duel.challenger_id in encounter.participants and duel.target_id in encounter.participants:
-                self._append(
-                    encounter,
-                    "duel_completed",
-                    None,
-                    None,
-                    duel_id=duel_id,
-                    reason=evaluation.reason,
-                    mode=duel.mode.value,
-                )
+        for encounter in list(self._duel_encounters(duel_id)):
+            self._append(
+                encounter,
+                "duel_completed",
+                None,
+                None,
+                duel_id=duel_id,
+                reason=evaluation.reason,
+                mode=duel.mode.value,
+            )
+        self._close_duel_encounters(duel_id)
         return evaluation
 
     def _evaluate_duel_after_attack(self, encounter_id: str, attacker_id: str, target_id: str, result) -> None:
@@ -112,6 +126,7 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 reason=evaluation.reason,
                 mode=duel.mode.value,
             )
+            self._close_duel_encounters(evaluation.duel_id)
 
     def attack(self, encounter_id: str, attacker_id: str, target_id: str, **kwargs):
         encounter = self.encounters[encounter_id]
