@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 from sao_mcp.corpus.core import Catalog
-from sao_mcp.domain.models import ArmorTemplate, CombatantState, ItemInstance, ItemKind, WeaponTemplate
+from sao_mcp.domain.models import ArmorTemplate, CombatantState, ItemInstance, ItemKind, StatusType, WeaponTemplate
 from sao_mcp.rules.progression import default_carry_capacity
 
 
@@ -55,6 +55,24 @@ def add_item(actor: CombatantState, item: ItemInstance, catalog: Catalog, *, all
     actor.inventory[item.instance_id] = item
 
 
+def _sync_equipment_passives(actor: CombatantState, catalog: Catalog) -> None:
+    actor.metadata.pop("equipment_hp_regeneration_instance_id", None)
+    actor.metadata.pop("equipment_poison_nullification_instance_id", None)
+    weapon_id = actor.equipment.get("weapon")
+    if not weapon_id or weapon_id not in actor.inventory:
+        return
+    weapon_item = actor.inventory[weapon_id]
+    if weapon_item.broken:
+        return
+    template = catalog.item(weapon_item.template_id)
+    tags = set(template.tags)
+    if "hp_regeneration" in tags:
+        actor.metadata["equipment_hp_regeneration_instance_id"] = weapon_id
+    if "poison_nullification" in tags:
+        actor.metadata["equipment_poison_nullification_instance_id"] = weapon_id
+        actor.statuses = [status for status in actor.statuses if status.status_type is not StatusType.POISON]
+
+
 def recompute_equipment_stats(actor: CombatantState, catalog: Catalog) -> None:
     armor = 0
     for slot, instance_id in list(actor.equipment.items()):
@@ -68,6 +86,7 @@ def recompute_equipment_stats(actor: CombatantState, catalog: Catalog) -> None:
         if isinstance(template, ArmorTemplate):
             armor += template.armor
     actor.armor = armor
+    _sync_equipment_passives(actor, catalog)
 
 
 def equip(actor: CombatantState, instance_id: str, catalog: Catalog) -> EquipmentChange:
