@@ -34,8 +34,18 @@ def register_floor6_tools(mcp, cube, stachion) -> None:
         return _json(stachion.search_pithagrus_house(actor_id))
 
     @mcp.tool()
+    def trigger_floor6_cylon_capture(actor_id: str) -> str:
+        """Trigger Cylon's scripted paralysis-gas capture after the golden key is obtained; the actual key instance is confiscated."""
+        return _json(stachion.trigger_cylon_capture(actor_id))
+
+    @mcp.tool()
+    def advance_floor6_cylon_transport_to_ambush(actor_id: str) -> str:
+        """Advance Cylon's carriage from Suribus to the point immediately before the Morte/Joe ambush."""
+        return _json(stachion.advance_transport_to_ambush_site(actor_id))
+
+    @mcp.tool()
     def get_floor6_stachion_curse_state(actor_id: str) -> str:
-        """Inspect Curse of Stachion witness/key progress. Obtaining the key does not complete the quest."""
+        """Inspect Curse of Stachion witness/key/capture progress. The quest remains active after the golden key is found."""
         return _json(stachion.status(actor_id))
 
     @mcp.tool()
