@@ -1,4 +1,6 @@
-from sao_mcp.domain.models import CombatantState, EntityKind
+from sao_mcp.corpus.canon_seed import apply_canon_seed
+from sao_mcp.corpus.core import build_core_catalog
+from sao_mcp.domain.models import CombatantState, EntityKind, WeaponClass
 from sao_mcp.rules.progression import (
     MAX_SKILL_PROFICIENCY,
     equip_skill,
@@ -40,3 +42,15 @@ def test_proficiency_is_capped_at_1000():
     p.skill_proficiencies["one_hand_sword"] = 999.9
     gain_skill_proficiency(p, "one_hand_sword", 100)
     assert p.skill_proficiencies["one_hand_sword"] == MAX_SKILL_PROFICIENCY
+
+
+def test_expanded_aincrad_skill_corpus_keeps_known_unlocks_and_combo_counts():
+    catalog = apply_canon_seed(build_core_catalog())
+    assert catalog.sword_skills["rage_spike"].prerequisite_proficiency == 50
+    assert catalog.sword_skills["horizontal_square"].prerequisite_proficiency == 150
+    assert len(catalog.sword_skills["horizontal_square"].hits) == 4
+    assert catalog.sword_skills["vorpal_strike"].prerequisite_proficiency == 950
+    assert catalog.sword_skills["star_splash"].weapon_class is WeaponClass.RAPIER
+    assert len(catalog.sword_skills["star_splash"].hits) == 8
+    assert "first_aid" in catalog.skills
+    assert "meditation" in catalog.skills
