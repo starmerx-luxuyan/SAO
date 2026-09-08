@@ -77,9 +77,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
 
     if into is None:
-        from sao_mcp.runtime.floor22_runtime import Floor22QuestAincradRuntime
+        from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+        from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
-        runtime: GameRuntime = Floor22QuestAincradRuntime()
+        runtime: GameRuntime = HousingAincradRuntime()
+        install_floor22_witch_scenario(runtime)
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
