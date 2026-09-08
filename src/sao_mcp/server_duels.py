@@ -51,6 +51,11 @@ def register_duel_tools(mcp, runtime) -> None:
         return _json(asdict(runtime.resign_duel(duel_id, actor_id)))
 
     @mcp.tool()
+    def end_duel_as_draw(duel_id: str) -> str:
+        """End an active duel without a winner, clearing its PvP authorization."""
+        return _json(asdict(runtime.draw_duel(duel_id)))
+
+    @mcp.tool()
     def get_duel_state(duel_id: str | None = None, actor_id: str | None = None) -> str:
         """Inspect one duel or the open/completed duel records involving a player."""
         if duel_id is not None:
