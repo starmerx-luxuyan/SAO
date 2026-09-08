@@ -75,8 +75,10 @@ def _weapon_proficiency(actor: CombatantState, weapon: WeaponTemplate) -> float:
 
 
 def _guild_party_bonus(actor: CombatantState) -> float:
-    """Canon says same-guild party members receive a slight stat increase; magnitude is runtime tuning."""
-    return _clamp(float(actor.metadata.get("guild_party_stat_bonus", 0.0)), 0.0, 0.15)
+    """Combine the ordinary guild-party bonus with temporary guild-wide item auras."""
+    party_bonus = _clamp(float(actor.metadata.get("guild_party_stat_bonus", 0.0)), 0.0, 0.15)
+    flag_bonus = _clamp(float(actor.metadata.get("flag_of_valor_stat_bonus", 0.0)), 0.0, 0.25)
+    return _clamp(party_bonus + flag_bonus, 0.0, 0.30)
 
 
 def effective_attack_speed_ms(
