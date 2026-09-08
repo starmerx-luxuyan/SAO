@@ -1,5 +1,7 @@
-from sao_mcp.corpus.floor7_elfwar import QUEST_ID
+from sao_mcp.corpus.floor6_elfwar import KIZMEL_ID
+from sao_mcp.corpus.floor7_elfwar import KIZMEL_SABER_ID, QUEST_ID
 from sao_mcp.corpus.floor7_intrigue import NARSOS_FRUIT_ID, NARSOS_REQUIRED
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.scenarios.floor7_elfwar import (
     BLACKOUT_AND_DESCENT_MS,
@@ -18,7 +20,7 @@ from sao_mcp.scenarios.floor7_elfwar import (
 )
 
 
-def test_harin_tree_palace_escape_preserves_weapons_and_returns_with_kizmel():
+def test_harin_tree_palace_escape_preserves_player_and_existing_kizmel_weapons():
     runtime = HousingAincradRuntime(seed=59)
     elfwar = install_floor7_elfwar_scenario(runtime)
     player = runtime.create_character("HarinPrisoner", level=27)
@@ -26,15 +28,51 @@ def test_harin_tree_palace_escape_preserves_weapons_and_returns_with_kizmel():
     player.location_id = PALACE
     original_weapon_id = player.equipment["weapon"]
     original_weapon_template = player.inventory[original_weapon_id].template_id
+
+    # Simulate continuity from the prior Elf War floors: Kizmel already exists in the campaign
+    # and already owns an equipped weapon instance before Harin's arrest.
+    saber_template = runtime.catalog.weapons[KIZMEL_SABER_ID]
+    kizmel_weapon = ItemInstance(
+        instance_id="existing_kizmel_saber",
+        template_id=KIZMEL_SABER_ID,
+        owner_id="existing_kizmel",
+        durability=saber_template.base_durability,
+        max_durability=saber_template.base_durability,
+    )
+    preexisting_kizmel = CombatantState(
+        actor_id="existing_kizmel",
+        name="Kizmel",
+        kind=EntityKind.NPC,
+        level=43,
+        max_hp=9000,
+        hp=9000,
+        strength=72,
+        agility=70,
+        armor=285,
+        evasion=15,
+        cursor=CursorColor.YELLOW,
+        location_id=PALACE,
+        inventory={kizmel_weapon.instance_id: kizmel_weapon},
+        equipment={"weapon": kizmel_weapon.instance_id},
+        skill_proficiencies={"one_hand_curved_sword": 760.0, "parry": 590.0},
+        metadata={"npc_definition_id": KIZMEL_ID, "dark_elf_royal_guard": True},
+    )
+    runtime.actors[preexisting_kizmel.actor_id] = preexisting_kizmel
     started_at = runtime.world.now_ms
 
     state = elfwar.arrive_and_be_arrested([player.actor_id])
     assert state["stage"] == "imprisoned_b2"
+    assert state["kizmel_preexisting_actor_id"] == preexisting_kizmel.actor_id
+    assert state["kizmel_confiscated_item_ids"] == [kizmel_weapon.instance_id]
     assert original_weapon_id not in player.inventory
     assert player.equipment.get("weapon") is None
+    assert kizmel_weapon.instance_id not in preexisting_kizmel.inventory
+    assert preexisting_kizmel.equipment.get("weapon") is None
     storage = runtime.actors[state["storage_actor_id"]]
     assert storage.inventory[original_weapon_id].template_id == original_weapon_template
     assert storage.inventory[original_weapon_id].owner_id == storage.actor_id
+    assert storage.inventory[kizmel_weapon.instance_id].template_id == KIZMEL_SABER_ID
+    assert storage.inventory[kizmel_weapon.instance_id].owner_id == storage.actor_id
 
     state = elfwar.burn_cell_lock(state["instance_id"])
     assert state["cell_lock_burns"] == 7
@@ -53,9 +91,10 @@ def test_harin_tree_palace_escape_preserves_weapons_and_returns_with_kizmel():
     assert state["guards_subdued_nonlethally"] == 2
     state = elfwar.rejoin_kizmel(state["instance_id"])
     kizmel = runtime.actors[state["kizmel_actor_id"]]
-    assert kizmel.name == "Kizmel"
+    assert kizmel.actor_id == preexisting_kizmel.actor_id
     assert kizmel.metadata["harin_status"] == "prisoner_refusing_escape"
-    assert kizmel.equipment.get("weapon") is not None
+    assert kizmel.equipment["weapon"] == kizmel_weapon.instance_id
+    assert kizmel.inventory[kizmel_weapon.instance_id].owner_id == kizmel.actor_id
 
     state = elfwar.convince_kizmel_to_escape(state["instance_id"])
     assert state["kizmel_status"] == "fugitive_clearing_own_name"
@@ -79,6 +118,7 @@ def test_harin_tree_palace_escape_preserves_weapons_and_returns_with_kizmel():
     assert state["stage"] == "returned_to_volupta_with_kizmel"
     assert player.location_id == VOLUPTA
     assert state["kizmel_location_id"] == VOLUPTA
+    assert kizmel.equipment["weapon"] == kizmel_weapon.instance_id
 
     elapsed = runtime.world.now_ms - started_at
     expected = (
