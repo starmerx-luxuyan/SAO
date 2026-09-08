@@ -437,6 +437,7 @@ class Floor6ElfWarScenario:
             sword_skill_id=TSUMUJIGURUMA_ID,
             affected_actor_ids=[actor.actor_id, myia.actor_id, gindo.actor_id, kizmel.actor_id],
         )
+        self.runtime.advance_encounter(encounter.encounter_id, KYSARAH_KNOCKBACK_MS)
 
         bag = actor.inventory.pop(bag_id)
         bag.owner_id = kysarah.actor_id
@@ -464,8 +465,12 @@ class Floor6ElfWarScenario:
         theano_key.metadata["consumed_into_combined_iron_key"] = combined.instance_id
 
         kysarah.metadata["retreated_with_stolen_keys"] = True
-        encounter.participants.pop(kysarah.actor_id, None)
-        encounter.positions.pop(kysarah.actor_id, None)
+        encounter.participants = {actor_id: actor}
+        encounter.positions = {
+            actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))
+        }
+        kizmel.location_id = CASTLE_GALEY
+        gindo.metadata["qusack_departing_floor6"] = True
         state["stage"] = "kysarah_stole_and_combined_keys"
         state["combined_iron_key_instance_id"] = combined.instance_id
         state["kysarah_theft_at_ms"] = self.runtime.world.now_ms
