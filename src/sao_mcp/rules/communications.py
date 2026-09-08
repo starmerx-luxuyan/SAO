@@ -75,7 +75,7 @@ class CommunicationsRuntime:
         rows = [self.messages[mid] for mid in self.inbox_by_actor.get(actor_id, []) if mid in self.messages]
         if unread_only:
             rows = [row for row in rows if row.read_at_ms is None]
-        return sorted(rows, key=lambda row: (row.sent_at_ms, row.message_id))
+        return rows
 
     def outbox(self, actor_id: str) -> list[ShortMessage]:
         return [self.messages[mid] for mid in self.outbox_by_actor.get(actor_id, []) if mid in self.messages]
