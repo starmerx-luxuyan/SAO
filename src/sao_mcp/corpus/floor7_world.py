@@ -91,7 +91,7 @@ def floor7_locations() -> dict[str, LocationDefinition]:
 
 
 def floor7_connections() -> tuple[TravelConnection, ...]:
-    p = _sim("Travel durations are runtime calibration; named endpoints and broad route relationships are canon-backed.")
+    p = _sim("Travel durations are runtime calibration except where a source duration is explicitly noted in location provenance.")
     return (
         TravelConnection("floor_7_lectio", "floor_7_verdian_plains", 12 * 60_000, provenance=p),
         TravelConnection("floor_7_verdian_plains", "floor_7_volupta", 32 * 60_000, provenance=p),
@@ -101,7 +101,16 @@ def floor7_connections() -> tuple[TravelConnection, ...]:
         TravelConnection("floor_7_volupta_grand_casino", "floor_7_korloy_monster_stables", 3 * 60_000, provenance=p),
         TravelConnection("floor_7_volupta", "floor_7_west_riverbank", 14 * 60_000, provenance=p),
         TravelConnection("floor_7_verdian_plains", "floor_7_pramio", 28 * 60_000, provenance=p),
-        TravelConnection("floor_7_volupta", "floor_7_looserock_forest", 36 * 60_000, provenance=p),
+        TravelConnection(
+            "floor_7_volupta",
+            "floor_7_looserock_forest",
+            90 * 60_000,
+            provenance=Provenance(
+                ProvenanceKind.CANON_INFERRED,
+                sources=(PROGRESSIVE_7,),
+                notes="The source states that reaching the Looserock Forest entrance and returning to Volupta is about a three-hour round trip; this edge uses half that duration each way.",
+            ),
+        ),
         TravelConnection("floor_7_looserock_forest", "floor_7_harin_tree_palace", 22 * 60_000, provenance=p),
         TravelConnection("floor_7_verdian_plains", "floor_7_ant_tunnel_valley", 30 * 60_000, provenance=p),
         TravelConnection("floor_7_ant_tunnel_valley", "floor_7_tribula", 20 * 60_000, provenance=p),
