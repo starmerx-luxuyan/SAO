@@ -17,18 +17,33 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor2_tools(mcp, scenario) -> None:
+def register_floor2_tools(mcp, taurus_raid, martial_arts) -> None:
     @mcp.tool()
     def start_floor2_taurus_raid(player_ids: list[str]) -> str:
         """Begin the Floor 2 Taurus raid with Nato and Baran in the Boss Room."""
-        return _json(scenario.start_raid(player_ids))
+        return _json(taurus_raid.start_raid(player_ids))
 
     @mcp.tool()
     def unleash_floor2_asterius(instance_id: str) -> str:
         """After Nato and Baran are defeated, bring Asterius the Taurus King into the same encounter."""
-        return _json(scenario.unleash_asterius(instance_id))
+        return _json(taurus_raid.unleash_asterius(instance_id))
 
     @mcp.tool()
     def get_floor2_taurus_raid(instance_id: str) -> str:
         """Inspect the current Floor 2 Taurus raid stage and combatant state."""
-        return _json(scenario.status(instance_id))
+        return _json(taurus_raid.status(instance_id))
+
+    @mcp.tool()
+    def start_floor2_martial_arts_trial(actor_id: str) -> str:
+        """Accept the mountain-top rock trial, applying the quest's persistent whisker paint."""
+        return _json(martial_arts.start_trial(actor_id))
+
+    @mcp.tool()
+    def practice_floor2_martial_arts_rock(actor_id: str, hours: int = 1) -> str:
+        """Practice palm strikes against the nearly unbreakable rock and advance world time."""
+        return _json(martial_arts.practice_palm_strikes(actor_id, hours=hours))
+
+    @mcp.tool()
+    def get_floor2_martial_arts_trial(actor_id: str) -> str:
+        """Inspect rock progress, whisker paint and Martial Arts acquisition state."""
+        return _json(martial_arts.status(actor_id))
