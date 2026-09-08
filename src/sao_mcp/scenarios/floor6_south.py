@@ -41,8 +41,6 @@ class Floor6SouthScenario:
 
     def _seed_world(self) -> None:
         source = "Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)"
-        canon = Provenance(ProvenanceKind.CANON, sources=(source,))
-        inferred = Provenance(ProvenanceKind.CANON_INFERRED, sources=(source,))
         locations = {
             GOSKAI: LocationDefinition(
                 GOSKAI,
@@ -304,6 +302,11 @@ class Floor6SouthScenario:
         if basalt.alive:
             raise ValueError("Basalt Morpha must be defeated by ordinary combat before the route advances")
         theano = self.runtime.actors[state["theano_actor_id"]]
+        encounter = self.runtime.encounters[state["basalt_encounter_id"]]
+        encounter.participants = {actor_id: self.runtime.actors[actor_id]}
+        encounter.positions = {
+            actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))
+        }
         theano.location_id = MURUTSUKI
         state["stage"] = "theano_passed_murutsuki"
         state["murutsuki_trail_at_ms"] = self.runtime.world.now_ms
