@@ -15,13 +15,13 @@ from sao_mcp.scenarios.floor6_stachion import (
     install_floor6_stachion_scenario,
 )
 from sao_mcp.scenarios.floor6_trials import (
-    DUNGEON_ENTRANCE,
-    DUNGEON_OF_TRIALS,
+    DUNGEON_FINAL_CHAMBER,
+    DUNGEON_SECRET_BACK_DOOR,
     install_floor6_trials_scenario,
 )
 
 
-def test_curse_of_stachion_release_route_reaches_changed_dungeon_of_trials():
+def test_curse_of_stachion_release_route_reaches_empty_final_chamber_via_terro():
     runtime = HousingAincradRuntime(seed=47)
     stachion = install_floor6_stachion_scenario(runtime)
     trials = install_floor6_trials_scenario(runtime)
@@ -156,17 +156,21 @@ def test_curse_of_stachion_release_route_reaches_changed_dungeon_of_trials():
     assert signal["route_hops"] == 1
 
     trial_state = trials.consult_barro(player.actor_id)
-    assert trial_state["stage"] == "dungeon_route_known"
+    assert trial_state["stage"] == "seek_terro_at_manor"
     runtime.travel_actor(player.actor_id, STACHION)
     runtime.travel_actor(player.actor_id, CYLON_MANOR)
-    runtime.travel_actor(player.actor_id, DUNGEON_ENTRANCE)
-    trial_state = trials.open_dungeon_of_trials(player.actor_id)
-    assert trial_state["stage"] == "dungeon_of_trials_open"
-    assert player.inventory[original_key_id].metadata["opened_dungeon_of_trials"] is True
+    trial_state = trials.consult_terro(player.actor_id)
+    assert trial_state["stage"] == "secret_back_door_revealed"
+    assert trial_state["secret_back_door_revealed"] is True
 
-    runtime.travel_actor(player.actor_id, DUNGEON_OF_TRIALS)
-    trial_state = trials.inspect_release_dungeon(player.actor_id)
-    assert trial_state["stage"] == "dungeon_of_trials_release_route"
-    assert trial_state["dungeon_open"] is True
+    # Release route does not consume/use the Suribus golden key to enter the Dungeon.
+    assert "opened_dungeon_of_trials_main_entrance" not in player.inventory[original_key_id].metadata
+    runtime.travel_actor(player.actor_id, DUNGEON_SECRET_BACK_DOOR)
+    runtime.travel_actor(player.actor_id, DUNGEON_FINAL_CHAMBER)
+    trial_state = trials.inspect_release_final_chamber(player.actor_id)
+    assert trial_state["stage"] == "theano_golden_cube_missing"
+    assert trial_state["final_chamber_checked"] is True
+    assert trial_state["theano_missing_with_golden_cube"] is True
     assert trial_state["ready_to_claim"] is False
+    assert trial_state["next_stage"] == "track Theano and the Golden Cube south"
     assert QUEST_ID not in runtime.quests.completed_by_actor[player.actor_id]
