@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from sao_mcp.corpus.floor6 import apply_floor6_world_seed
 from sao_mcp.corpus.floor6_ambush import IRON_KEY_ID
 from sao_mcp.corpus.floor6_elfwar import (
     AGATE_KEY_ID,
@@ -47,6 +48,7 @@ class Floor6ElfWarScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        apply_floor6_world_seed(runtime.world_map)
         self._seed_world()
 
     def _seed_world(self) -> None:
