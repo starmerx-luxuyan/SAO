@@ -32,10 +32,11 @@ HOUSE_SEARCH_MS = 75 * 60_000
 TRANSPORT_TO_AMBUSH_MS = 18 * 60_000
 SCRIPTED_PARALYSIS_MS = 2 * 60 * 60_000
 POST_CYLON_DEATH_PARALYSIS_MS = 90_000
+AMBUSH_RETREAT_HP_RATIO = 0.25  # Simulation threshold; canon only establishes that the pair eventually retreat.
 
 
 class Floor6StachionScenario:
-    """Curse of Stachion through Cylon's death and the handoff to ordinary Morte/Joe PvP."""
+    """Curse of Stachion through Cylon's death and the handoff back to ordinary world/PvP rules."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
@@ -67,7 +68,7 @@ class Floor6StachionScenario:
                 provenance=Provenance(
                     ProvenanceKind.CANON_INFERRED,
                     sources=(source,),
-                    notes="Scenario-space node for Cylon's carriage transport; it intentionally has no ordinary travel edge.",
+                    notes="Scenario-space node for Cylon's carriage transport; ordinary road edges unlock only after the ambush is resolved.",
                 ),
             ),
         }
@@ -83,6 +84,9 @@ class Floor6StachionScenario:
             TravelConnection(STACHION, TRAVELLER_GRAVE, 5 * 60_000, provenance=p),
             TravelConnection(PUZZLE_QUARTER, CYLON_MANOR, 3 * 60_000, provenance=p),
         )
+        self._add_world_edges(edges)
+
+    def _add_world_edges(self, edges: tuple[TravelConnection, ...]) -> None:
         existing = {(edge.from_location_id, edge.to_location_id) for edge in self.runtime.world_map.connections}
         for edge in edges:
             if (edge.from_location_id, edge.to_location_id) in existing:
@@ -92,10 +96,28 @@ class Floor6StachionScenario:
             if edge.bidirectional:
                 self.runtime.world_map.adjacency.setdefault(edge.to_location_id, []).append(
                     TravelConnection(
-                        edge.to_location_id, edge.from_location_id, edge.travel_ms, True,
-                        edge.requires_floor_unlocked, edge.provenance,
+                        edge.to_location_id,
+                        edge.from_location_id,
+                        edge.travel_ms,
+                        True,
+                        edge.requires_floor_unlocked,
+                        edge.provenance,
                     )
                 )
+            existing.add((edge.from_location_id, edge.to_location_id))
+
+    def _open_post_ambush_road_edges(self) -> None:
+        provenance = Provenance(
+            ProvenanceKind.SIMULATION,
+            sources=("Sword Art Online Progressive Volume 5: Canon of the Golden Rule (Start)",),
+            notes="The ambush occurs on the road between Suribus and Stachion; exact remaining travel minutes are runtime calibration.",
+        )
+        self._add_world_edges(
+            (
+                TravelConnection(CYLON_TRANSPORT, SURIBUS, 14 * 60_000, provenance=provenance),
+                TravelConnection(CYLON_TRANSPORT, STACHION, 20 * 60_000, provenance=provenance),
+            )
+        )
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_stachion_quest_states", {})
@@ -137,6 +159,9 @@ class Floor6StachionScenario:
                 "ground_cache_actor_id": None,
                 "cylon_killed_at_ms": None,
                 "poison_cloud_active": False,
+                "ambushers_retreated_at_ms": None,
+                "ground_loot_recovered_at_ms": None,
+                "recovered_instance_ids": [],
             },
         )
         return self.status(actor_id)
@@ -430,6 +455,96 @@ class Floor6StachionScenario:
         state["stage"] = "morte_joe_pvp_active"
         return self.status(actor_id)
 
+    def _ambusher_ids(self, state: dict) -> tuple[str, ...]:
+        return tuple(
+            hostile_id
+            for hostile_id in (state.get("morte_actor_id"), state.get("joe_actor_id"))
+            if hostile_id
+        )
+
+    def _ambushers_neutralized(self, state: dict) -> bool:
+        encounter = self.runtime.encounters[state["transport_encounter_id"]]
+        for hostile_id in self._ambusher_ids(state):
+            hostile = self.runtime.actors[hostile_id]
+            if hostile.alive and not hostile.metadata.get("retreated") and hostile_id in encounter.participants:
+                return False
+        return True
+
+    def resolve_ambusher_retreat(self, actor_id: str) -> dict:
+        state = self._state(actor_id)
+        if state["stage"] != "morte_joe_pvp_active":
+            raise ValueError("Morte/Joe retreat can only resolve after the paralysis handoff to ordinary PvP")
+        encounter = self.runtime.encounters[state["transport_encounter_id"]]
+        hostiles = [self.runtime.actors[hostile_id] for hostile_id in self._ambusher_ids(state)]
+        trigger = any(not hostile.alive for hostile in hostiles) or any(
+            hostile.alive and hostile.max_hp > 0 and hostile.hp / hostile.max_hp <= AMBUSH_RETREAT_HP_RATIO
+            for hostile in hostiles
+        )
+        if not trigger:
+            raise ValueError("the ambushers have not yet reached the simulation retreat condition")
+
+        retreated_ids: list[str] = []
+        for hostile in hostiles:
+            if not hostile.alive or hostile.metadata.get("retreated"):
+                continue
+            hostile.metadata["retreated"] = True
+            hostile.metadata["retreated_from_floor6_ambush_at_ms"] = self.runtime.world.now_ms
+            hostile.location_id = "floor_6_field"
+            encounter.participants.pop(hostile.actor_id, None)
+            encounter.positions.pop(hostile.actor_id, None)
+            encounter.threat.pop(hostile.actor_id, None)
+            for threat_map in encounter.threat.values():
+                threat_map.pop(hostile.actor_id, None)
+            retreated_ids.append(hostile.actor_id)
+            self.runtime._append(
+                encounter,
+                "ambusher_retreated",
+                hostile.actor_id,
+                actor_id,
+                hp=hostile.hp,
+                max_hp=hostile.max_hp,
+                retreat_threshold_ratio=AMBUSH_RETREAT_HP_RATIO,
+            )
+
+        if not self._ambushers_neutralized(state):
+            raise RuntimeError("ambush retreat did not clear every living hostile")
+        state["stage"] = "ambushers_neutralized_ground_loot"
+        state["ambushers_retreated_at_ms"] = self.runtime.world.now_ms
+        state["ambusher_retreat_ids"] = retreated_ids
+        return self.status(actor_id)
+
+    def recover_cylon_ground_loot(self, actor_id: str) -> dict:
+        state = self._state(actor_id)
+        if state["stage"] == "morte_joe_pvp_active" and self._ambushers_neutralized(state):
+            state["stage"] = "ambushers_neutralized_ground_loot"
+        if state["stage"] != "ambushers_neutralized_ground_loot":
+            raise ValueError("Cylon's valuables cannot be recovered while a living ambusher still controls the road")
+        actor = self.runtime.actors[actor_id]
+        cache = self.runtime.actors[state["ground_cache_actor_id"]]
+        recovered: list[str] = []
+        for instance_id, item in list(cache.inventory.items()):
+            cache.inventory.pop(instance_id)
+            item.metadata.pop("ground_drop_reason", None)
+            add_item(actor, item, self.runtime.catalog, allow_overweight=True)
+            recovered.append(instance_id)
+        cache.metadata["emptied"] = True
+        cache.metadata["recovered_by_actor_id"] = actor_id
+        self._open_post_ambush_road_edges()
+        state["stage"] = "post_ambush_loot_recovered"
+        state["ground_loot_recovered_at_ms"] = self.runtime.world.now_ms
+        state["recovered_instance_ids"] = recovered
+        self.runtime._append(
+            self.runtime.encounters[state["transport_encounter_id"]],
+            "cylon_ground_loot_recovered",
+            actor_id,
+            None,
+            recovered_instance_ids=recovered,
+        )
+        return {
+            "recovered_instance_ids": recovered,
+            "state": self.status(actor_id),
+        }
+
     def status(self, actor_id: str) -> dict:
         state = self._state(actor_id)
         actor = self.runtime.actors[actor_id]
@@ -448,7 +563,10 @@ class Floor6StachionScenario:
                 ground_items.append({"instance_id": item.instance_id, "template_id": item.template_id, "owner_id": item.owner_id})
                 if item.instance_id == state.get("confiscated_key_instance_id"):
                     key_owner_id = item.owner_id
-        paralysed = any(status.status_type is StatusType.PARALYSIS for status in actor.statuses)
+        paralysed = any(status.status_type is StatusType.PARALYSIS and status.remaining_ms > 0 for status in actor.statuses)
+        ambushers_neutralized = False
+        if state.get("transport_encounter_id") in self.runtime.encounters and self._ambusher_ids(state):
+            ambushers_neutralized = self._ambushers_neutralized(state)
         return {
             **state,
             "witness_count": len(state["witnesses_interviewed"]),
@@ -456,6 +574,7 @@ class Floor6StachionScenario:
             "has_golden_key": player_key is not None,
             "golden_key_owner_id": key_owner_id,
             "paralysed": paralysed,
+            "ambushers_neutralized": ambushers_neutralized,
             "ground_items": sorted(ground_items, key=lambda row: (row["template_id"], row["instance_id"])),
             "quest_progress": dict(progress.counters) if progress else None,
             "ready_to_claim": self.runtime.quests.ready_to_claim(actor, QUEST_ID) if progress else False,
@@ -463,6 +582,7 @@ class Floor6StachionScenario:
                 "Morte and Joe ambush Cylon's carriage" if state["stage"] == "morte_joe_ambush_pending"
                 else "blow over Namnepenth's Poison Jar while paralysed" if state["stage"] == "ambush_cylon_dead"
                 else "wait for scripted paralysis to expire, then fight or escape" if state["stage"] == "poison_cloud_deployed"
+                else "recover Cylon's dropped keys and tools" if state["stage"] == "ambushers_neutralized_ground_loot"
                 else "compulsory Cylon capture event" if state["stage"] == "golden_key_obtained_capture_pending"
                 else None
             ),
