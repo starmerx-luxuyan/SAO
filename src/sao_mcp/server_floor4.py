@@ -18,7 +18,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor4_tools(mcp, shipwright) -> None:
+def register_floor4_tools(mcp, shipwright, biceps) -> None:
     @mcp.tool()
     def start_floor4_shipwright_quest(actor_id: str) -> str:
         """Begin Romolo's Shipwright of Yore quest in Rovia."""
@@ -75,3 +75,18 @@ def register_floor4_tools(mcp, shipwright) -> None:
     def get_floor4_shipwright_state(actor_id: str) -> str:
         """Inspect Shipwright of Yore material/build/investigation state and the actor's personal gondola."""
         return _json(shipwright.status(actor_id))
+
+    @mcp.tool()
+    def start_floor4_biceps_archelon_raid(player_ids: list[str]) -> str:
+        """Start the two-HP-bar Biceps Archelon Field Boss battle at Caldera Lake."""
+        return _json(biceps.start_raid(player_ids))
+
+    @mcp.tool()
+    def ram_floor4_biceps_abdomen(instance_id: str, actor_id: str) -> str:
+        """During the sub-10% spin preparation, ram Biceps's abdomen with a Fire-Bear-equipped player gondola."""
+        return _json(biceps.ram_abdomen(instance_id, actor_id))
+
+    @mcp.tool()
+    def get_floor4_biceps_state(instance_id: str) -> str:
+        """Inspect Biceps Archelon's two HP bars, weak points, spin state and southern-route gate."""
+        return _json(biceps.status(instance_id))
