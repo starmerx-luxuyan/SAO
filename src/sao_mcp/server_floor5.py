@@ -18,7 +18,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor5_tools(mcp, karluin, fuscus) -> None:
+def register_floor5_tools(mcp, karluin, fuscus, shortcut) -> None:
     @mcp.tool()
     def order_floor5_blue_blueberry_tart(actor_id: str) -> str:
         """Eat BLINK & BRINK's limited Blue-Blueberry Tart and gain the one-hour Karluin Relic Finding Bonus."""
@@ -72,6 +72,31 @@ def register_floor5_tools(mcp, karluin, fuscus) -> None:
     def recover_floor5_shrewman_items(actor_id: str, thief_id: str) -> str:
         """Recover the exact item instances stolen by a defeated Sly Shrewman."""
         return _json({"recoveredInstanceIds": karluin.recover_shrewman_stolen_items(actor_id, thief_id)})
+
+    @mcp.tool()
+    def get_floor5_shortcut_puzzle() -> str:
+        """Inspect the Karluin catacomb shortcut boss weakening puzzle progress."""
+        return _json(shortcut.puzzle_state())
+
+    @mcp.tool()
+    def investigate_floor5_shortcut_puzzle(actor_id: str, hours: float = 1.0) -> str:
+        """Spend world time investigating the puzzle that weakens the Karluin shortcut area boss."""
+        return _json(shortcut.investigate_puzzle(actor_id, hours=hours))
+
+    @mcp.tool()
+    def start_floor5_shortcut_area_boss(player_ids: list[str]) -> str:
+        """Fight the unnamed Karluin catacomb area boss guarding the Mananarena shortcut."""
+        return _json(shortcut.start_area_boss_raid(player_ids))
+
+    @mcp.tool()
+    def get_floor5_shortcut_boss_state(instance_id: str) -> str:
+        """Inspect the shortcut guardian's state, puzzle weakening and shortcut-clear flag."""
+        return _json(shortcut.status(instance_id))
+
+    @mcp.tool()
+    def traverse_floor5_karluin_mananarena_shortcut(actor_id: str) -> str:
+        """Use the cleared Karluin-Mananarena shortcut tunnel from either side."""
+        return _json(shortcut.traverse_shortcut(actor_id))
 
     @mcp.tool()
     def start_floor5_fuscus_raid(player_ids: list[str]) -> str:
