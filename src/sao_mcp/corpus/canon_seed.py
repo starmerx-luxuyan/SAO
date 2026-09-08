@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.skills import apply_aincrad_skill_seed
+from sao_mcp.corpus.weapons import apply_aincrad_weapon_seed
 from sao_mcp.domain.models import (
     DamageType,
     ItemKind,
@@ -39,6 +40,7 @@ def _reinforcement_material(template_id: str, name: str, track: str | None = Non
 def apply_canon_seed(catalog: Catalog) -> Catalog:
     """Add canon identities plus clearly-labelled simulation fields required to execute them."""
     apply_aincrad_skill_seed(catalog)
+    apply_aincrad_weapon_seed(catalog)
 
     catalog.weapons.setdefault(
         "anneal_blade",
