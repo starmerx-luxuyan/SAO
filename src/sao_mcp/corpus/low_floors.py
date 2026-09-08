@@ -136,6 +136,20 @@ def low_floor_locations() -> dict[str, LocationDefinition]:
             "floor_5_karluin_catacombs_lower", 5, "Karluin Catacombs - Lower Levels", ZoneKind.DUNGEON,
             provenance=_canon(PROGRESSIVE_4, "The second and third catacomb levels form a true dungeon with monsters and traps."),
         ),
+        "floor_5_karluin_shortcut_boss_room": LocationDefinition(
+            "floor_5_karluin_shortcut_boss_room", 5, "Karluin Catacombs Shortcut Guardian Room", ZoneKind.DUNGEON,
+            provenance=_inferred(
+                PROGRESSIVE_4,
+                "An unnamed area boss in the catacombs guards the shortcut tunnel leading toward Mananarena; the room label is descriptive rather than a canon proper name.",
+            ),
+        ),
+        "floor_5_karluin_mananarena_shortcut": LocationDefinition(
+            "floor_5_karluin_mananarena_shortcut", 5, "Karluin-Mananarena Shortcut Tunnel", ZoneKind.DUNGEON,
+            provenance=_inferred(
+                PROGRESSIVE_4,
+                "The defeated catacomb area boss opens a shortcut tunnel from beneath Karluin toward Mananarena; exact tunnel geometry is abstracted.",
+            ),
+        ),
         "floor_5_karluin_ruined_temple": LocationDefinition(
             "floor_5_karluin_ruined_temple", 5, "Karluin Ruined Temple", ZoneKind.SAFE_TOWN, safe_zone=True,
             provenance=_inferred(PROGRESSIVE_4, "A temple in Karluin is the recorded find location of the Ring of Luminescence; exact town geometry is abstracted."),
@@ -181,6 +195,7 @@ def low_floor_connections() -> tuple[TravelConnection, ...]:
         TravelConnection("floor_5_karluin", "floor_5_blink_and_brink", 2 * 60_000, provenance=p),
         TravelConnection("floor_5_karluin", "floor_5_karluin_catacombs_l1", 3 * 60_000, provenance=p),
         TravelConnection("floor_5_karluin_catacombs_l1", "floor_5_karluin_catacombs_lower", 2 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin_catacombs_lower", "floor_5_karluin_shortcut_boss_room", 8 * 60_000, provenance=p),
         TravelConnection("floor_5_karluin", "floor_5_karluin_ruined_temple", 4 * 60_000, provenance=p),
         TravelConnection("floor_5_karluin", "floor_5_karluin_old_castle", 5 * 60_000, provenance=p),
         TravelConnection("floor_5_karluin_old_castle", "floor_5_karluin_old_castle_basement", 1 * 60_000, provenance=p),
