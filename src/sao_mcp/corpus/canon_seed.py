@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sao_mcp.corpus.bosses_progressive import apply_progressive_boss_catalog_seed
 from sao_mcp.corpus.core import Catalog
+from sao_mcp.corpus.floor2 import apply_floor2_martial_arts_corpus
 from sao_mcp.corpus.floor3 import apply_floor3_spider_corpus
 from sao_mcp.corpus.items import apply_aincrad_item_seed
 from sao_mcp.corpus.skills import apply_aincrad_skill_seed
@@ -46,6 +47,7 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
     apply_aincrad_weapon_seed(catalog)
     apply_aincrad_item_seed(catalog)
     apply_progressive_boss_catalog_seed(catalog)
+    apply_floor2_martial_arts_corpus(catalog)
     apply_floor3_spider_corpus(catalog)
 
     catalog.weapons.setdefault(
