@@ -49,6 +49,10 @@ def register_boss_tools(mcp, runtime) -> None:
             raise KeyError(boss_definition_id)
         if boss_definition_id == "asterius_the_taurus_king":
             raise ValueError("Floor 2 Asterius uses the dedicated Taurus raid sequence")
+        if boss_definition_id == "the_irrational_cube":
+            raise ValueError(
+                "Floor 6 The Irrational Cube uses the dedicated number-face puzzle sequence before normal boss combat"
+            )
         encounter, boss = runtime.start_floor_boss_encounter(
             player_ids,
             boss_definition_id=boss_definition_id,
@@ -77,7 +81,7 @@ def register_boss_tools(mcp, runtime) -> None:
         boss_definition_id: str,
         enforce_location: bool = True,
     ) -> str:
-        """Start any implemented ordinary Floor Boss raid. Floor 2 uses its dedicated Taurus sequence."""
+        """Start an implemented ordinary Floor Boss raid. Floors with scenario gates use their dedicated entry points."""
         return _start_boss(player_ids, boss_definition_id, enforce_location)
 
     @mcp.tool()
