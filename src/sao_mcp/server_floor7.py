@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor7_tools(mcp, volupta) -> None:
+def register_floor7_tools(mcp, volupta, aghyellr) -> None:
     @mcp.tool()
     def get_floor7_volcoin_wallet(actor_id: str) -> str:
         """Inspect Cor/Volcoin balance and the exact Volupta exchange rate."""
@@ -57,3 +57,43 @@ def register_floor7_tools(mcp, volupta) -> None:
     def redeem_floor7_sword_of_volupta(actor_id: str) -> str:
         """Spend 100,000 Volcoins to redeem the unique Sword of Volupta prize as a real weapon instance."""
         return _json(volupta.redeem_sword_of_volupta(actor_id))
+
+    @mcp.tool()
+    def trigger_floor7_nirrnir_poisoning(actor_id: str) -> str:
+        """Trigger the Argent Serpent silver-poison event at the Korloy monster stables and start Nirrnir's 48-hour stabilised survival window."""
+        return _json(aghyellr.trigger_nirrnir_poisoning(actor_id))
+
+    @mcp.tool()
+    def get_floor7_nirrnir_status() -> str:
+        """Inspect Nirrnir's silver-poison state, world-time deadline and required cure."""
+        return _json(aghyellr.nirrnir_status())
+
+    @mcp.tool()
+    def start_floor7_aghyellr_raid(player_ids: list[str], bring_nirrnir: bool = True) -> str:
+        """Start Aghyellr the Igneous Wyrm and optionally carry the poisoned Nirrnir into the Floor 7 Boss Room."""
+        return _json(aghyellr.start_aghyellr_raid(player_ids, bring_nirrnir=bring_nirrnir))
+
+    @mcp.tool()
+    def telegraph_floor7_aghyellr_gaze(instance_id: str) -> str:
+        """Telegraph Aghyellr's canon wing-spread/red-eye Intimidating Gaze before players choose whether to look away."""
+        return _json(aghyellr.telegraph_intimidating_gaze(instance_id))
+
+    @mcp.tool()
+    def resolve_floor7_aghyellr_gaze(instance_id: str, look_away_actor_ids: list[str] | None = None) -> str:
+        """Resolve Intimidating Gaze: under-Level-20 players who keep looking are immediately stunned; Level 20+ guaranteed immunity is limited to this documented gaze."""
+        return _json(aghyellr.resolve_intimidating_gaze(instance_id, look_away_actor_ids=look_away_actor_ids))
+
+    @mcp.tool()
+    def collect_floor7_aghyellr_dragon_blood(instance_id: str, actor_id: str) -> str:
+        """After Aghyellr dies, collect a real fresh, undiluted, unpreserved dragon-blood item from the boss."""
+        return _json(aghyellr.collect_fresh_dragon_blood(instance_id, actor_id))
+
+    @mcp.tool()
+    def administer_floor7_dragon_blood_to_nirrnir(actor_id: str, blood_instance_id: str) -> str:
+        """Give Nirrnir fresh Aghyellr blood before her silver-poison deadline expires."""
+        return _json(aghyellr.administer_dragon_blood(actor_id, blood_instance_id))
+
+    @mcp.tool()
+    def get_floor7_aghyellr_state(instance_id: str) -> str:
+        """Inspect Aghyellr's segmented Boss state, pending gaze and the linked Nirrnir countdown."""
+        return _json(aghyellr.raid_status(instance_id))
