@@ -114,26 +114,44 @@ def register_floor6_tools(mcp, cube, stachion, trials) -> None:
         return _json(trials.status(actor_id))
 
     @mcp.tool()
-    def start_floor6_irrational_cube_puzzle(player_ids: list[str]) -> str:
-        """Begin The Irrational Cube's numbered-armor puzzle in the Floor 6 Boss Room."""
-        return _json(cube.start_puzzle(player_ids))
+    def activate_floor6_irrational_cube(
+        player_ids: list[str],
+        golden_cube_holder_id: str,
+        golden_cube_instance_id: str,
+    ) -> str:
+        """Insert the real Golden Cube into the Floor 6 guardian core and activate its numbered invincible armor."""
+        return _json(cube.activate_guardian(player_ids, golden_cube_holder_id, golden_cube_instance_id))
 
     @mcp.tool()
     def rotate_floor6_cube_row(instance_id: str, row: int, direction: str) -> str:
-        """Rotate one numbered row left/right during The Irrational Cube's armor puzzle."""
+        """Rotate one numbered row left/right while The Irrational Cube's 26-piece golden armor is active."""
         return _json(cube.rotate_row(instance_id, row, direction))
 
     @mcp.tool()
     def rotate_floor6_cube_column(instance_id: str, column: int, direction: str) -> str:
-        """Rotate one numbered column up/down during The Irrational Cube's armor puzzle."""
+        """Rotate one numbered column up/down while The Irrational Cube's 26-piece golden armor is active."""
         return _json(cube.rotate_column(instance_id, column, direction))
 
     @mcp.tool()
-    def engage_floor6_irrational_cube(instance_id: str) -> str:
-        """After the numbered armor collapses, engage The Irrational Cube's exposed black core through the normal boss combat runtime."""
-        return _json(cube.engage_boss(instance_id))
+    def eject_floor6_golden_cube(
+        instance_id: str,
+        actor_id: str,
+        combined_key_instance_id: str,
+    ) -> str:
+        """At the black core's final HP pixel, use the combined iron key in the reverse keyhole to eject the Golden Cube."""
+        return _json(cube.eject_golden_cube(instance_id, actor_id, combined_key_instance_id))
+
+    @mcp.tool()
+    def use_floor6_golden_cube_bind(instance_id: str, actor_id: str) -> str:
+        """Use the ejected Golden Cube's Bind power on the encounter. Player-on-player use follows ordinary crime rules."""
+        return _json(cube.use_golden_cube_bind(instance_id, actor_id))
+
+    @mcp.tool()
+    def destroy_floor6_irrational_cube_core(instance_id: str, actor_id: str) -> str:
+        """Reinsert the ejected Golden Cube into the one-HP black core and destroy both; the steel combined key survives."""
+        return _json(cube.reinsert_cube_and_destroy_core(instance_id, actor_id))
 
     @mcp.tool()
     def get_floor6_irrational_cube_state(instance_id: str) -> str:
-        """Inspect the current number face, target arrangement, puzzle stage and exposed-core combat state."""
+        """Inspect Golden Cube ownership, numbered armor, exposed black core, HP floor and final ejection state."""
         return _json(cube.status(instance_id))
