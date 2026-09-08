@@ -3,19 +3,8 @@ from __future__ import annotations
 import uuid
 
 from sao_mcp.corpus.floor6 import apply_floor6_world_seed
-from sao_mcp.corpus.floor6_ambush import (
-    GAS_MASK_ID,
-    IRON_KEY_ID,
-    JOE_DAGGER_ID,
-    MORTE_HATCHET_ID,
-)
-from sao_mcp.corpus.floor6_stachion import (
-    CYLON_ID,
-    GOLDEN_KEY_ID,
-    POISON_JAR_ID,
-    QUEST_ID,
-    WITNESSES,
-)
+from sao_mcp.corpus.floor6_ambush import GAS_MASK_ID, IRON_KEY_ID, JOE_DAGGER_ID, MORTE_HATCHET_ID
+from sao_mcp.corpus.floor6_stachion import CYLON_ID, GOLDEN_KEY_ID, POISON_JAR_ID, QUEST_ID, WITNESSES
 from sao_mcp.corpus.world import LocationDefinition, TravelConnection
 from sao_mcp.domain.models import (
     CombatantState,
@@ -46,7 +35,7 @@ POST_CYLON_DEATH_PARALYSIS_MS = 90_000
 
 
 class Floor6StachionScenario:
-    """Release-side Curse of Stachion through Cylon's death and the opening state of the Morte/Joe ambush."""
+    """Curse of Stachion through Cylon's death and the handoff to ordinary Morte/Joe PvP."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
@@ -57,11 +46,7 @@ class Floor6StachionScenario:
         source = "Sword Art Online Progressive Volume 5: Canon of the Golden Rule (Start)"
         locations = {
             CYLON_MANOR: LocationDefinition(
-                CYLON_MANOR,
-                6,
-                "Cylon's Lord Manor",
-                ZoneKind.SAFE_TOWN,
-                safe_zone=True,
+                CYLON_MANOR, 6, "Cylon's Lord Manor", ZoneKind.SAFE_TOWN, safe_zone=True,
                 provenance=Provenance(
                     ProvenanceKind.CANON_INFERRED,
                     sources=(source,),
@@ -69,11 +54,7 @@ class Floor6StachionScenario:
                 ),
             ),
             TRAVELLER_GRAVE: LocationDefinition(
-                TRAVELLER_GRAVE,
-                6,
-                "Traveller's Grave",
-                ZoneKind.SAFE_TOWN,
-                safe_zone=True,
+                TRAVELLER_GRAVE, 6, "Traveller's Grave", ZoneKind.SAFE_TOWN, safe_zone=True,
                 provenance=Provenance(
                     ProvenanceKind.CANON_INFERRED,
                     sources=(source,),
@@ -81,28 +62,21 @@ class Floor6StachionScenario:
                 ),
             ),
             CYLON_TRANSPORT: LocationDefinition(
-                CYLON_TRANSPORT,
-                6,
-                "Cylon's Carriage - Suribus to Stachion Road",
-                ZoneKind.FIELD,
+                CYLON_TRANSPORT, 6, "Cylon's Carriage - Suribus to Stachion Road", ZoneKind.FIELD,
                 safe_zone=False,
                 provenance=Provenance(
                     ProvenanceKind.CANON_INFERRED,
                     sources=(source,),
-                    notes=(
-                        "Scenario-space node for the canon carriage transport after Cylon captures the players in Suribus. "
-                        "It has no ordinary travel edge because escape is controlled by the scripted capture encounter."
-                    ),
+                    notes="Scenario-space node for Cylon's carriage transport; it intentionally has no ordinary travel edge.",
                 ),
             ),
         }
         for location_id, location in locations.items():
             self.runtime.world_map.locations.setdefault(location_id, location)
-
         p = Provenance(
             ProvenanceKind.SIMULATION,
             sources=(source,),
-            notes="In-city travel durations are simulation; endpoint identities/relationships are canon-backed.",
+            notes="In-city travel durations are simulation; endpoint relationships are canon-backed.",
         )
         edges = (
             TravelConnection(STACHION, CYLON_MANOR, 4 * 60_000, provenance=p),
@@ -118,12 +92,8 @@ class Floor6StachionScenario:
             if edge.bidirectional:
                 self.runtime.world_map.adjacency.setdefault(edge.to_location_id, []).append(
                     TravelConnection(
-                        edge.to_location_id,
-                        edge.from_location_id,
-                        edge.travel_ms,
-                        True,
-                        edge.requires_floor_unlocked,
-                        edge.provenance,
+                        edge.to_location_id, edge.from_location_id, edge.travel_ms, True,
+                        edge.requires_floor_unlocked, edge.provenance,
                     )
                 )
 
@@ -184,17 +154,13 @@ class Floor6StachionScenario:
         if witness_id not in interviewed:
             interviewed.append(witness_id)
             self.runtime.quests.record_event(
-                actor_id,
-                kind=QuestObjectiveKind.DISCOVER,
-                target_id="stachion_old_household_testimony",
+                actor_id, kind=QuestObjectiveKind.DISCOVER, target_id="stachion_old_household_testimony"
             )
         if len(interviewed) == len(WITNESSES) and state["suribus_house_revealed_at_ms"] is None:
             state["stage"] = "travel_to_suribus_second_home"
             state["suribus_house_revealed_at_ms"] = self.runtime.world.now_ms
             self.runtime.quests.record_event(
-                actor_id,
-                kind=QuestObjectiveKind.DISCOVER,
-                target_id="pithagrus_suribus_house_discovered",
+                actor_id, kind=QuestObjectiveKind.DISCOVER, target_id="pithagrus_suribus_house_discovered"
             )
         return self.status(actor_id)
 
@@ -213,14 +179,9 @@ class Floor6StachionScenario:
                 instance_id=f"questitem_{uuid.uuid4().hex[:12]}",
                 template_id=GOLDEN_KEY_ID,
                 owner_id=actor_id,
-                quantity=1,
             )
             add_item(actor, existing, self.runtime.catalog, allow_overweight=True)
-            self.runtime.quests.record_event(
-                actor_id,
-                kind=QuestObjectiveKind.COLLECT,
-                target_id=GOLDEN_KEY_ID,
-            )
+            self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.COLLECT, target_id=GOLDEN_KEY_ID)
             state["golden_key_obtained_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "golden_key_obtained_capture_pending"
         return self.status(actor_id)
@@ -240,11 +201,7 @@ class Floor6StachionScenario:
             evasion=5,
             cursor=CursorColor.YELLOW,
             location_id=PITHAGRUS_HOUSE,
-            metadata={
-                "npc_definition_id": CYLON_ID,
-                "quest_id": QUEST_ID,
-                "combat_stats_provenance": "simulation",
-            },
+            metadata={"npc_definition_id": CYLON_ID, "quest_id": QUEST_ID, "combat_stats_provenance": "simulation"},
         )
         for template_id, metadata in (
             (POISON_JAR_ID, {"scripted_capture_tool": True}),
@@ -255,7 +212,6 @@ class Floor6StachionScenario:
                 instance_id=f"questitem_{uuid.uuid4().hex[:12]}",
                 template_id=template_id,
                 owner_id=actor_id,
-                quantity=1,
                 metadata=metadata,
             )
             cylon.inventory[item.instance_id] = item
@@ -304,12 +260,14 @@ class Floor6StachionScenario:
             poison_jar_template_id=POISON_JAR_ID,
             confiscated_key_instance_id=key.instance_id,
         )
-        state["stage"] = "captured_transport_to_stachion"
-        state["capture_event_started"] = True
-        state["captured_at_ms"] = self.runtime.world.now_ms
-        state["cylon_actor_id"] = cylon.actor_id
-        state["transport_encounter_id"] = encounter.encounter_id
-        state["confiscated_key_instance_id"] = key.instance_id
+        state.update(
+            stage="captured_transport_to_stachion",
+            capture_event_started=True,
+            captured_at_ms=self.runtime.world.now_ms,
+            cylon_actor_id=cylon.actor_id,
+            transport_encounter_id=encounter.encounter_id,
+            confiscated_key_instance_id=key.instance_id,
+        )
         return self.status(actor_id)
 
     def advance_transport_to_ambush_site(self, actor_id: str) -> dict:
@@ -322,15 +280,21 @@ class Floor6StachionScenario:
         state["stage"] = "morte_joe_ambush_pending"
         state["ambush_site_reached_at_ms"] = self.runtime.world.now_ms
         self.runtime._append(
-            self.runtime.encounters[encounter_id],
-            "transport_reaches_ambush_site",
-            state["cylon_actor_id"],
-            actor_id,
+            self.runtime.encounters[encounter_id], "transport_reaches_ambush_site", state["cylon_actor_id"], actor_id
         )
         return self.status(actor_id)
 
-    def _create_hostile_player(self, name: str, weapon_template_id: str, *, level: int, strength: int, agility: int) -> CombatantState:
+    def _create_hostile_player(
+        self,
+        name: str,
+        weapon_template_id: str,
+        *,
+        level: int,
+        strength: int,
+        agility: int,
+    ) -> CombatantState:
         actor_id = f"namedplayer_{name.lower()}_{uuid.uuid4().hex[:10]}"
+        weapon_template = self.runtime.catalog.weapons[weapon_template_id]
         player = CombatantState(
             actor_id=actor_id,
             name=name,
@@ -344,17 +308,9 @@ class Floor6StachionScenario:
             evasion=12,
             cursor=CursorColor.GREEN,
             location_id=CYLON_TRANSPORT,
-            skill_proficiencies={
-                self.runtime.catalog.weapons[weapon_template_id].weapon_class.value: 620.0,
-                "parry": 420.0,
-            },
-            metadata={
-                "named_player_npc": True,
-                "hostile_scene_actor": True,
-                "combat_stats_provenance": "simulation",
-            },
+            skill_proficiencies={weapon_template.weapon_class.value: 620.0, "parry": 420.0},
+            metadata={"named_player_npc": True, "hostile_scene_actor": True, "combat_stats_provenance": "simulation"},
         )
-        weapon_template = self.runtime.catalog.weapons[weapon_template_id]
         weapon = ItemInstance(
             instance_id=f"weapon_{uuid.uuid4().hex[:12]}",
             template_id=weapon_template_id,
@@ -411,7 +367,9 @@ class Floor6StachionScenario:
         joe = self._create_hostile_player("Joe", JOE_DAGGER_ID, level=22, strength=38, agility=56)
         encounter.participants[morte.actor_id] = morte
         encounter.participants[joe.actor_id] = joe
-
+        player_position = encounter.positions.get(actor_id, (-1.15, 0.0))
+        encounter.positions[morte.actor_id] = (player_position[0] + 3.0, player_position[1] + 1.2)
+        encounter.positions[joe.actor_id] = (player_position[0] + 3.2, player_position[1] - 1.2)
         self.runtime._append(encounter, "morte_joe_ambush", morte.actor_id, cylon.actor_id, joe_actor_id=joe.actor_id)
         cylon.hp = 0
         cylon.alive = False
@@ -421,12 +379,13 @@ class Floor6StachionScenario:
             if status.stack_key == "scripted_cylon_paralysis":
                 status.remaining_ms = min(status.remaining_ms, POST_CYLON_DEATH_PARALYSIS_MS)
                 status.until_next_tick_ms = min(status.until_next_tick_ms, status.remaining_ms)
-
-        state["stage"] = "ambush_cylon_dead"
-        state["morte_actor_id"] = morte.actor_id
-        state["joe_actor_id"] = joe.actor_id
-        state["ground_cache_actor_id"] = cache.actor_id
-        state["cylon_killed_at_ms"] = self.runtime.world.now_ms
+        state.update(
+            stage="ambush_cylon_dead",
+            morte_actor_id=morte.actor_id,
+            joe_actor_id=joe.actor_id,
+            ground_cache_actor_id=cache.actor_id,
+            cylon_killed_at_ms=self.runtime.world.now_ms,
+        )
         return self.status(actor_id)
 
     def topple_poison_jar(self, actor_id: str) -> dict:
@@ -442,10 +401,8 @@ class Floor6StachionScenario:
             raise ValueError("Namnepenth's Poison Jar is not among Cylon's ground loot")
         jar.metadata["toppled"] = True
         jar.metadata["paralysis_cloud_active"] = True
-        morte = self.runtime.actors[state["morte_actor_id"]]
-        joe = self.runtime.actors[state["joe_actor_id"]]
-        morte.metadata["avoiding_paralysis_cloud"] = True
-        joe.metadata["avoiding_paralysis_cloud"] = True
+        for hostile_id in (state["morte_actor_id"], state["joe_actor_id"]):
+            self.runtime.actors[hostile_id].metadata["avoiding_paralysis_cloud"] = True
         state["poison_cloud_active"] = True
         state["stage"] = "poison_cloud_deployed"
         self.runtime._append(
@@ -488,13 +445,7 @@ class Floor6StachionScenario:
         if cache_id in self.runtime.actors:
             cache = self.runtime.actors[cache_id]
             for item in cache.inventory.values():
-                ground_items.append(
-                    {
-                        "instance_id": item.instance_id,
-                        "template_id": item.template_id,
-                        "owner_id": item.owner_id,
-                    }
-                )
+                ground_items.append({"instance_id": item.instance_id, "template_id": item.template_id, "owner_id": item.owner_id})
                 if item.instance_id == state.get("confiscated_key_instance_id"):
                     key_owner_id = item.owner_id
         paralysed = any(status.status_type is StatusType.PARALYSIS for status in actor.statuses)
@@ -509,24 +460,18 @@ class Floor6StachionScenario:
             "quest_progress": dict(progress.counters) if progress else None,
             "ready_to_claim": self.runtime.quests.ready_to_claim(actor, QUEST_ID) if progress else False,
             "next_canon_stage": (
-                "Morte and Joe ambush Cylon's carriage"
-                if state["stage"] == "morte_joe_ambush_pending"
-                else "blow over Namnepenth's Poison Jar while paralysed"
-                if state["stage"] == "ambush_cylon_dead"
-                else "wait for scripted paralysis to expire, then fight or escape"
-                if state["stage"] == "poison_cloud_deployed"
-                else "compulsory Cylon capture event"
-                if state["stage"] == "golden_key_obtained_capture_pending"
+                "Morte and Joe ambush Cylon's carriage" if state["stage"] == "morte_joe_ambush_pending"
+                else "blow over Namnepenth's Poison Jar while paralysed" if state["stage"] == "ambush_cylon_dead"
+                else "wait for scripted paralysis to expire, then fight or escape" if state["stage"] == "poison_cloud_deployed"
+                else "compulsory Cylon capture event" if state["stage"] == "golden_key_obtained_capture_pending"
                 else None
             ),
         }
 
 
 def install_floor6_stachion_scenario(runtime) -> Floor6StachionScenario:
-    if QUEST_ID not in runtime.quests.definitions:
-        raise RuntimeError("Curse of Stachion corpus was not loaded")
-    if CYLON_ID not in runtime.npcs.definitions:
-        raise RuntimeError("Cylon NPC corpus was not loaded")
+    if QUEST_ID not in runtime.quests.definitions or CYLON_ID not in runtime.npcs.definitions:
+        raise RuntimeError("Curse of Stachion quest/NPC corpus was not loaded")
     required_items = {GOLDEN_KEY_ID, POISON_JAR_ID, IRON_KEY_ID, GAS_MASK_ID}
     if any(template_id not in runtime.catalog.items for template_id in required_items):
         raise RuntimeError("Floor 6 Stachion quest-item corpus was not loaded")
