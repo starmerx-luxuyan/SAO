@@ -14,6 +14,7 @@ from sao_mcp.scenarios.floor5_fuscus import install_floor5_fuscus_scenario
 from sao_mcp.scenarios.floor5_karluin import install_floor5_karluin_scenario
 from sao_mcp.scenarios.floor5_shortcut import install_floor5_shortcut_scenario
 from sao_mcp.scenarios.floor6_irrational_cube import install_floor6_irrational_cube_scenario
+from sao_mcp.scenarios.floor6_south import install_floor6_south_scenario
 from sao_mcp.scenarios.floor6_stachion import install_floor6_stachion_scenario
 from sao_mcp.scenarios.floor6_trials import install_floor6_trials_scenario
 from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
@@ -54,6 +55,7 @@ floor5_shortcut = install_floor5_shortcut_scenario(runtime)
 floor6_irrational_cube = install_floor6_irrational_cube_scenario(runtime)
 floor6_stachion = install_floor6_stachion_scenario(runtime)
 floor6_trials = install_floor6_trials_scenario(runtime)
+floor6_south = install_floor6_south_scenario(runtime)
 floor22_witch = install_floor22_witch_scenario(runtime)
 
 if not hasattr(runtime, "economy"):
@@ -75,7 +77,7 @@ register_floor2_tools(mcp, floor2_taurus_raid, floor2_martial_arts)
 register_floor3_tools(mcp, floor3_spiders)
 register_floor4_tools(mcp, floor4_shipwright, floor4_biceps)
 register_floor5_tools(mcp, floor5_karluin, floor5_fuscus, floor5_shortcut)
-register_floor6_tools(mcp, floor6_irrational_cube, floor6_stachion, floor6_trials)
+register_floor6_tools(mcp, floor6_irrational_cube, floor6_stachion, floor6_trials, floor6_south)
 register_floor22_tools(mcp, floor22_witch)
 
 from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
@@ -99,5 +101,6 @@ __all__ = [
     "floor6_irrational_cube",
     "floor6_stachion",
     "floor6_trials",
+    "floor6_south",
     "floor22_witch",
 ]
