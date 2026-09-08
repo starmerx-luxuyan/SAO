@@ -13,6 +13,7 @@ from sao_mcp.domain.models import (
 
 
 POTION_COOLDOWN_KEY = "potion"
+EQUIPMENT_HP_REGEN_RATIO_PER_SECOND = 0.0025  # Simulation rate for tagged continuous-regeneration equipment.
 
 
 @dataclass(slots=True, frozen=True)
@@ -98,6 +99,11 @@ def tick_statuses(actor: CombatantState, elapsed_ms: int) -> list[tuple[StatusTy
     if elapsed_ms < 0:
         raise ValueError("elapsed_ms must be >= 0")
     events: list[tuple[StatusType, int]] = []
+
+    poison_nullifier = actor.metadata.get("equipment_poison_nullification_instance_id")
+    if poison_nullifier and poison_nullifier in actor.equipment.values():
+        actor.statuses = [status for status in actor.statuses if status.status_type is not StatusType.POISON]
+
     kept: list[StatusEffectState] = []
     for status in actor.statuses:
         remaining_step = elapsed_ms
@@ -121,5 +127,20 @@ def tick_statuses(actor: CombatantState, elapsed_ms: int) -> list[tuple[StatusTy
         if status.remaining_ms > 0:
             kept.append(status)
     actor.statuses = kept
+
+    regeneration_item = actor.metadata.get("equipment_hp_regeneration_instance_id")
+    if (
+        elapsed_ms > 0
+        and actor.alive
+        and actor.hp < actor.max_hp
+        and regeneration_item
+        and regeneration_item in actor.equipment.values()
+    ):
+        heal = int(actor.max_hp * EQUIPMENT_HP_REGEN_RATIO_PER_SECOND * elapsed_ms / 1000.0)
+        if heal > 0:
+            before = actor.hp
+            actor.hp = min(actor.max_hp, actor.hp + heal)
+            events.append((StatusType.REGEN, actor.hp - before))
+
     actor.clamp_hp()
     return events
