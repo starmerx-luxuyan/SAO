@@ -90,45 +90,50 @@ def register_floor6_tools(mcp, cube, stachion, trials) -> None:
 
     @mcp.tool()
     def consult_floor6_barro(actor_id: str) -> str:
-        """Consult Barro, the former mansion gardener named in Theano's disappearance note."""
+        """Consult Barro, who directs the release-route investigation to his son Terro at Cylon's manor."""
         return _json(trials.consult_barro(actor_id))
 
     @mcp.tool()
-    def open_floor6_dungeon_of_trials(actor_id: str) -> str:
-        """Use the Suribus golden key at the Stachion manor basement entrance and unlock the Dungeon of Trials world edge."""
-        return _json(trials.open_dungeon_of_trials(actor_id))
+    def consult_floor6_terro(actor_id: str) -> str:
+        """Ask Terro to move the manor-garden statue base and reveal the Dungeon of Trials secret back door."""
+        return _json(trials.consult_terro(actor_id))
 
     @mcp.tool()
-    def inspect_floor6_dungeon_release_route(actor_id: str) -> str:
-        """Enter the Dungeon of Trials and establish the changed release-route state after Theano has already passed through."""
-        return _json(trials.inspect_release_dungeon(actor_id))
+    def inspect_floor6_trials_final_chamber(actor_id: str) -> str:
+        """After entering through Terro's secret back door, inspect the directly reached final chamber and confirm Theano and the Golden Cube are gone."""
+        return _json(trials.inspect_release_final_chamber(actor_id))
+
+    @mcp.tool()
+    def open_floor6_trials_main_entrance(actor_id: str) -> str:
+        """Open the original-route Dungeon of Trials main entrance with the Suribus golden key. This does not advance the release-route investigation."""
+        return _json(trials.open_dungeon_of_trials_main_entrance(actor_id))
 
     @mcp.tool()
     def get_floor6_trials_state(actor_id: str) -> str:
-        """Inspect Myia, paired-key and Dungeon of Trials release-route progress."""
+        """Inspect Myia, paired-key, Terro secret-route and missing-Golden-Cube progress."""
         return _json(trials.status(actor_id))
 
     @mcp.tool()
     def start_floor6_irrational_cube_puzzle(player_ids: list[str]) -> str:
-        """Begin The Irrational Cube's invulnerable 3x3 number-face puzzle in the Floor 6 Boss Room."""
+        """Begin The Irrational Cube's numbered-armor puzzle in the Floor 6 Boss Room."""
         return _json(cube.start_puzzle(player_ids))
 
     @mcp.tool()
     def rotate_floor6_cube_row(instance_id: str, row: int, direction: str) -> str:
-        """Rotate one numbered row left/right during The Irrational Cube's invulnerability puzzle."""
+        """Rotate one numbered row left/right during The Irrational Cube's armor puzzle."""
         return _json(cube.rotate_row(instance_id, row, direction))
 
     @mcp.tool()
     def rotate_floor6_cube_column(instance_id: str, column: int, direction: str) -> str:
-        """Rotate one numbered column up/down during The Irrational Cube's invulnerability puzzle."""
+        """Rotate one numbered column up/down during The Irrational Cube's armor puzzle."""
         return _json(cube.rotate_column(instance_id, column, direction))
 
     @mcp.tool()
     def engage_floor6_irrational_cube(instance_id: str) -> str:
-        """After the number face matches the nine-digit door code, start the normal Floor 6 boss combat phase."""
+        """After the numbered armor collapses, engage The Irrational Cube's exposed black core through the normal boss combat runtime."""
         return _json(cube.engage_boss(instance_id))
 
     @mcp.tool()
     def get_floor6_irrational_cube_state(instance_id: str) -> str:
-        """Inspect the current number face, target code, puzzle stage and combat state."""
+        """Inspect the current number face, target arrangement, puzzle stage and exposed-core combat state."""
         return _json(cube.status(instance_id))
