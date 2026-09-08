@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar) -> None:
+def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> None:
     @mcp.tool()
     def get_floor7_volcoin_wallet(actor_id: str) -> str:
         """Inspect Cor/Volcoin balance and the exact Volupta exchange rate."""
@@ -135,7 +135,7 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar) -> None:
 
     @mcp.tool()
     def rejoin_floor7_kizmel_at_harin(instance_id: str) -> str:
-        """Find Kizmel in the seventh-story prison and return her confiscated saber as a real weapon instance."""
+        """Find Kizmel in the seventh-story prison and return her exact confiscated weapon instance when one already exists in the campaign."""
         return _json(elfwar.rejoin_kizmel(instance_id))
 
     @mcp.tool()
@@ -162,6 +162,41 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar) -> None:
     def get_floor7_harin_escape_state(instance_id: str) -> str:
         """Inspect Harin imprisonment, weapon recovery, Lavik/Kizmel, blackout, Narsos and Volupta-return state."""
         return _json(elfwar.status(instance_id))
+
+    @mcp.tool()
+    def negotiate_floor7_scyia_counteroffer(lead_actor_id: str, duel_partner_id: str) -> str:
+        """Use a First Strike duel in Volupta's safe zone to blood-mark the Map of Scyia, receive the Fallen Elves' Dragon Bone 07:00 counteroffer and accept it with Y."""
+        return _json(pursuit.negotiate_scyia_counteroffer(lead_actor_id, duel_partner_id))
+
+    @mcp.tool()
+    def rest_and_reach_floor7_dragon_bone_watch(instance_id: str) -> str:
+        """Rest after the Scyia exchange, depart at the canon-scale early-morning window and reach the watch hill before the Dragon Bone rendezvous."""
+        return _json(pursuit.rest_and_reach_dragon_bone_watch(instance_id))
+
+    @mcp.tool()
+    def observe_floor7_fallen_departure(instance_id: str) -> str:
+        """Watch the two unnamed Fallen Elves reach Dragon Bone and begin leaving at about 07:05."""
+        return _json(pursuit.observe_fallen_departure(instance_id))
+
+    @mcp.tool()
+    def pursue_floor7_fallen_to_ant_valley(instance_id: str) -> str:
+        """Tail the two Fallen Elves across the Field of Bones into Ant Tunnel Valley while preserving the party's world-time pressure."""
+        return _json(pursuit.pursue_to_ant_tunnel_valley(instance_id))
+
+    @mcp.tool()
+    def follow_floor7_fallen_into_labyrinth(instance_id: str) -> str:
+        """Follow the Fallen Elves through Ant Tunnel Valley and the plateau when they bypass any local hideout and enter the Floor 7 Labyrinth."""
+        return _json(pursuit.follow_through_valley_into_labyrinth(instance_id))
+
+    @mcp.tool()
+    def pursue_floor7_fallen_until_saferoom(instance_id: str) -> str:
+        """Continue through Labyrinth battles until the scouts are lost and the party reaches the January-8 saferoom state with zero sacred keys recovered."""
+        return _json(pursuit.pursue_until_saferoom(instance_id))
+
+    @mcp.tool()
+    def get_floor7_fallen_pursuit_state(instance_id: str) -> str:
+        """Inspect Scyia map metadata, Kizmel/Greenleaf status, Fallen scout locations, Nirrnir deadline and sacred-key recovery state."""
+        return _json(pursuit.status(instance_id))
 
     @mcp.tool()
     def trigger_floor7_nirrnir_poisoning(actor_id: str) -> str:
