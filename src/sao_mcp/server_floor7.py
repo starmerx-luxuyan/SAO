@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor7_tools(mcp, volupta, aghyellr, intrigue) -> None:
+def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar) -> None:
     @mcp.tool()
     def get_floor7_volcoin_wallet(actor_id: str) -> str:
         """Inspect Cor/Volcoin balance and the exact Volupta exchange rate."""
@@ -107,6 +107,61 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue) -> None:
     def get_floor7_casino_intrigue_state(actor_id: str) -> str:
         """Inspect the arena evidence, ingredient, decolorant and Storm Lykaon reveal state."""
         return _json(intrigue.status(actor_id))
+
+    @mcp.tool()
+    def start_floor7_harin_arrest(player_ids: list[str]) -> str:
+        """Arrive at Harin Tree Palace, trigger the Fallen-Elf collaboration arrest and move real equipped weapons into the confiscated-weapon store."""
+        return _json(elfwar.arrive_and_be_arrested(player_ids))
+
+    @mcp.tool()
+    def burn_floor7_harin_cell_lock(instance_id: str) -> str:
+        """Char the all-wood B2 cell lock with the canon torch tactic until the party can escape quietly."""
+        return _json(elfwar.burn_cell_lock(instance_id))
+
+    @mcp.tool()
+    def recover_floor7_harin_confiscated_weapons(instance_id: str) -> str:
+        """Recover each player's exact confiscated equipment instances from the Harin basement weapon store."""
+        return _json(elfwar.recover_confiscated_weapons(instance_id))
+
+    @mcp.tool()
+    def meet_floor7_lavik(instance_id: str) -> str:
+        """Search the basement cells, meet Lavik Fen Cortassios and add the long-imprisoned Dark Elf fugitive to the escape party."""
+        return _json(elfwar.meet_lavik(instance_id))
+
+    @mcp.tool()
+    def let_floor7_lavik_clear_guard_post(instance_id: str) -> str:
+        """Let Lavik nonlethally subdue the Harin guards and lead the fugitives toward the seventh-story clergy prison."""
+        return _json(elfwar.lavik_subdues_guard_post(instance_id))
+
+    @mcp.tool()
+    def rejoin_floor7_kizmel_at_harin(instance_id: str) -> str:
+        """Find Kizmel in the seventh-story prison and return her confiscated saber as a real weapon instance."""
+        return _json(elfwar.rejoin_kizmel(instance_id))
+
+    @mcp.tool()
+    def convince_floor7_kizmel_to_escape(instance_id: str) -> str:
+        """Convince the accused Kizmel to escape as a fugitive and clear her own name by recovering the sacred keys."""
+        return _json(elfwar.convince_kizmel_to_escape(instance_id))
+
+    @mcp.tool()
+    def blackout_and_escape_floor7_harin(instance_id: str) -> str:
+        """Leave a lit torch to extinguish Harin's bonfire-shroom lighting, then descend the roughly fifty-metre outer trunk and complete Prisoners of the Tree Palace."""
+        return _json(elfwar.blackout_and_escape(instance_id))
+
+    @mcp.tool()
+    def gather_floor7_post_escape_narsos(instance_id: str, carrier_actor_id: str | None = None) -> str:
+        """After escaping Harin, gather the same twenty Narsos fruits used by the Volupta decolorant line and part ways with Lavik."""
+        return _json(elfwar.gather_narsos_and_part_with_lavik(instance_id, carrier_actor_id=carrier_actor_id))
+
+    @mcp.tool()
+    def return_floor7_harin_party_to_volupta(instance_id: str) -> str:
+        """Return the escaped player party to Volupta with fugitive Kizmel while Lavik continues separately."""
+        return _json(elfwar.return_to_volupta_with_kizmel(instance_id))
+
+    @mcp.tool()
+    def get_floor7_harin_escape_state(instance_id: str) -> str:
+        """Inspect Harin imprisonment, weapon recovery, Lavik/Kizmel, blackout, Narsos and Volupta-return state."""
+        return _json(elfwar.status(instance_id))
 
     @mcp.tool()
     def trigger_floor7_nirrnir_poisoning(actor_id: str) -> str:
