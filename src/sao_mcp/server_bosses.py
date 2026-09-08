@@ -44,15 +44,14 @@ def register_boss_tools(mcp, runtime) -> None:
         """Inspect one boss action's telegraph, reach, target cap and provenance."""
         return _json(asdict(CORE_BOSS_ACTIONS[action_id]))
 
-    @mcp.tool()
-    def start_floor_1_illfang_raid(
-        player_ids: list[str],
-        enforce_location: bool = True,
-    ) -> str:
-        """Start the implemented Floor-1 Illfang raid, spawning the boss and its opening Sentinels."""
+    def _start_boss(player_ids: list[str], boss_definition_id: str, enforce_location: bool) -> str:
+        if boss_definition_id not in CORE_BOSSES:
+            raise KeyError(boss_definition_id)
+        if boss_definition_id == "asterius_the_taurus_king":
+            raise ValueError("Floor 2 Asterius uses the dedicated Taurus raid sequence")
         encounter, boss = runtime.start_floor_boss_encounter(
             player_ids,
-            boss_definition_id="illfang_the_kobold_lord",
+            boss_definition_id=boss_definition_id,
             enforce_location=enforce_location,
         )
         minions = [
@@ -73,8 +72,25 @@ def register_boss_tools(mcp, runtime) -> None:
         )
 
     @mcp.tool()
+    def start_floor_boss_raid(
+        player_ids: list[str],
+        boss_definition_id: str,
+        enforce_location: bool = True,
+    ) -> str:
+        """Start any implemented ordinary Floor Boss raid. Floor 2 uses its dedicated Taurus sequence."""
+        return _start_boss(player_ids, boss_definition_id, enforce_location)
+
+    @mcp.tool()
+    def start_floor_1_illfang_raid(
+        player_ids: list[str],
+        enforce_location: bool = True,
+    ) -> str:
+        """Start the Floor-1 Illfang raid; retained as a convenient compatibility entry point."""
+        return _start_boss(player_ids, "illfang_the_kobold_lord", enforce_location)
+
+    @mcp.tool()
     def get_boss_state(encounter_id: str, boss_id: str | None = None) -> str:
-        """Return segmented HP bars, phase, pending telegraph and Sentinel spawn count for an encounter boss."""
+        """Return segmented HP bars, phase and pending telegraph for an encounter boss."""
         encounter = runtime.encounters[encounter_id]
         if boss_id is None:
             candidates = [
