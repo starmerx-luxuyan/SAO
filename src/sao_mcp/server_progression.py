@@ -5,7 +5,11 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
+from sao_mcp.domain.models import SkillKind
 from sao_mcp.rules.progression import equip_skill, remove_skill, skill_slot_count
+
+
+RESTRICTED_SKILL_KINDS = {SkillKind.EXTRA, SkillKind.UNIQUE}
 
 
 def _default(value: Any):
@@ -20,11 +24,16 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
+def _unlocked_special_skills(actor) -> set[str]:
+    return set(actor.metadata.get("unlocked_special_skills", ()))
+
+
 def register_progression_tools(mcp, runtime) -> None:
     @mcp.tool()
     def list_available_skills(actor_id: str) -> str:
-        """List catalog skills with equipped/proficiency state and remaining skill slots."""
+        """List catalog skills with acquisition, equipment and proficiency state."""
         actor = runtime.actors[actor_id]
+        unlocked_special = _unlocked_special_skills(actor)
         return _json(
             {
                 "actorId": actor_id,
@@ -33,6 +42,11 @@ def register_progression_tools(mcp, runtime) -> None:
                 "skills": [
                     {
                         "definition": asdict(definition),
+                        "unlocked": (
+                            definition.kind not in RESTRICTED_SKILL_KINDS
+                            or skill_id in unlocked_special
+                            or skill_id in actor.equipped_skills
+                        ),
                         "equipped": skill_id in actor.equipped_skills,
                         "proficiency": actor.skill_proficiencies.get(skill_id),
                     }
@@ -43,11 +57,17 @@ def register_progression_tools(mcp, runtime) -> None:
 
     @mcp.tool()
     def equip_character_skill(actor_id: str, skill_id: str) -> str:
-        """Equip a catalog skill into a free Aincrad skill slot."""
+        """Equip an acquired catalog skill into a free Aincrad skill slot."""
         if skill_id not in runtime.catalog.skills:
             raise KeyError(skill_id)
         actor = runtime.actors[actor_id]
         definition = runtime.catalog.skills[skill_id]
+        if (
+            definition.kind in RESTRICTED_SKILL_KINDS
+            and skill_id not in _unlocked_special_skills(actor)
+            and skill_id not in actor.equipped_skills
+        ):
+            raise ValueError("Extra/Unique Skill has not been acquired by this character")
         for prerequisite in definition.prerequisites:
             if prerequisite not in actor.skill_proficiencies:
                 raise ValueError(f"missing skill prerequisite: {prerequisite}")
