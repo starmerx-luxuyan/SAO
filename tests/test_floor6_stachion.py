@@ -1,10 +1,21 @@
 import pytest
 
 from sao_mcp.corpus.floor6_ambush import GAS_MASK_ID, IRON_KEY_ID
+from sao_mcp.corpus.floor6_finale import GOLDEN_CUBE_ID
 from sao_mcp.corpus.floor6_stachion import GOLDEN_KEY_ID, POISON_JAR_ID, QUEST_ID, WITNESSES
 from sao_mcp.corpus.floor6_trials import THEANO_IRON_KEY_ID
 from sao_mcp.domain.models import CursorColor
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.scenarios.floor6_south import (
+    BOSS_ROOM,
+    GOSKAI,
+    GOSKAI_CAVES,
+    LABYRINTH,
+    LABYRINTH_BREACH,
+    LAKE_TALPHA,
+    MURUTSUKI,
+    install_floor6_south_scenario,
+)
 from sao_mcp.scenarios.floor6_stachion import (
     CYLON_MANOR,
     CYLON_TRANSPORT,
@@ -21,10 +32,11 @@ from sao_mcp.scenarios.floor6_trials import (
 )
 
 
-def test_curse_of_stachion_release_route_reaches_empty_final_chamber_via_terro():
+def test_curse_of_stachion_release_route_reaches_floor6_boss_room_with_same_golden_cube():
     runtime = HousingAincradRuntime(seed=47)
     stachion = install_floor6_stachion_scenario(runtime)
     trials = install_floor6_trials_scenario(runtime)
+    south = install_floor6_south_scenario(runtime)
     player = runtime.create_character("StachionSolver", level=40)
     runtime.world.floors[6].unlocked = True
     player.location_id = CYLON_MANOR
@@ -163,7 +175,6 @@ def test_curse_of_stachion_release_route_reaches_empty_final_chamber_via_terro()
     assert trial_state["stage"] == "secret_back_door_revealed"
     assert trial_state["secret_back_door_revealed"] is True
 
-    # Release route does not consume/use the Suribus golden key to enter the Dungeon.
     assert "opened_dungeon_of_trials_main_entrance" not in player.inventory[original_key_id].metadata
     runtime.travel_actor(player.actor_id, DUNGEON_SECRET_BACK_DOOR)
     runtime.travel_actor(player.actor_id, DUNGEON_FINAL_CHAMBER)
@@ -173,4 +184,56 @@ def test_curse_of_stachion_release_route_reaches_empty_final_chamber_via_terro()
     assert trial_state["theano_missing_with_golden_cube"] is True
     assert trial_state["ready_to_claim"] is False
     assert trial_state["next_stage"] == "track Theano and the Golden Cube south"
+
+    south_state = south.receive_south_sighting(player.actor_id)
+    theano = runtime.actors[south_state["theano_actor_id"]]
+    golden_cube_id = south_state["golden_cube_instance_id"]
+    assert south_state["stage"] == "theano_sighted_goskai_caves"
+    assert theano.inventory[golden_cube_id].template_id == GOLDEN_CUBE_ID
+
+    runtime.travel_actor(player.actor_id, DUNGEON_SECRET_BACK_DOOR)
+    runtime.travel_actor(player.actor_id, CYLON_MANOR)
+    runtime.travel_actor(player.actor_id, STACHION)
+    runtime.travel_actor(player.actor_id, "floor_6_field")
+    runtime.travel_actor(player.actor_id, LAKE_TALPHA)
+    runtime.travel_actor(player.actor_id, GOSKAI)
+    runtime.travel_actor(player.actor_id, GOSKAI_CAVES)
+
+    south_state = south.start_basalt_morpha_event(player.actor_id)
+    basalt = runtime.actors[south_state["basalt_actor_id"]]
+    basalt_encounter = runtime.encounters[south_state["basalt_encounter_id"]]
+    assert south_state["stage"] == "basalt_morpha_battle"
+    assert south_state["basalt_rock_armor_intact"] is True
+    intact_armor = basalt.armor
+
+    south_state = south.theano_break_basalt_armor(player.actor_id)
+    assert south_state["stage"] == "basalt_morpha_armor_broken"
+    assert south_state["basalt_rock_armor_intact"] is False
+    assert basalt.armor < intact_armor
+    assert theano.inventory[golden_cube_id].metadata["break_used_on_basalt_morpha"] is True
+
+    # The Golden Cube changes defense state only. An ordinary combat attack performs the actual kill.
+    basalt.hp = 1
+    basalt.alive = True
+    basalt_kill = runtime.attack(basalt_encounter.encounter_id, player.actor_id, basalt.actor_id, seed=1)
+    assert basalt_kill.legal and basalt_kill.hit
+    assert not basalt.alive
+
+    south_state = south.continue_trail_to_murutsuki(player.actor_id)
+    assert south_state["stage"] == "theano_passed_murutsuki"
+    assert theano.location_id == MURUTSUKI
+    assert south_state["golden_cube_instance_id"] == golden_cube_id
+
+    runtime.travel_actor(player.actor_id, GOSKAI)
+    runtime.travel_actor(player.actor_id, MURUTSUKI)
+    runtime.travel_actor(player.actor_id, LABYRINTH)
+    south_state = south.breach_labyrinth_with_golden_cube(player.actor_id)
+    assert south_state["stage"] == "theano_reached_floor6_boss_room"
+    assert theano.location_id == BOSS_ROOM
+    assert theano.inventory[golden_cube_id].metadata["break_used_on_labyrinth_walls"] is True
+
+    runtime.travel_actor(player.actor_id, LABYRINTH_BREACH)
+    runtime.travel_actor(player.actor_id, BOSS_ROOM)
+    assert player.location_id == BOSS_ROOM
+    assert south.status(player.actor_id)["golden_cube_instance_id"] == golden_cube_id
     assert QUEST_ID not in runtime.quests.completed_by_actor[player.actor_id]
