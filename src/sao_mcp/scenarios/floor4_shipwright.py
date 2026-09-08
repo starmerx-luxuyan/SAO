@@ -9,6 +9,8 @@ from sao_mcp.corpus.floor4 import (
     QUEST_ID,
     STANDARD_MATERIALS,
 )
+from sao_mcp.corpus.loot import CORE_LOOT_TABLES
+from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES
 from sao_mcp.domain.models import ItemInstance
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.quests import QuestObjectiveKind
@@ -34,6 +36,10 @@ class Floor4ShipwrightScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        magnatherium = AINCRAD_MONSTERS[MAGNATHERIUM_ID]
+        CORE_LOOT_TABLES[magnatherium.loot_table_id] = AINCRAD_MONSTER_LOOT_TABLES[
+            magnatherium.loot_table_id
+        ]
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor4_shipwright_states", {})
