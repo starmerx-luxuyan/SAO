@@ -5,6 +5,7 @@ from sao_mcp.corpus.social_seed import apply_social_catalog_seed
 from sao_mcp.runtime.community_hooks import attach_community_economy
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.property_economy import make_runtime_economy
+from sao_mcp.scenarios.floor2_taurus_raid import install_floor2_taurus_raid_scenario
 from sao_mcp.scenarios.floor3_spiders import install_floor3_spider_scenario
 from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 from sao_mcp.server_adventure import register_adventure_tools
@@ -12,6 +13,7 @@ from sao_mcp.server_communications import register_communication_tools
 from sao_mcp.server_duels import register_duel_tools
 from sao_mcp.server_economy import register_economy_tools
 from sao_mcp.server_family import register_family_tools
+from sao_mcp.server_floor2 import register_floor2_tools
 from sao_mcp.server_floor3 import register_floor3_tools
 from sao_mcp.server_floor22 import register_floor22_tools
 from sao_mcp.server_housing import register_housing_tools
@@ -29,6 +31,7 @@ if not isinstance(core_server.runtime, HousingAincradRuntime):
 mcp = core_server.mcp
 runtime = core_server.runtime
 apply_social_catalog_seed(runtime.catalog)
+floor2_taurus_raid = install_floor2_taurus_raid_scenario(runtime)
 floor3_spiders = install_floor3_spider_scenario(runtime)
 floor22_witch = install_floor22_witch_scenario(runtime)
 
@@ -47,6 +50,7 @@ register_relationship_tools(mcp, runtime)
 register_family_tools(mcp, runtime)
 register_communication_tools(mcp, runtime)
 register_housing_tools(mcp, runtime)
+register_floor2_tools(mcp, floor2_taurus_raid)
 register_floor3_tools(mcp, floor3_spiders)
 register_floor22_tools(mcp, floor22_witch)
 
@@ -57,4 +61,4 @@ register_boss_tools(mcp, runtime)
 from sao_mcp import server_ui as _server_ui  # noqa: E402,F401
 from sao_mcp import server_boss_ui as _server_boss_ui  # noqa: E402,F401
 
-__all__ = ["mcp", "runtime", "floor3_spiders", "floor22_witch"]
+__all__ = ["mcp", "runtime", "floor2_taurus_raid", "floor3_spiders", "floor22_witch"]
