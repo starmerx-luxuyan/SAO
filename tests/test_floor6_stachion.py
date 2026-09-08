@@ -1,6 +1,8 @@
 import pytest
 
-from sao_mcp.corpus.floor6_stachion import GOLDEN_KEY_ID, QUEST_ID, WITNESSES
+from sao_mcp.corpus.floor6_ambush import GAS_MASK_ID, IRON_KEY_ID
+from sao_mcp.corpus.floor6_stachion import GOLDEN_KEY_ID, POISON_JAR_ID, QUEST_ID, WITNESSES
+from sao_mcp.domain.models import CursorColor
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.scenarios.floor6_stachion import (
     CYLON_MANOR,
@@ -13,7 +15,7 @@ from sao_mcp.scenarios.floor6_stachion import (
 )
 
 
-def test_curse_of_stachion_reaches_scripted_capture_with_real_key_ownership_and_paralysis():
+def test_curse_of_stachion_hands_scripted_capture_back_to_normal_pvp():
     runtime = HousingAincradRuntime(seed=47)
     stachion = install_floor6_stachion_scenario(runtime)
     player = runtime.create_character("StachionSolver", level=40)
@@ -33,7 +35,6 @@ def test_curse_of_stachion_reaches_scripted_capture_with_real_key_ownership_and_
     assert state["quest_progress"]["gather_old_household_testimony"] == 7
     assert state["quest_progress"]["discover_suribus_second_home"] == 1
 
-    # Re-interviewing the same witness must not double-count the seven-person investigation.
     state = stachion.interview_witness(player.actor_id, witness_ids[0])
     assert state["witness_count"] == 7
     assert state["quest_progress"]["gather_old_household_testimony"] == 7
@@ -69,6 +70,37 @@ def test_curse_of_stachion_reaches_scripted_capture_with_real_key_ownership_and_
 
     state = stachion.advance_transport_to_ambush_site(player.actor_id)
     assert state["stage"] == "morte_joe_ambush_pending"
+    state = stachion.trigger_morte_joe_ambush(player.actor_id)
+    morte = runtime.actors[state["morte_actor_id"]]
+    joe = runtime.actors[state["joe_actor_id"]]
+    assert not cylon.alive
+    assert state["stage"] == "ambush_cylon_dead"
+    assert morte.actor_id in encounter.participants
+    assert joe.actor_id in encounter.participants
+    assert morte.actor_id in encounter.positions
+    assert joe.actor_id in encounter.positions
+
+    ground_templates = {row["template_id"] for row in state["ground_items"]}
+    assert {GOLDEN_KEY_ID, IRON_KEY_ID, POISON_JAR_ID, GAS_MASK_ID}.issubset(ground_templates)
+    ground_key = next(row for row in state["ground_items"] if row["instance_id"] == original_key_id)
+    assert ground_key["owner_id"] is None
+
+    state = stachion.topple_poison_jar(player.actor_id)
+    assert state["stage"] == "poison_cloud_deployed"
+    assert state["poison_cloud_active"]
     assert state["paralysed"]
-    assert state["next_canon_stage"] == "Morte and Joe ambush Cylon's carriage"
+    assert morte.metadata["avoiding_paralysis_cloud"] is True
+    assert joe.metadata["avoiding_paralysis_cloud"] is True
+
+    state = stachion.advance_to_paralysis_release(player.actor_id)
+    assert state["stage"] == "morte_joe_pvp_active"
+    assert not state["paralysed"]
+
+    # From here the scenario stops scripting combat. Existing PvP rules decide the result.
+    hostile_strike = runtime.attack(encounter.encounter_id, morte.actor_id, player.actor_id, seed=3)
+    assert hostile_strike.legal
+    assert morte.cursor is CursorColor.ORANGE
+    counter = runtime.attack(encounter.encounter_id, player.actor_id, morte.actor_id, seed=4)
+    assert counter.legal
+    assert player.cursor is CursorColor.GREEN
     assert state["ready_to_claim"] is False
