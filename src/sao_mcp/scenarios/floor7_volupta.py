@@ -8,6 +8,7 @@ from sao_mcp.corpus.floor7 import (
     SWORD_OF_VOLUPTA_PRICE_VOLCOIN,
     VOLCOIN_COR_VALUE,
 )
+from sao_mcp.corpus.floor7_monsters import apply_floor7_monster_corpus
 from sao_mcp.domain.models import ItemInstance
 from sao_mcp.rules.inventory import add_item
 
@@ -42,6 +43,7 @@ class Floor7VoluptaScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        apply_floor7_monster_corpus(runtime.catalog)
 
     def _matches(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor7_monster_arena_matches", {})
