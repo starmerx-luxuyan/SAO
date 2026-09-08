@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES, MonsterDefinition
+from sao_mcp.corpus.quests import CORE_QUESTS
 from sao_mcp.domain.models import ItemKind, ItemTemplate, Provenance, ProvenanceKind
 from sao_mcp.rules.loot import LootEntry, LootTable
 from sao_mcp.rules.npcs import CORE_NPCS, NPCDefinition
 from sao_mcp.rules.quests import (
-    CORE_QUESTS if False else QuestDefinition,  # type: ignore[comparison-overlap]
+    QuestDefinition,
+    QuestObjectiveDefinition,
+    QuestObjectiveKind,
+    QuestReward,
 )
-from sao_mcp.corpus.quests import CORE_QUESTS
-from sao_mcp.rules.quests import QuestObjectiveDefinition, QuestObjectiveKind, QuestReward
 
 
 PROGRESSIVE_2 = "Sword Art Online Progressive Volume 2: Concerto of Black and White"
