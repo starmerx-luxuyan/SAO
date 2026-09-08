@@ -4,6 +4,7 @@ from sao_mcp.corpus.bosses_progressive import apply_progressive_boss_catalog_see
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.floor2 import apply_floor2_martial_arts_corpus
 from sao_mcp.corpus.floor3 import apply_floor3_spider_corpus
+from sao_mcp.corpus.floor4 import apply_floor4_shipwright_corpus
 from sao_mcp.corpus.items import apply_aincrad_item_seed
 from sao_mcp.corpus.skills import apply_aincrad_skill_seed
 from sao_mcp.corpus.weapons import apply_aincrad_weapon_seed
@@ -49,6 +50,7 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
     apply_progressive_boss_catalog_seed(catalog)
     apply_floor2_martial_arts_corpus(catalog)
     apply_floor3_spider_corpus(catalog)
+    apply_floor4_shipwright_corpus(catalog)
 
     catalog.weapons.setdefault(
         "anneal_blade",
