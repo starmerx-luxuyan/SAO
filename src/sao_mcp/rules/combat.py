@@ -8,6 +8,7 @@ from sao_mcp.domain.models import (
     DefenseMode,
     EnhancementTrack,
     ItemInstance,
+    StatusType,
     SwordSkillDefinition,
     WeaponTemplate,
 )
@@ -81,6 +82,15 @@ def _guild_party_bonus(actor: CombatantState) -> float:
     return _clamp(party_bonus + flag_bonus, 0.0, 0.30)
 
 
+def _incapacitating_status(actor: CombatantState) -> StatusType | None:
+    for status in actor.statuses:
+        if status.remaining_ms <= 0:
+            continue
+        if status.status_type in (StatusType.PARALYSIS, StatusType.STUN):
+            return status.status_type
+    return None
+
+
 def effective_attack_speed_ms(
     weapon: WeaponTemplate,
     item: ItemInstance,
@@ -119,6 +129,9 @@ def resolve_physical_attack(
         return AttackResolution(False, reason="attacker is defeated")
     if not defender.alive:
         return AttackResolution(False, reason="target is defeated")
+    incapacitated = _incapacitating_status(attacker)
+    if incapacitated is not None:
+        return AttackResolution(False, reason=f"attacker is {incapacitated.value}")
     if attacker.actor_id == defender.actor_id:
         return AttackResolution(False, reason="self-targeted physical attack is unsupported")
     if weapon_item.broken:
