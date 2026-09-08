@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sao_mcp.corpus.bosses_progressive import apply_progressive_boss_catalog_seed
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.items import apply_aincrad_item_seed
 from sao_mcp.corpus.skills import apply_aincrad_skill_seed
@@ -43,6 +44,7 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
     apply_aincrad_skill_seed(catalog)
     apply_aincrad_weapon_seed(catalog)
     apply_aincrad_item_seed(catalog)
+    apply_progressive_boss_catalog_seed(catalog)
 
     catalog.weapons.setdefault(
         "anneal_blade",
