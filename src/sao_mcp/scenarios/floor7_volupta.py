@@ -8,7 +8,6 @@ from sao_mcp.corpus.floor7 import (
     SWORD_OF_VOLUPTA_PRICE_VOLCOIN,
     VOLCOIN_COR_VALUE,
 )
-from sao_mcp.corpus.floor7_monsters import apply_floor7_monster_corpus
 from sao_mcp.domain.models import ItemInstance
 from sao_mcp.rules.inventory import add_item
 
@@ -16,24 +15,26 @@ from sao_mcp.rules.inventory import add_item
 CASINO = "floor_7_volupta_grand_casino"
 MONSTER_ARENA = "floor_7_monster_arena"
 
-# The combatants and historical winners are canon. Odds/probabilities are simulation so a live campaign
-# is not forced to reproduce Kirito and Asuna's historical betting result.
+# Contenders and historical winners are canon. The first match's observed opening odds are also canon.
+# Live outcomes remain simulation so a campaign is not forced to reproduce the source timeline.
 ARENA_MATCHES: dict[str, dict] = {
     "rusty_lykaon_vs_bouncy_slater": {
         "name": "Rusty Lykaon vs Bouncy Slater",
         "contenders": ("rusty_lykaon", "bouncy_slater"),
+        "arena_rank": {"rusty_lykaon": 6, "bouncy_slater": 6},
         "win_weights": {"rusty_lykaon": 0.54, "bouncy_slater": 0.46},
-        "payout_multipliers": {"rusty_lykaon": 1.76, "bouncy_slater": 2.07},
+        "payout_multipliers": {"rusty_lykaon": 2.39, "bouncy_slater": 1.64},
         "canon_historical_winner": "rusty_lykaon",
-        "provenance": "canon_contenders_and_historical_winner; simulation live odds/outcome",
+        "provenance": "canon contenders, Rank 6 classification, historical winner and observed opening odds 2.39/1.64; simulation live outcome",
     },
     "tiny_glyptodont_vs_verdian_bighorn": {
         "name": "Tiny Glyptodont vs Verdian Bighorn",
         "contenders": ("tiny_glyptodont", "verdian_bighorn"),
+        "arena_rank": None,
         "win_weights": {"tiny_glyptodont": 0.43, "verdian_bighorn": 0.57},
         "payout_multipliers": {"tiny_glyptodont": 2.21, "verdian_bighorn": 1.67},
         "canon_historical_winner": "verdian_bighorn",
-        "provenance": "canon_contenders_and_historical_winner; simulation live odds/outcome",
+        "provenance": "canon contenders and historical winner; simulation live odds/outcome because exact opening odds are not locked here",
     },
 }
 
@@ -43,7 +44,6 @@ class Floor7VoluptaScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        apply_floor7_monster_corpus(runtime.catalog)
 
     def _matches(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor7_monster_arena_matches", {})
@@ -162,6 +162,7 @@ class Floor7VoluptaScenario:
         return {
             **state,
             "contenders": list(definition["contenders"]),
+            "arena_rank": definition["arena_rank"],
             "payout_multipliers": dict(definition["payout_multipliers"]),
             "live_outcome_model": "simulation_weighted_random",
             "canon_historical_winner": definition["canon_historical_winner"],
