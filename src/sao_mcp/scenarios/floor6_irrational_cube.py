@@ -10,7 +10,7 @@ from sao_mcp.corpus.floor6 import (
     apply_floor6_world_seed,
 )
 from sao_mcp.corpus.floor6_finale import COMBINED_IRON_KEY_ID, GOLDEN_CUBE_ID
-from sao_mcp.domain.models import EntityKind, StatusEffectState, StatusType
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, StatusEffectState, StatusType
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.social import apply_unlawful_hostile_action
 
@@ -120,6 +120,8 @@ class Floor6IrrationalCubeScenario:
             "cube_ejected_by_actor_id": None,
             "combined_key_instance_id": None,
             "golden_cube_destroyed": False,
+            "surviving_key_cache_actor_id": None,
+            "surviving_key_recovered_by_actor_id": None,
         }
         self._instances()[instance_id] = state
         return self.status(instance_id)
@@ -199,13 +201,21 @@ class Floor6IrrationalCubeScenario:
         key = actor.inventory[combined_key_instance_id]
         if key.template_id != COMBINED_IRON_KEY_ID:
             raise ValueError("the reverse keyhole requires the combined Cylon/Theano iron key")
+
+        # The steel key is inserted into the reverse keyhole and remains in the guardian until its destruction.
+        actor.inventory.pop(key.instance_id)
+        key.owner_id = boss.actor_id
+        key.metadata["inserted_into_irrational_cube_reverse_keyhole"] = True
+        key.metadata["used_to_eject_golden_cube"] = True
+        key.metadata["survives_floor6_boss"] = True
+        boss.inventory[key.instance_id] = key
+        boss.metadata["reverse_key_instance_id"] = key.instance_id
+
         cube_item = boss.inventory.pop(state["golden_cube_instance_id"])
         cube_item.owner_id = actor_id
         cube_item.metadata["ejected_from_irrational_cube"] = True
         cube_item.metadata["ejected_at_ms"] = self.runtime.world.now_ms
         add_item(actor, cube_item, self.runtime.catalog, allow_overweight=True)
-        key.metadata["used_to_eject_golden_cube"] = True
-        key.metadata["survives_floor6_boss"] = True
         state["stage"] = "golden_cube_ejected"
         state["cube_ejected_by_actor_id"] = actor_id
         state["combined_key_instance_id"] = key.instance_id
@@ -216,6 +226,7 @@ class Floor6IrrationalCubeScenario:
             boss.actor_id,
             golden_cube_instance_id=cube_item.instance_id,
             combined_key_instance_id=key.instance_id,
+            combined_key_left_in_reverse_keyhole=True,
         )
         return self.status(instance_id)
 
@@ -287,6 +298,34 @@ class Floor6IrrationalCubeScenario:
         state["golden_cube_destroyed"] = True
         state["stage"] = "cleared"
         state["cleared_at_ms"] = self.runtime.world.now_ms
+
+        # The combined steel key survives the boss/cube destruction and falls separately to the chamber floor.
+        surviving_key = None
+        combined_key_id = state.get("combined_key_instance_id")
+        if combined_key_id:
+            surviving_key = boss.inventory.pop(combined_key_id, None)
+        if surviving_key is not None:
+            surviving_key.owner_id = None
+            surviving_key.metadata["survived_irrational_cube_destruction"] = True
+            surviving_key.metadata["grounded_in_floor6_boss_room"] = True
+            cache_id = f"groundloot_floor6_key_{uuid.uuid4().hex[:10]}"
+            cache = CombatantState(
+                actor_id=cache_id,
+                name="Floor 6 Boss Debris",
+                kind=EntityKind.NPC,
+                level=1,
+                max_hp=1,
+                hp=1,
+                strength=1,
+                agility=1,
+                cursor=CursorColor.YELLOW,
+                location_id=BOSS_ROOM,
+                metadata={"ground_loot_cache": True, "noncombatant": True, "source": IRRATIONAL_CUBE_ID},
+            )
+            cache.inventory[surviving_key.instance_id] = surviving_key
+            self.runtime.actors[cache_id] = cache
+            state["surviving_key_cache_actor_id"] = cache_id
+
         for participant in encounter.participants.values():
             participant.statuses = [status for status in participant.statuses if status.stack_key != "golden_cube_bind"]
         self.runtime._append(
@@ -295,13 +334,43 @@ class Floor6IrrationalCubeScenario:
             actor_id,
             boss.actor_id,
             golden_cube_instance_id=cube_item.instance_id,
+            surviving_combined_key_instance_id=surviving_key.instance_id if surviving_key else None,
         )
         self.runtime._resolve_defeat(encounter, boss, actor_id)
         return self.status(instance_id)
 
+    def recover_surviving_combined_key(self, instance_id: str, actor_id: str) -> dict:
+        state = self._instance(instance_id)
+        if state["stage"] != "cleared":
+            raise ValueError("the combined key falls free only after The Irrational Cube is destroyed")
+        actor = self.runtime.actors[actor_id]
+        if actor.location_id != BOSS_ROOM:
+            raise ValueError("the surviving combined key is on the Floor 6 Boss Room floor")
+        cache_id = state.get("surviving_key_cache_actor_id")
+        if not cache_id or cache_id not in self.runtime.actors:
+            raise ValueError("no surviving combined key is waiting on the chamber floor")
+        cache = self.runtime.actors[cache_id]
+        key_id = state.get("combined_key_instance_id")
+        key = cache.inventory.pop(key_id, None)
+        if key is None:
+            raise ValueError("the surviving combined key has already been recovered")
+        key.metadata.pop("grounded_in_floor6_boss_room", None)
+        add_item(actor, key, self.runtime.catalog, allow_overweight=True)
+        state["surviving_key_recovered_by_actor_id"] = actor_id
+        return {
+            "instance_id": instance_id,
+            "actor_id": actor_id,
+            "combined_key_instance_id": key.instance_id,
+            "state": self.status(instance_id),
+        }
+
     def status(self, instance_id: str) -> dict:
         state = self._instance(instance_id)
         boss = self.runtime.actors[state["boss_id"]]
+        key_cache_id = state.get("surviving_key_cache_actor_id")
+        key_grounded = False
+        if key_cache_id in self.runtime.actors and state.get("combined_key_instance_id"):
+            key_grounded = state["combined_key_instance_id"] in self.runtime.actors[key_cache_id].inventory
         return {
             "instance_id": instance_id,
             "stage": state["stage"],
@@ -319,7 +388,14 @@ class Floor6IrrationalCubeScenario:
             "golden_cube_instance_id": state["golden_cube_instance_id"],
             "cube_ejected_by_actor_id": state.get("cube_ejected_by_actor_id"),
             "combined_key_instance_id": state.get("combined_key_instance_id"),
+            "combined_key_in_reverse_keyhole": bool(
+                state.get("combined_key_instance_id")
+                and state["combined_key_instance_id"] in boss.inventory
+            ),
             "golden_cube_destroyed": bool(state.get("golden_cube_destroyed")),
+            "surviving_key_cache_actor_id": key_cache_id,
+            "combined_key_grounded": key_grounded,
+            "surviving_key_recovered_by_actor_id": state.get("surviving_key_recovered_by_actor_id"),
         }
 
 
