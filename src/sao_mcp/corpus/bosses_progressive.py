@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from sao_mcp.corpus.bosses import (
+    CORE_BOSS_ACTIONS,
+    CORE_BOSS_MINIONS,
+    CORE_BOSSES,
     BossActionDefinition,
     BossDefinition,
     BossMinionDefinition,
@@ -28,7 +31,6 @@ def _sim(source: str, notes: str) -> Provenance:
 
 
 PROGRESSIVE_BOSS_ACTIONS: dict[str, BossActionDefinition] = {
-    # Floor 2 — Asterius and the Taurus mid-bosses.
     "asterius_hammer_sweep": BossActionDefinition(
         "asterius_hammer_sweep", "King's Hammer Sweep", 1050, 420, 760, 1.12, 4.2,
         accuracy_modifier=-0.05, max_targets=6, stagger_ms=520,
@@ -57,7 +59,6 @@ PROGRESSIVE_BOSS_ACTIONS: dict[str, BossActionDefinition] = {
         max_targets=7, stagger_ms=3000, tags=("hammer", "area", "stun", "numbing", "paralysis_on_repeat"),
         provenance=_canon(P1, "Baran's Numbing Detonation has a wider effective area than Nato's technique and repeated exposure can escalate into paralysis."),
     ),
-    # Floor 3 — Nerius.
     "nerius_branch_sweep": BossActionDefinition(
         "nerius_branch_sweep", "Evil Branch Sweep", 900, 420, 650, 0.98, 4.6,
         max_targets=6, stagger_ms=420, tags=("branch", "area"),
@@ -74,7 +75,6 @@ PROGRESSIVE_BOSS_ACTIONS: dict[str, BossActionDefinition] = {
         tags=("blue_flame", "breath", "cone", "area"),
         provenance=_inferred(P2, "Nerius is associated with a blue-flame mouth/breath attack; exact timing and damage are simulation."),
     ),
-    # Floor 4 — Wythege.
     "wythege_tail_sweep": BossActionDefinition(
         "wythege_tail_sweep", "Hippocampus Tail Sweep", 760, 340, 520, 0.92, 4.8,
         max_targets=6, stagger_ms=360, tags=("tail", "area"),
@@ -91,7 +91,6 @@ PROGRESSIVE_BOSS_ACTIONS: dict[str, BossActionDefinition] = {
         tags=("water_inflow", "environmental", "arena_wide", "counterable_from_outside"),
         provenance=_canon(P3, "Wythege can flood the boss chamber with Water Inflow; opening the boss-room door from outside can release the water. Damage/timing values are simulation."),
     ),
-    # Floor 5 — Fuscus.
     "fuscus_roar": BossActionDefinition(
         "fuscus_roar", "Vacant Colossus Roar", 650, 250, 500, 0.22, 30.0,
         accuracy_modifier=0.15, max_targets=48, stagger_ms=420,
@@ -162,8 +161,7 @@ PROGRESSIVE_BOSSES: dict[str, BossDefinition] = {
         minions_per_bar_depletion=0,
         minion_spawn_bar_depletions=(),
         last_attack_bonus_template_id=None,
-        provenance=_inferred(P1, "Boss identity, six HP bars, Nato/Baran support and lightning-breath behaviour are canon; numeric level/HP/stats are simulation."),
-        initial_minion_template_ids=("nato_colonel_taurus", "baran_general_taurus"),
+        provenance=_inferred(P1, "Boss identity, six HP bars, Nato/Baran support and lightning-breath behaviour are canon; numeric level/HP/stats are simulation. The exact surprise-spawn sequence is scenario content rather than a BossDefinition field."),
     ),
     "nerius_the_evil_treant": BossDefinition(
         boss_id="nerius_the_evil_treant",
@@ -312,3 +310,7 @@ def apply_progressive_boss_catalog_seed(catalog) -> None:
     }
     for template_id, weapon in weapons.items():
         catalog.weapons.setdefault(template_id, weapon)
+
+
+# Importing this content module registers the verified Progressive bosses into the existing corpus dicts.
+extend_progressive_boss_corpus(CORE_BOSSES, CORE_BOSS_MINIONS, CORE_BOSS_ACTIONS)
