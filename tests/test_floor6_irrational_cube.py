@@ -2,7 +2,7 @@ from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.scenarios.floor6_irrational_cube import install_floor6_irrational_cube_scenario
 
 
-def test_floor6_number_face_puzzle_unlocks_irrational_cube_battle_and_clears_floor():
+def test_floor6_number_face_puzzle_unlocks_single_gauge_black_core_battle():
     runtime = HousingAincradRuntime(seed=43)
     cube = install_floor6_irrational_cube_scenario(runtime)
     player = runtime.create_character("CubeSolver", level=42)
@@ -19,7 +19,6 @@ def test_floor6_number_face_puzzle_unlocks_irrational_cube_battle_and_clears_flo
     assert state["target_code"] == "834159672"
     assert state["boss_id"] is None
 
-    # INITIAL_FACE is a deterministic three-move scramble of the documented target arrangement.
     state = cube.rotate_row(state["instance_id"], 2, "left")
     assert not state["puzzle_solved"]
     state = cube.rotate_column(state["instance_id"], 2, "up")
@@ -32,7 +31,8 @@ def test_floor6_number_face_puzzle_unlocks_irrational_cube_battle_and_clears_flo
     state = cube.engage_boss(state["instance_id"])
     assert state["stage"] == "battle"
     assert state["boss"]["definitionId"] == "the_irrational_cube"
-    assert state["boss"]["hpBars"] == 6
+    assert state["boss"]["hpBars"] == 1
+    assert state["boss"]["phase"] == "exposed_black_core"
 
     boss = runtime.actors[state["boss_id"]]
     encounter = runtime.encounters[state["encounter_id"]]
