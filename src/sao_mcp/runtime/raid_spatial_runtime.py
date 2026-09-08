@@ -9,6 +9,21 @@ from sao_mcp.runtime.spatial_runtime import SpatialAincradRuntime
 class RaidSpatialAincradRuntime(SpatialAincradRuntime):
     """Spatial runtime with deterministic formations that remain valid up to a 48-player raid."""
 
+    def start_encounter(self, actor_ids, *, zone_id="floor_1_west_field", safe_zone=None, anti_crystal=None):
+        # Encounter time is intentionally local and begins at zero. Action/recovery/reaction deadlines
+        # are expressed in that local clock, so they must not leak from an earlier finished encounter.
+        for actor_id in dict.fromkeys(actor_ids):
+            actor = self.actors[actor_id]
+            actor.committed_until_ms = 0
+            actor.recovery_until_ms = 0
+            actor.ai_reaction_until_ms = 0
+        return super().start_encounter(
+            actor_ids,
+            zone_id=zone_id,
+            safe_zone=safe_zone,
+            anti_crystal=anti_crystal,
+        )
+
     def _boss_minion_slot_position(self, boss, ordinal: int) -> tuple[float, float]:
         # Six minions per half-ring keeps 0.9m monster bodies from overlapping and leaves the
         # player-facing side open for the boss to approach the raid. Geometry is simulation tuning.
