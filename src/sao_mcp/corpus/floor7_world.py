@@ -71,6 +71,20 @@ def floor7_locations() -> dict[str, LocationDefinition]:
             "floor_7_field_of_bones", 7, "Field of Bones", ZoneKind.FIELD,
             provenance=_canon("Bone-strewn field used during the Fallen Elf pursuit toward the Floor 7 Labyrinth.", PROGRESSIVE_8),
         ),
+        "floor_7_field_of_bones_watch_hill": LocationDefinition(
+            "floor_7_field_of_bones_watch_hill", 7, "Field of Bones Watch Hill", ZoneKind.FIELD,
+            provenance=_inferred(
+                "Descriptive runtime node for the rocky hill used to watch the Dragon Bone from over three hundred yards away before the seven-o'clock Fallen Elf rendezvous.",
+                PROGRESSIVE_8,
+            ),
+        ),
+        "floor_7_dragon_bone": LocationDefinition(
+            "floor_7_dragon_bone", 7, "Dragon Bone", ZoneKind.FIELD,
+            provenance=_canon(
+                "Huge dead tree in the Field of Bones selected by the Fallen Elves as their counteroffer meeting point at seven in the morning.",
+                PROGRESSIVE_8,
+            ),
+        ),
         "floor_7_looserock_forest": LocationDefinition(
             "floor_7_looserock_forest", 7, "Looserock Forest", ZoneKind.FIELD,
             provenance=_canon("Forest whose moving/loose boulders form a major Floor 7 route hazard."),
@@ -121,7 +135,24 @@ def floor7_locations() -> dict[str, LocationDefinition]:
         ),
         "floor_7_ant_tunnel_valley": LocationDefinition(
             "floor_7_ant_tunnel_valley", 7, "Ant Tunnel Valley", ZoneKind.FIELD,
-            provenance=_inferred("Named Floor 7 field region; exact internal geometry is abstracted."),
+            provenance=_canon(
+                "Canyon region of cramped ravines and three-dimensional tunnels inhabited by rapidly reinforcing ant monsters; the pursued Fallen Elves pass directly through it.",
+                PROGRESSIVE_8,
+            ),
+        ),
+        "floor_7_ant_tunnel_plateau": LocationDefinition(
+            "floor_7_ant_tunnel_plateau", 7, "Plateau Beyond Ant Tunnel Valley", ZoneKind.FIELD,
+            provenance=_inferred(
+                "Descriptive node for the plateau the two Fallen Elves cross after Ant Tunnel Valley immediately before entering the Floor 7 Labyrinth.",
+                PROGRESSIVE_8,
+            ),
+        ),
+        "floor_7_labyrinth_saferoom": LocationDefinition(
+            "floor_7_labyrinth_saferoom", 7, "Floor 7 Labyrinth Saferoom", ZoneKind.LABYRINTH,
+            provenance=_canon(
+                "Saferoom near the upper part of the Floor 7 Labyrinth where the pursuing party rests at four in the morning on January 8 after losing the Fallen Elves.",
+                PROGRESSIVE_8,
+            ),
         ),
         "floor_7_tribula": LocationDefinition(
             "floor_7_tribula", 7, "Tribula Village", ZoneKind.SAFE_TOWN, safe_zone=True,
@@ -152,7 +183,6 @@ def floor7_connections() -> tuple[TravelConnection, ...]:
             ),
         ),
         TravelConnection("floor_7_looserock_forest", "floor_7_harin_tree_palace", 22 * 60_000, provenance=p),
-        # Internal Harin prison routes are scenario-controlled while the party is detained; they are still real map nodes.
         TravelConnection("floor_7_harin_tree_palace", "floor_7_harin_b2_guard_station", 7 * 60_000, provenance=p),
         TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_weapon_store", 1 * 60_000, provenance=p),
         TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_lavik_cell", 2 * 60_000, provenance=p),
@@ -163,5 +193,10 @@ def floor7_connections() -> tuple[TravelConnection, ...]:
         TravelConnection("floor_7_verdian_plains", "floor_7_ant_tunnel_valley", 30 * 60_000, provenance=p),
         TravelConnection("floor_7_ant_tunnel_valley", "floor_7_tribula", 20 * 60_000, provenance=p),
         TravelConnection("floor_7_volupta", "floor_7_field_of_bones", 44 * 60_000, provenance=p),
-        TravelConnection("floor_7_field_of_bones", "floor_7_labyrinth", 35 * 60_000, provenance=p),
+        TravelConnection("floor_7_field_of_bones", "floor_7_field_of_bones_watch_hill", 25 * 60_000, provenance=p),
+        TravelConnection("floor_7_field_of_bones_watch_hill", "floor_7_dragon_bone", 10 * 60_000, provenance=p),
+        TravelConnection("floor_7_dragon_bone", "floor_7_ant_tunnel_valley", 75 * 60_000, provenance=p),
+        TravelConnection("floor_7_ant_tunnel_valley", "floor_7_ant_tunnel_plateau", 35 * 60_000, provenance=p),
+        TravelConnection("floor_7_ant_tunnel_plateau", "floor_7_labyrinth", 25 * 60_000, provenance=p),
+        TravelConnection("floor_7_labyrinth", "floor_7_labyrinth_saferoom", 6 * 60 * 60_000, provenance=p),
     )
