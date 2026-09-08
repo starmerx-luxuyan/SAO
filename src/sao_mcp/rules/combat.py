@@ -91,6 +91,17 @@ def _incapacitating_status(actor: CombatantState) -> StatusType | None:
     return None
 
 
+def _apply_hp_floor(defender: CombatantState, damage: int) -> int:
+    """Cap landed damage at a metadata-driven HP floor used by generic phase-gated encounters."""
+    raw_floor = defender.metadata.get("hp_floor")
+    if raw_floor is None:
+        return damage
+    floor = max(0, int(raw_floor))
+    if defender.hp <= floor:
+        return 0
+    return min(damage, max(0, defender.hp - floor))
+
+
 def effective_attack_speed_ms(
     weapon: WeaponTemplate,
     item: ItemInstance,
@@ -236,7 +247,7 @@ def resolve_physical_attack(
         guarded = True
         damage *= 1.0 - tuning.guard_reduction
 
-    damage_i = max(1, int(round(damage)))
+    damage_i = _apply_hp_floor(defender, max(1, int(round(damage))))
     heaviness = _enhancement(weapon_item, EnhancementTrack.HEAVINESS)
     defender_pressure = 1 + heaviness // 2 + (2 if guarded else 0)
     stagger_ms = int(heaviness * tuning.heaviness_stagger_scale * 1000)
