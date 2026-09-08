@@ -5,6 +5,12 @@ from dataclasses import asdict
 from enum import Enum
 from typing import Any
 
+from sao_mcp.corpus.loot import CORE_LOOT_TABLES
+from sao_mcp.corpus.monsters import (
+    AINCRAD_MONSTERS,
+    AINCRAD_MONSTER_LOOT_TABLES,
+    apply_aincrad_monster_drop_items,
+)
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 
 
@@ -21,6 +27,30 @@ def _json(value: Any) -> str:
 
 
 def register_adventure_tools(mcp, runtime) -> None:
+    # Monster content plugs into the existing item/loot/combat path. No separate monster runtime exists.
+    apply_aincrad_monster_drop_items(runtime.catalog)
+    CORE_LOOT_TABLES.update(AINCRAD_MONSTER_LOOT_TABLES)
+
+    def _spawn_catalog_monster(monster_id: str, *, level_override: int | None = None):
+        definition = AINCRAD_MONSTERS[monster_id]
+        monster = runtime._create_monster(
+            name=definition.name,
+            level=definition.level if level_override is None else level_override,
+            location_id=definition.location_id,
+            hp_factor=definition.hp_factor,
+            loot_table_id=definition.loot_table_id,
+            quest_kill_id=definition.quest_kill_id,
+        )
+        monster.metadata.update(
+            {
+                "monster_id": definition.monster_id,
+                "monster_tags": list(definition.tags),
+                "monster_floor": definition.floor_number,
+                "monster_provenance": definition.provenance.kind.value,
+            }
+        )
+        return monster
+
     @mcp.tool()
     def list_locations(floor_number: int, actor_id: str | None = None) -> str:
         """List locations on one Aincrad floor with discovery and gate state."""
@@ -51,6 +81,56 @@ def register_adventure_tools(mcp, runtime) -> None:
                 "mainTownGateActive": floor.main_town_gate_active,
                 "actorLocationId": current,
                 "locations": entries,
+            }
+        )
+
+    @mcp.tool()
+    def list_monsters(floor_number: int | None = None) -> str:
+        """List playable Aincrad monster identities, levels, habitats and provenance."""
+        if floor_number is not None and floor_number not in runtime.world.floors:
+            raise ValueError("floor_number must be 1..100")
+        rows = []
+        for definition in AINCRAD_MONSTERS.values():
+            if floor_number is not None and definition.floor_number != floor_number:
+                continue
+            rows.append(
+                {
+                    "id": definition.monster_id,
+                    "name": definition.name,
+                    "floor": definition.floor_number,
+                    "level": definition.level,
+                    "locationId": definition.location_id,
+                    "hpFactor": definition.hp_factor,
+                    "tags": list(definition.tags),
+                    "provenance": asdict(definition.provenance),
+                }
+            )
+        return _json({"count": len(rows), "monsters": rows})
+
+    @mcp.tool()
+    def create_monster_encounter(actor_id: str, monster_id: str) -> str:
+        """Spawn one catalogued Aincrad monster in its habitat and start a normal encounter."""
+        definition = AINCRAD_MONSTERS[monster_id]
+        actor = runtime.actors[actor_id]
+        if actor.location_id != definition.location_id:
+            raise ValueError(
+                f"{definition.name} encounter requires actor at {definition.location_id}"
+            )
+        monster = _spawn_catalog_monster(monster_id)
+        encounter = runtime.start_encounter(
+            [actor_id, monster.actor_id],
+            zone_id=definition.location_id,
+        )
+        return _json(
+            {
+                "encounterId": encounter.encounter_id,
+                "playerId": actor_id,
+                "monsterId": monster.actor_id,
+                "monsterTemplateId": monster_id,
+                "name": monster.name,
+                "level": monster.level,
+                "maxHp": monster.max_hp,
+                "locationId": definition.location_id,
             }
         )
 
@@ -140,13 +220,16 @@ def register_adventure_tools(mcp, runtime) -> None:
     def create_little_nepenthes_encounter(
         actor_id: str,
         flowerhead: bool = False,
-        monster_level: int = 2,
+        monster_level: int = 3,
     ) -> str:
         """Create a Floor-1 Little Nepenthes encounter for quest/adventure play."""
         actor = runtime.actors[actor_id]
         if actor.location_id != "floor_1_west_field":
             raise ValueError("Little Nepenthes encounter requires the Floor 1 west field")
-        monster = runtime.create_little_nepenthes(flowerhead=flowerhead, level=monster_level)
+        if flowerhead:
+            monster = runtime.create_little_nepenthes(flowerhead=True, level=monster_level)
+        else:
+            monster = _spawn_catalog_monster("little_nepenthes", level_override=monster_level)
         encounter = runtime.start_encounter(
             [actor_id, monster.actor_id],
             zone_id="floor_1_west_field",
