@@ -49,6 +49,20 @@ def floor7_locations() -> dict[str, LocationDefinition]:
             "floor_7_monster_arena", 7, "Volupta Grand Casino Monster Arena", ZoneKind.SAFE_TOWN, safe_zone=True,
             provenance=_canon("Casino arena where spectators wager Volcoins on monster-versus-monster matches."),
         ),
+        "floor_7_korloy_monster_stables": LocationDefinition(
+            "floor_7_korloy_monster_stables", 7, "Korloy Monster Stables", ZoneKind.SAFE_TOWN, safe_zone=True,
+            provenance=_inferred(
+                "Korloy-controlled monster stable complex behind/under the casino where handlers dye the disguised Storm Lykaon and later where the Argent Serpent trap occurs. The runtime label is descriptive rather than a canon proper name.",
+                PROGRESSIVE_8,
+            ),
+        ),
+        "floor_7_west_riverbank": LocationDefinition(
+            "floor_7_west_riverbank", 7, "Volupta West Riverbank", ZoneKind.FIELD,
+            provenance=_inferred(
+                "Descriptive runtime node for the riverbed west of Volupta where Wurtz stones are collected; the source establishes the river and relation to Volupta but does not supply a proper place name.",
+                PROGRESSIVE_7,
+            ),
+        ),
         "floor_7_pramio": LocationDefinition(
             "floor_7_pramio", 7, "Pramio", ZoneKind.SAFE_TOWN, safe_zone=True,
             provenance=_canon("Named Floor 7 settlement on the Progressive route."),
@@ -84,6 +98,8 @@ def floor7_connections() -> tuple[TravelConnection, ...]:
         TravelConnection("floor_7_volupta", "floor_7_volupta_grand_casino", 4 * 60_000, provenance=p),
         TravelConnection("floor_7_volupta", "floor_7_volupta_beach", 6 * 60_000, provenance=p),
         TravelConnection("floor_7_volupta_grand_casino", "floor_7_monster_arena", 2 * 60_000, provenance=p),
+        TravelConnection("floor_7_volupta_grand_casino", "floor_7_korloy_monster_stables", 3 * 60_000, provenance=p),
+        TravelConnection("floor_7_volupta", "floor_7_west_riverbank", 14 * 60_000, provenance=p),
         TravelConnection("floor_7_verdian_plains", "floor_7_pramio", 28 * 60_000, provenance=p),
         TravelConnection("floor_7_volupta", "floor_7_looserock_forest", 36 * 60_000, provenance=p),
         TravelConnection("floor_7_looserock_forest", "floor_7_harin_tree_palace", 22 * 60_000, provenance=p),
