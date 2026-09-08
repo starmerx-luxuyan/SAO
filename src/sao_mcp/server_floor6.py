@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor6_tools(mcp, cube, stachion) -> None:
+def register_floor6_tools(mcp, cube, stachion, trials) -> None:
     @mcp.tool()
     def start_floor6_stachion_curse(actor_id: str) -> str:
         """Accept Cylon's Curse of Stachion quest at the Stachion lord's manor."""
@@ -72,6 +72,41 @@ def register_floor6_tools(mcp, cube, stachion) -> None:
     def get_floor6_stachion_curse_state(actor_id: str) -> str:
         """Inspect Curse of Stachion witness/key/capture/ambush progress. The quest remains active after the key is recovered."""
         return _json(stachion.status(actor_id))
+
+    @mcp.tool()
+    def meet_floor6_myia(actor_id: str) -> str:
+        """Meet Myia on the release route after Cylon's ambush and bring the two paired iron keys into the story."""
+        return _json(trials.meet_myia(actor_id))
+
+    @mcp.tool()
+    def inspect_floor6_paired_iron_key_signal(actor_id: str) -> str:
+        """Use Cylon's and Theano's paired iron keys: vibration gives direction and resonance gives a playable distance hint."""
+        return _json(trials.paired_iron_key_signal(actor_id))
+
+    @mcp.tool()
+    def hear_floor6_theano_note(actor_id: str) -> str:
+        """Hear Myia's account of Theano's disappearance note and its instruction to visit Barro."""
+        return _json(trials.hear_theano_note(actor_id))
+
+    @mcp.tool()
+    def consult_floor6_barro(actor_id: str) -> str:
+        """Consult Barro, the former mansion gardener named in Theano's disappearance note."""
+        return _json(trials.consult_barro(actor_id))
+
+    @mcp.tool()
+    def open_floor6_dungeon_of_trials(actor_id: str) -> str:
+        """Use the Suribus golden key at the Stachion manor basement entrance and unlock the Dungeon of Trials world edge."""
+        return _json(trials.open_dungeon_of_trials(actor_id))
+
+    @mcp.tool()
+    def inspect_floor6_dungeon_release_route(actor_id: str) -> str:
+        """Enter the Dungeon of Trials and establish the changed release-route state after Theano has already passed through."""
+        return _json(trials.inspect_release_dungeon(actor_id))
+
+    @mcp.tool()
+    def get_floor6_trials_state(actor_id: str) -> str:
+        """Inspect Myia, paired-key and Dungeon of Trials release-route progress."""
+        return _json(trials.status(actor_id))
 
     @mcp.tool()
     def start_floor6_irrational_cube_puzzle(player_ids: list[str]) -> str:
