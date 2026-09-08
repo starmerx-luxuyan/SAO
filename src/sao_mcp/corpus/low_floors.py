@@ -47,7 +47,7 @@ LOW_FLOOR_MAIN_SETTLEMENTS: dict[int, tuple[str, str, Provenance]] = {
 
 
 def low_floor_locations() -> dict[str, LocationDefinition]:
-    rows = {
+    return {
         "floor_2_marome": LocationDefinition(
             "floor_2_marome", 2, "Marome", ZoneKind.SAFE_TOWN, safe_zone=True,
             provenance=_canon(PROGRESSIVE_1, "Small village roughly three kilometres southeast of Urbus."),
@@ -124,8 +124,31 @@ def low_floor_locations() -> dict[str, LocationDefinition]:
             "floor_5_ruins", 5, "Ancient Ruins", ZoneKind.FIELD,
             provenance=_canon(PROGRESSIVE_4, "The majority of Floor 5 is a maze-like ancient ruined city."),
         ),
+        "floor_5_blink_and_brink": LocationDefinition(
+            "floor_5_blink_and_brink", 5, "BLINK & BRINK", ZoneKind.SAFE_TOWN, safe_zone=True,
+            provenance=_canon(PROGRESSIVE_4, "Karluin tavern-inn serving the limited Blue-Blueberry Tart."),
+        ),
+        "floor_5_karluin_catacombs_l1": LocationDefinition(
+            "floor_5_karluin_catacombs_l1", 5, "Karluin Catacombs - Upper Level", ZoneKind.SAFE_TOWN, safe_zone=True,
+            provenance=_canon(PROGRESSIVE_4, "The first catacomb level remains inside Karluin's Inner Area and contains no monsters or traps."),
+        ),
+        "floor_5_karluin_catacombs_lower": LocationDefinition(
+            "floor_5_karluin_catacombs_lower", 5, "Karluin Catacombs - Lower Levels", ZoneKind.DUNGEON,
+            provenance=_canon(PROGRESSIVE_4, "The second and third catacomb levels form a true dungeon with monsters and traps."),
+        ),
+        "floor_5_karluin_ruined_temple": LocationDefinition(
+            "floor_5_karluin_ruined_temple", 5, "Karluin Ruined Temple", ZoneKind.SAFE_TOWN, safe_zone=True,
+            provenance=_inferred(PROGRESSIVE_4, "A temple in Karluin is the recorded find location of the Ring of Luminescence; exact town geometry is abstracted."),
+        ),
+        "floor_5_karluin_old_castle": LocationDefinition(
+            "floor_5_karluin_old_castle", 5, "Karluin Ruined Old Castle", ZoneKind.SAFE_TOWN, safe_zone=True,
+            provenance=_canon(PROGRESSIVE_4, "Ruined old castle at Karluin's eastern end."),
+        ),
+        "floor_5_karluin_old_castle_basement": LocationDefinition(
+            "floor_5_karluin_old_castle_basement", 5, "Karluin Old Castle Basement", ZoneKind.DUNGEON,
+            provenance=_canon(PROGRESSIVE_4, "The ruined castle basement lies outside Karluin's safe-zone boundary."),
+        ),
     }
-    return rows
 
 
 def low_floor_connections() -> tuple[TravelConnection, ...]:
@@ -155,4 +178,10 @@ def low_floor_connections() -> tuple[TravelConnection, ...]:
         TravelConnection("floor_5_mananarena", "floor_5_mananarena_mine", 2 * 60_000, provenance=p),
         TravelConnection("floor_5_ruins", "floor_5_shiyaya", 28 * 60_000, provenance=p),
         TravelConnection("floor_5_ruins", "floor_5_labyrinth", 38 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin", "floor_5_blink_and_brink", 2 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin", "floor_5_karluin_catacombs_l1", 3 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin_catacombs_l1", "floor_5_karluin_catacombs_lower", 2 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin", "floor_5_karluin_ruined_temple", 4 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin", "floor_5_karluin_old_castle", 5 * 60_000, provenance=p),
+        TravelConnection("floor_5_karluin_old_castle", "floor_5_karluin_old_castle_basement", 1 * 60_000, provenance=p),
     )
