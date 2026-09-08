@@ -9,11 +9,19 @@ from sao_mcp.scenarios.floor5_karluin import (
     RUINED_TEMPLE,
     install_floor5_karluin_scenario,
 )
+from sao_mcp.scenarios.floor5_shortcut import (
+    AREA_BOSS_ROOM,
+    MANANARENA,
+    PUZZLE_PROGRESS_REQUIRED_HOURS,
+    SHORTCUT_TUNNEL,
+    install_floor5_shortcut_scenario,
+)
 
 
-def test_karluin_relic_bonus_and_shrewman_robbing_use_real_item_instances():
+def test_karluin_relic_catacomb_and_shortcut_progression_use_real_state():
     runtime = HousingAincradRuntime(seed=37)
     karluin = install_floor5_karluin_scenario(runtime)
+    shortcut = install_floor5_shortcut_scenario(runtime)
     player = runtime.create_character("RelicHunter", level=24)
     runtime.world.floors[5].unlocked = True
     player.location_id = KARLUIN
@@ -55,3 +63,35 @@ def test_karluin_relic_bonus_and_shrewman_robbing_use_real_item_instances():
     wraith_encounter, wraith = karluin.create_mournful_wraith_encounter(player.actor_id)
     assert wraith.metadata["monster_id"] == "mournful_wraith"
     assert wraith.actor_id in wraith_encounter.participants
+    wraith.hp = 0
+    wraith.alive = False
+    runtime._resolve_defeat(wraith_encounter, wraith, player.actor_id)
+
+    runtime.travel_actor(player.actor_id, AREA_BOSS_ROOM)
+    before_puzzle = runtime.world.now_ms
+    puzzle = shortcut.investigate_puzzle(player.actor_id, hours=23)
+    assert not puzzle["solved"]
+    puzzle = shortcut.investigate_puzzle(player.actor_id, hours=1)
+    assert puzzle["solved"]
+    assert puzzle["progress_hours"] == PUZZLE_PROGRESS_REQUIRED_HOURS
+    assert runtime.world.now_ms == before_puzzle + 24 * 60 * 60 * 1000
+
+    state = shortcut.start_area_boss_raid([player.actor_id])
+    boss = runtime.actors[state["boss_id"]]
+    assert state["puzzle_weakened"] is True
+    assert boss.metadata["puzzle_weakened"] is True
+    assert state["shortcut_unlocked"] is False
+
+    boss.hp = 0
+    boss.alive = False
+    boss_encounter = runtime.encounters[state["encounter_id"]]
+    runtime._resolve_defeat(boss_encounter, boss, player.actor_id)
+    cleared = shortcut.status(state["instance_id"])
+    assert cleared["stage"] == "cleared"
+    assert cleared["shortcut_unlocked"] is True
+
+    first_leg = shortcut.traverse_shortcut(player.actor_id)
+    assert first_leg["to_location_id"] == SHORTCUT_TUNNEL
+    second_leg = shortcut.traverse_shortcut(player.actor_id)
+    assert second_leg["to_location_id"] == MANANARENA
+    assert player.location_id == MANANARENA
