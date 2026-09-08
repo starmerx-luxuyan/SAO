@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor7_tools(mcp, volupta, aghyellr) -> None:
+def register_floor7_tools(mcp, volupta, aghyellr, intrigue) -> None:
     @mcp.tool()
     def get_floor7_volcoin_wallet(actor_id: str) -> str:
         """Inspect Cor/Volcoin balance and the exact Volupta exchange rate."""
@@ -30,7 +30,7 @@ def register_floor7_tools(mcp, volupta, aghyellr) -> None:
 
     @mcp.tool()
     def open_floor7_monster_arena_match(match_definition_id: str) -> str:
-        """Open one implemented Volupta Monster Arena matchup; live outcome/odds are simulation rather than forced history."""
+        """Open one implemented Volupta Monster Arena matchup; live outcome remains simulation rather than forced history."""
         return _json(volupta.open_arena_match(match_definition_id))
 
     @mcp.tool()
@@ -45,18 +45,68 @@ def register_floor7_tools(mcp, volupta, aghyellr) -> None:
 
     @mcp.tool()
     def resolve_floor7_monster_arena_match(match_instance_id: str, seed: int | None = None) -> str:
-        """Resolve a live Monster Arena match with simulation odds and pay winning Volcoin bets."""
+        """Resolve a live Monster Arena match and pay winning Volcoin bets."""
         return _json(volupta.resolve_arena_match(match_instance_id, seed=seed))
 
     @mcp.tool()
     def get_floor7_monster_arena_match(match_instance_id: str) -> str:
-        """Inspect contenders, wagers, live odds and resolved outcome for a Monster Arena match."""
+        """Inspect contenders, wagers, observed odds and resolved outcome for a Monster Arena match."""
         return _json(volupta.match_state(match_instance_id))
 
     @mcp.tool()
     def redeem_floor7_sword_of_volupta(actor_id: str) -> str:
         """Spend 100,000 Volcoins to redeem the unique Sword of Volupta prize as a real weapon instance."""
         return _json(volupta.redeem_sword_of_volupta(actor_id))
+
+    @mcp.tool()
+    def inspect_floor7_arena_dye_evidence(actor_id: str, match_instance_id: str) -> str:
+        """After the suspicious first arena match, inspect the cage's red residue and preserve it as a real evidence item."""
+        return _json(intrigue.inspect_first_match_cage(actor_id, match_instance_id))
+
+    @mcp.tool()
+    def report_floor7_arena_cheat_to_nirrnir(actor_id: str) -> str:
+        """Report the red plant-dye evidence to Nirrnir and receive the 20-Narsos/50-Wurtz decolorant request."""
+        return _json(intrigue.report_evidence_to_nirrnir(actor_id))
+
+    @mcp.tool()
+    def gather_floor7_narsos_fruit(actor_id: str) -> str:
+        """Gather the requested twenty ripe Narsos fruits in Looserock Forest."""
+        return _json(intrigue.gather_narsos_fruit(actor_id))
+
+    @mcp.tool()
+    def gather_floor7_wurtz_stones(actor_id: str) -> str:
+        """Spend the documented five-hour collection window gathering fifty Wurtz stones at the riverbed west of Volupta."""
+        return _json(intrigue.gather_wurtz_stones(actor_id))
+
+    @mcp.tool()
+    def brew_floor7_lykaon_decolorant(actor_id: str) -> str:
+        """Consume 20 Narsos fruits and 50 Wurtz stones and simmer the observed quest batch for three hours."""
+        return _json(intrigue.brew_decolorant(actor_id))
+
+    @mcp.tool()
+    def discover_floor7_dyed_lykaon(actor_id: str) -> str:
+        """Infiltrate the Korloy monster stables and discover the exhausted red-dyed Lykaon registered as a Rusty Lykaon."""
+        return _json(intrigue.discover_dyed_lykaon(actor_id))
+
+    @mcp.tool()
+    def apply_floor7_lykaon_decolorant(actor_id: str) -> str:
+        """Use the prepared bottle to strip Rubrabium dye and reveal the monster's real Storm Lykaon identity."""
+        return _json(intrigue.apply_decolorant(actor_id))
+
+    @mcp.tool()
+    def free_floor7_storm_lykaon(actor_id: str) -> str:
+        """Optional campaign choice: cut the revealed Storm Lykaon's restraint and escape with it to the west riverbank."""
+        return _json(intrigue.free_storm_lykaon(actor_id))
+
+    @mcp.tool()
+    def expire_floor7_storm_lykaon_control(actor_id: str) -> str:
+        """Let the freed Lykaon's Korloy control expire; its cursor turns red and ordinary encounter rules take over."""
+        return _json(intrigue.expire_storm_lykaon_control(actor_id))
+
+    @mcp.tool()
+    def get_floor7_casino_intrigue_state(actor_id: str) -> str:
+        """Inspect the arena evidence, ingredient, decolorant and Storm Lykaon reveal state."""
+        return _json(intrigue.status(actor_id))
 
     @mcp.tool()
     def trigger_floor7_nirrnir_poisoning(actor_id: str) -> str:
@@ -80,7 +130,7 @@ def register_floor7_tools(mcp, volupta, aghyellr) -> None:
 
     @mcp.tool()
     def resolve_floor7_aghyellr_gaze(instance_id: str, look_away_actor_ids: list[str] | None = None) -> str:
-        """Resolve Intimidating Gaze: under-Level-20 players who keep looking are immediately stunned; Level 20+ guaranteed immunity is limited to this documented gaze."""
+        """Resolve Intimidating Gaze: under-Level-20 players who keep looking are immediately stunned."""
         return _json(aghyellr.resolve_intimidating_gaze(instance_id, look_away_actor_ids=look_away_actor_ids))
 
     @mcp.tool()
