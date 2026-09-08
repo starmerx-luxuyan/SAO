@@ -44,8 +44,23 @@ def register_floor6_tools(mcp, cube, stachion) -> None:
         return _json(stachion.advance_transport_to_ambush_site(actor_id))
 
     @mcp.tool()
+    def trigger_floor6_morte_joe_ambush(actor_id: str) -> str:
+        """Start the carriage ambush: Morte kills Cylon and his key/jar/mask valuables become real ground-loot instances."""
+        return _json(stachion.trigger_morte_joe_ambush(actor_id))
+
+    @mcp.tool()
+    def topple_floor6_paralysis_jar(actor_id: str) -> str:
+        """While still paralysed, blow Cylon's dropped Namnepenth poison jar over to create the paralysis-cloud diversion."""
+        return _json(stachion.topple_poison_jar(actor_id))
+
+    @mcp.tool()
+    def advance_floor6_to_paralysis_release(actor_id: str) -> str:
+        """Advance the remaining scripted paralysis after the poison-cloud diversion, returning the scene to ordinary PvP rules."""
+        return _json(stachion.advance_to_paralysis_release(actor_id))
+
+    @mcp.tool()
     def get_floor6_stachion_curse_state(actor_id: str) -> str:
-        """Inspect Curse of Stachion witness/key/capture progress. The quest remains active after the golden key is found."""
+        """Inspect Curse of Stachion witness/key/capture/ambush progress. The quest remains active after the key is found."""
         return _json(stachion.status(actor_id))
 
     @mcp.tool()
