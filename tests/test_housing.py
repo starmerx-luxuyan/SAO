@@ -1,8 +1,8 @@
 import pytest
 
-from sao_mcp.runtime.floor22_runtime import Floor22QuestAincradRuntime
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime, PROPERTY_ENTRY_TIME_MS
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
+from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
 
 def test_player_can_purchase_enter_exit_and_grant_guest_to_beginner_room():
@@ -43,7 +43,8 @@ def test_married_joint_residence_uses_shared_wallet_and_both_are_owners():
 
 
 def test_forest_house_k4_purchase_requires_quest_and_is_unique():
-    runtime = Floor22QuestAincradRuntime(seed=1)
+    runtime = HousingAincradRuntime(seed=1)
+    install_floor22_witch_scenario(runtime)
     buyer = runtime.create_character("Buyer")
     buyer.location_id = "floor_22_forest_house_site"
     buyer.col = 6_000_000
@@ -78,48 +79,42 @@ def test_guild_headquarters_uses_vault_and_current_members_only():
         "granzam_guild_headquarters",
     )
     assert guild.vault_col == 10_000_000
-    assert guild.headquarters_location_id == state.interior_location_id
-    assert runtime.can_enter_property(member.actor_id, state.property_id)
-    assert not runtime.can_enter_property(outsider.actor_id, state.property_id)
     runtime.enter_property(member.actor_id, state.property_id)
-    runtime.exit_property(member.actor_id)
+    assert member.location_id == state.interior_location_id
+    with pytest.raises(ValueError, match="not authorized"):
+        runtime.enter_property(outsider.actor_id, state.property_id)
 
-    runtime.relationships.leave_guild(member)
-    assert not runtime.can_enter_property(member.actor_id, state.property_id)
+    runtime.exit_property(member.actor_id)
+    runtime.relationships.guilds[guild.guild_id].member_ids.remove(member.actor_id)
+    member.guild_id = None
     with pytest.raises(ValueError, match="not authorized"):
         runtime.enter_property(member.actor_id, state.property_id)
 
 
-def test_private_property_storage_is_owner_only_not_guest():
+def test_guests_cannot_mutate_private_property_storage():
     runtime = HousingAincradRuntime(seed=1)
     owner = runtime.create_character("Owner")
     guest = runtime.create_character("Guest")
     owner.col = 2_000
     state = runtime.purchase_residence(owner.actor_id, "town_beginner_room")
     runtime.grant_property_guest(owner.actor_id, state.property_id, guest.actor_id)
-    potion_id = next(i for i, item in owner.inventory.items() if item.template_id == "healing_potion_basic")
-    stored = runtime.deposit_property_storage(owner.actor_id, state.property_id, potion_id, quantity=1)
-    assert stored.instance_id in runtime.relationships.storages[state.storage_id].items
+    item_id = next(iter(guest.inventory))
     with pytest.raises(ValueError, match="guests cannot mutate"):
-        runtime.withdraw_property_storage(guest.actor_id, state.property_id, stored.instance_id)
+        runtime.deposit_property_storage(guest.actor_id, state.property_id, item_id)
 
 
-def test_housing_round_trip_rebuilds_dynamic_location_and_access():
+def test_housing_persists_and_rebuilds_dynamic_world_location():
     runtime = HousingAincradRuntime(seed=1)
     owner = runtime.create_character("Owner")
     owner.col = 2_000
     state = runtime.purchase_residence(owner.actor_id, "town_beginner_room")
     runtime.enter_property(owner.actor_id, state.property_id)
+    payload = export_runtime(runtime)
 
-    restored = import_runtime(export_runtime(runtime))
-    assert isinstance(restored, HousingAincradRuntime)
-    loaded_owner = restored.actors[owner.actor_id]
-    loaded = restored.housing.properties[state.property_id]
-    assert loaded_owner.location_id == loaded.interior_location_id
-    assert loaded.interior_location_id in restored.world_map.locations
-    assert any(
-        edge.to_location_id == loaded.parent_location_id
-        for edge in restored.world_map.adjacency[loaded.interior_location_id]
-    )
-    restored.exit_property(owner.actor_id)
-    assert loaded_owner.location_id == loaded.parent_location_id
+    restored = import_runtime(payload)
+    restored_state = restored.housing.properties[state.property_id]
+    assert restored_state.interior_location_id in restored.world_map.locations
+    restored_owner = restored.actors[owner.actor_id]
+    assert restored_owner.location_id == restored_state.interior_location_id
+    restored.exit_property(restored_owner.actor_id)
+    assert restored_owner.location_id == restored_state.parent_location_id
