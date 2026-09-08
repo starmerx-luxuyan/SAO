@@ -13,6 +13,7 @@ from sao_mcp.scenarios.floor4_shipwright import install_floor4_shipwright_scenar
 from sao_mcp.scenarios.floor5_fuscus import install_floor5_fuscus_scenario
 from sao_mcp.scenarios.floor5_karluin import install_floor5_karluin_scenario
 from sao_mcp.scenarios.floor5_shortcut import install_floor5_shortcut_scenario
+from sao_mcp.scenarios.floor6_elfwar import install_floor6_elfwar_scenario
 from sao_mcp.scenarios.floor6_irrational_cube import install_floor6_irrational_cube_scenario
 from sao_mcp.scenarios.floor6_south import install_floor6_south_scenario
 from sao_mcp.scenarios.floor6_stachion import install_floor6_stachion_scenario
@@ -28,6 +29,7 @@ from sao_mcp.server_floor3 import register_floor3_tools
 from sao_mcp.server_floor4 import register_floor4_tools
 from sao_mcp.server_floor5 import register_floor5_tools
 from sao_mcp.server_floor6 import register_floor6_tools
+from sao_mcp.server_floor6_elfwar import register_floor6_elfwar_tools
 from sao_mcp.server_floor22 import register_floor22_tools
 from sao_mcp.server_housing import register_housing_tools
 from sao_mcp.server_inventory import register_inventory_tools
@@ -56,6 +58,7 @@ floor6_irrational_cube = install_floor6_irrational_cube_scenario(runtime)
 floor6_stachion = install_floor6_stachion_scenario(runtime)
 floor6_trials = install_floor6_trials_scenario(runtime)
 floor6_south = install_floor6_south_scenario(runtime)
+floor6_elfwar = install_floor6_elfwar_scenario(runtime)
 floor22_witch = install_floor22_witch_scenario(runtime)
 
 if not hasattr(runtime, "economy"):
@@ -78,6 +81,7 @@ register_floor3_tools(mcp, floor3_spiders)
 register_floor4_tools(mcp, floor4_shipwright, floor4_biceps)
 register_floor5_tools(mcp, floor5_karluin, floor5_fuscus, floor5_shortcut)
 register_floor6_tools(mcp, floor6_irrational_cube, floor6_stachion, floor6_trials, floor6_south)
+register_floor6_elfwar_tools(mcp, floor6_elfwar)
 register_floor22_tools(mcp, floor22_witch)
 
 from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
@@ -102,5 +106,6 @@ __all__ = [
     "floor6_stachion",
     "floor6_trials",
     "floor6_south",
+    "floor6_elfwar",
     "floor22_witch",
 ]
