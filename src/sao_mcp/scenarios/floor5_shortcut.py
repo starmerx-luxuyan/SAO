@@ -1,0 +1,206 @@
+from __future__ import annotations
+
+import uuid
+
+from sao_mcp.corpus.floor5_shortcut import (
+    AREA_BOSS_ID,
+    AREA_BOSS_ROOM,
+    AREA_BOSS_WEAPON_ID,
+)
+from sao_mcp.corpus.loot import CORE_LOOT_TABLES
+from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES
+from sao_mcp.domain.models import EntityKind, ItemInstance
+
+
+LOWER_CATACOMBS = "floor_5_karluin_catacombs_lower"
+SHORTCUT_TUNNEL = "floor_5_karluin_mananarena_shortcut"
+MANANARENA = "floor_5_mananarena"
+PUZZLE_PROGRESS_REQUIRED_HOURS = 24.0  # Simulation abstraction around Argo spending about a day on the puzzle.
+BOSS_WEAKEN_HP_FACTOR = 0.72
+BOSS_WEAKEN_ARMOR_FACTOR = 0.55
+BOSS_WEAKEN_STRENGTH_FACTOR = 0.75
+BOSS_ROOM_TO_TUNNEL_MS = 4 * 60_000
+TUNNEL_TO_MANANARENA_MS = 8 * 60_000
+CLEAR_FLAG = "floor5_karluin_shortcut_area_boss_defeated"
+PUZZLE_FLAG = "floor5_karluin_shortcut_puzzle_solved"
+
+
+class Floor5ShortcutScenario:
+    """Karluin catacomb area-boss puzzle and the shortcut to Mananarena."""
+
+    def __init__(self, runtime) -> None:
+        self.runtime = runtime
+        definition = AINCRAD_MONSTERS[AREA_BOSS_ID]
+        CORE_LOOT_TABLES[definition.loot_table_id] = AINCRAD_MONSTER_LOOT_TABLES[
+            definition.loot_table_id
+        ]
+
+    def _instances(self) -> dict:
+        return self.runtime.world.global_flags.setdefault("floor5_shortcut_boss_instances", {})
+
+    def _instance(self, instance_id: str) -> dict:
+        try:
+            return self._instances()[instance_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown Karluin shortcut boss instance: {instance_id}") from exc
+
+    def puzzle_state(self) -> dict:
+        progress = float(
+            self.runtime.world.global_flags.get("floor5_karluin_shortcut_puzzle_hours", 0.0)
+        )
+        return {
+            "progress_hours": progress,
+            "required_hours": PUZZLE_PROGRESS_REQUIRED_HOURS,
+            "solved": bool(self.runtime.world.global_flags.get(PUZZLE_FLAG)),
+        }
+
+    def investigate_puzzle(self, actor_id: str, *, hours: float = 1.0) -> dict:
+        if hours <= 0:
+            raise ValueError("investigation hours must be positive")
+        actor = self.runtime.actors[actor_id]
+        if actor.location_id != AREA_BOSS_ROOM:
+            raise ValueError("the shortcut boss weakening puzzle is investigated in its guardian room")
+        if self.runtime.world.global_flags.get(PUZZLE_FLAG):
+            return self.puzzle_state()
+
+        self.runtime.advance_world(int(round(hours * 60 * 60 * 1000)))
+        progress = min(
+            PUZZLE_PROGRESS_REQUIRED_HOURS,
+            float(self.runtime.world.global_flags.get("floor5_karluin_shortcut_puzzle_hours", 0.0))
+            + hours,
+        )
+        self.runtime.world.global_flags["floor5_karluin_shortcut_puzzle_hours"] = progress
+        if progress >= PUZZLE_PROGRESS_REQUIRED_HOURS:
+            self.runtime.world.global_flags[PUZZLE_FLAG] = True
+        return self.puzzle_state()
+
+    def start_area_boss_raid(self, player_ids: list[str]) -> dict:
+        players = list(dict.fromkeys(player_ids))
+        if not players:
+            raise ValueError("shortcut area-boss raid needs at least one player")
+        if self.runtime.world.global_flags.get(CLEAR_FLAG):
+            raise ValueError("the Karluin shortcut area boss has already been defeated")
+        for actor_id in players:
+            actor = self.runtime.actors[actor_id]
+            if (
+                actor.kind is not EntityKind.PLAYER
+                or not actor.alive
+                or actor.location_id != AREA_BOSS_ROOM
+            ):
+                raise ValueError("all participants must be living players in the shortcut guardian room")
+
+        definition = AINCRAD_MONSTERS[AREA_BOSS_ID]
+        boss = self.runtime._create_monster(
+            name=definition.name,
+            level=definition.level,
+            location_id=definition.location_id,
+            hp_factor=definition.hp_factor,
+            loot_table_id=definition.loot_table_id,
+            quest_kill_id=definition.quest_kill_id,
+        )
+        old_weapon_id = boss.equipment.get("weapon")
+        if old_weapon_id:
+            boss.inventory.pop(old_weapon_id, None)
+        weapon = self.runtime.catalog.weapons[AREA_BOSS_WEAPON_ID]
+        natural = ItemInstance(
+            instance_id=f"shortcutboss_weapon_{uuid.uuid4().hex[:12]}",
+            template_id=AREA_BOSS_WEAPON_ID,
+            owner_id=boss.actor_id,
+            durability=weapon.base_durability,
+            max_durability=weapon.base_durability,
+            metadata={"natural_attack": True, "area_boss": AREA_BOSS_ID},
+        )
+        boss.inventory[natural.instance_id] = natural
+        boss.equipment["weapon"] = natural.instance_id
+        boss.skill_proficiencies["other"] = min(1000.0, 180.0 + boss.level * 18.0)
+        boss.metadata.update(
+            {
+                "monster_id": AREA_BOSS_ID,
+                "area_boss": True,
+                "monster_tags": list(definition.tags),
+                "proper_name_known": False,
+            }
+        )
+
+        puzzle_solved = bool(self.runtime.world.global_flags.get(PUZZLE_FLAG))
+        if puzzle_solved:
+            boss.max_hp = max(1, int(round(boss.max_hp * BOSS_WEAKEN_HP_FACTOR)))
+            boss.hp = boss.max_hp
+            boss.armor = max(0, int(round(boss.armor * BOSS_WEAKEN_ARMOR_FACTOR)))
+            boss.strength = max(1, int(round(boss.strength * BOSS_WEAKEN_STRENGTH_FACTOR)))
+            boss.metadata["puzzle_weakened"] = True
+        else:
+            boss.metadata["puzzle_weakened"] = False
+            boss.metadata["resilient_unweakened"] = True
+
+        encounter = self.runtime.start_encounter(
+            players + [boss.actor_id],
+            zone_id=AREA_BOSS_ROOM,
+        )
+        instance_id = f"shortcut5_{uuid.uuid4().hex[:12]}"
+        state = {
+            "instance_id": instance_id,
+            "encounter_id": encounter.encounter_id,
+            "boss_id": boss.actor_id,
+            "player_ids": players,
+            "stage": "battle",
+            "puzzle_weakened": puzzle_solved,
+            "started_at_ms": self.runtime.world.now_ms,
+            "cleared_at_ms": None,
+        }
+        self._instances()[instance_id] = state
+        return self.status(instance_id)
+
+    def _sync_clear(self, state: dict) -> None:
+        boss = self.runtime.actors[state["boss_id"]]
+        if boss.alive or state["stage"] == "cleared":
+            return
+        state["stage"] = "cleared"
+        state["cleared_at_ms"] = self.runtime.world.now_ms
+        self.runtime.world.global_flags[CLEAR_FLAG] = True
+
+    def traverse_shortcut(self, actor_id: str) -> dict:
+        actor = self.runtime.actors[actor_id]
+        if not self.runtime.world.global_flags.get(CLEAR_FLAG):
+            raise ValueError("the Karluin-Mananarena shortcut is still blocked by the area boss")
+        origin = str(actor.location_id)
+        if origin == AREA_BOSS_ROOM:
+            destination = SHORTCUT_TUNNEL
+            elapsed = BOSS_ROOM_TO_TUNNEL_MS
+        elif origin == SHORTCUT_TUNNEL:
+            destination = MANANARENA
+            elapsed = TUNNEL_TO_MANANARENA_MS
+        elif origin == MANANARENA:
+            destination = SHORTCUT_TUNNEL
+            elapsed = TUNNEL_TO_MANANARENA_MS
+        else:
+            raise ValueError("actor must enter the shortcut from its guardian room, tunnel or Mananarena")
+        self.runtime.advance_world(elapsed)
+        actor.location_id = destination
+        return {
+            "actor_id": actor_id,
+            "from_location_id": origin,
+            "to_location_id": destination,
+            "travel_ms": elapsed,
+            "shortcut_unlocked": True,
+        }
+
+    def status(self, instance_id: str) -> dict:
+        state = self._instance(instance_id)
+        self._sync_clear(state)
+        boss = self.runtime.actors[state["boss_id"]]
+        return {
+            **state,
+            "boss_name": boss.name,
+            "boss_alive": boss.alive,
+            "boss_hp": boss.hp,
+            "boss_max_hp": boss.max_hp,
+            "boss_armor": boss.armor,
+            "boss_strength": boss.strength,
+            "puzzle": self.puzzle_state(),
+            "shortcut_unlocked": bool(self.runtime.world.global_flags.get(CLEAR_FLAG)),
+        }
+
+
+def install_floor5_shortcut_scenario(runtime) -> Floor5ShortcutScenario:
+    return Floor5ShortcutScenario(runtime)
