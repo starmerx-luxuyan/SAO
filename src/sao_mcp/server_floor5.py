@@ -18,7 +18,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor5_tools(mcp, karluin) -> None:
+def register_floor5_tools(mcp, karluin, fuscus) -> None:
     @mcp.tool()
     def order_floor5_blue_blueberry_tart(actor_id: str) -> str:
         """Eat BLINK & BRINK's limited Blue-Blueberry Tart and gain the one-hour Karluin Relic Finding Bonus."""
@@ -72,3 +72,33 @@ def register_floor5_tools(mcp, karluin) -> None:
     def recover_floor5_shrewman_items(actor_id: str, thief_id: str) -> str:
         """Recover the exact item instances stolen by a defeated Sly Shrewman."""
         return _json({"recoveredInstanceIds": karluin.recover_shrewman_stolen_items(actor_id, thief_id)})
+
+    @mcp.tool()
+    def start_floor5_fuscus_raid(player_ids: list[str]) -> str:
+        """Start Fuscus the Vacant Colossus using the implemented six-bar Floor 5 boss definition."""
+        return _json(fuscus.start_raid(player_ids))
+
+    @mcp.tool()
+    def resolve_floor5_hidden_flag_drop(instance_id: str) -> str:
+        """After Fuscus dies, resolve the hidden personal Flag of Valor drop without revealing its recipient."""
+        return _json(fuscus.resolve_hidden_flag_drop(instance_id))
+
+    @mcp.tool()
+    def check_floor5_personal_flag_drop(actor_id: str, instance_id: str) -> str:
+        """Check only this raid participant's personal Fuscus drop result."""
+        return _json(fuscus.check_personal_flag_drop(actor_id, instance_id))
+
+    @mcp.tool()
+    def refresh_floor5_flag_of_valor_aura(actor_id: str, encounter_id: str) -> str:
+        """Deploy or refresh the Flag of Valor aura from current authoritative positions."""
+        return _json(fuscus.refresh_flag_aura(actor_id, encounter_id))
+
+    @mcp.tool()
+    def withdraw_floor5_flag_of_valor(actor_id: str, encounter_id: str) -> str:
+        """Withdraw the Flag of Valor and remove its guildmate stat aura from this encounter."""
+        return _json(fuscus.withdraw_flag(actor_id, encounter_id))
+
+    @mcp.tool()
+    def get_floor5_fuscus_state(instance_id: str) -> str:
+        """Inspect Fuscus boss state and whether its hidden Flag drop has been resolved, without exposing the recipient."""
+        return _json(fuscus.status(instance_id))
