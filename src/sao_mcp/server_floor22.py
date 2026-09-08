@@ -18,21 +18,21 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor22_tools(mcp, runtime) -> None:
+def register_floor22_tools(mcp, scenario) -> None:
     @mcp.tool()
     def start_floor22_witch_quest(player_ids: list[str]) -> str:
         """Trigger Toto's Forest House K4 quest transition into the isolated Floor 22 quest area."""
-        return _json(runtime.start_witch_quest(player_ids))
+        return _json(scenario.start(player_ids))
 
     @mcp.tool()
     def collect_floor22_witch_treasure(actor_id: str, template_id: str) -> str:
         """Recover one optional Scarecrow/Tin/Lion treasure before entering the Witch Castle."""
-        return _json(asdict(runtime.collect_witch_optional_treasure(actor_id, template_id)))
+        return _json(asdict(scenario.collect_optional_treasure(actor_id, template_id)))
 
     @mcp.tool()
     def enter_floor22_witch_castle(instance_id: str) -> str:
         """Enter the Witch Castle and spawn the four Werepanther key encounter."""
-        encounter = runtime.enter_witch_castle(instance_id)
+        encounter = scenario.enter_castle(instance_id)
         return _json(
             {
                 "instanceId": instance_id,
@@ -45,7 +45,7 @@ def register_floor22_tools(mcp, runtime) -> None:
     @mcp.tool()
     def start_floor22_witch_confrontation(instance_id: str, accept_soup: bool = False) -> str:
         """Use the Werepanther key to enter the inner room and start the Witch confrontation/paralysis event."""
-        encounter, witch = runtime.start_witch_confrontation(instance_id, accept_soup=accept_soup)
+        encounter, witch = scenario.start_confrontation(instance_id, accept_soup=accept_soup)
         return _json(
             {
                 "instanceId": instance_id,
@@ -60,9 +60,9 @@ def register_floor22_tools(mcp, runtime) -> None:
     @mcp.tool()
     def finish_floor22_witch_quest_return(instance_id: str) -> str:
         """Return the Log House to its Floor 22 site after the Witch is defeated and unlock property eligibility."""
-        return _json(runtime.return_from_witch_quest(instance_id))
+        return _json(scenario.finish_return(instance_id))
 
     @mcp.tool()
     def get_floor22_witch_instance(instance_id: str) -> str:
         """Inspect the persistent stage and actors of one Floor 22 Witch quest instance."""
-        return _json(runtime._instance(instance_id))
+        return _json(scenario.instance(instance_id))
