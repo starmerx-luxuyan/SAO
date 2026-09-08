@@ -18,6 +18,7 @@ TIMELINE_REFERENCE = "https://swordartonline.fandom.com/wiki/Sword_Art_Online_Ti
 QUEST_ID = "curse_of_stachion"
 CYLON_ID = "npc_floor6_cylon"
 GOLDEN_KEY_ID = "floor6_pithagrus_golden_key"
+POISON_JAR_ID = "namnepenth_poison_jar"
 
 WITNESSES: dict[str, str] = {
     "npc_floor6_pithagrus_former_butler": "Pithagrus's Former Butler",
@@ -52,6 +53,22 @@ def apply_floor6_stachion_corpus(catalog: Catalog) -> Catalog:
                 "Key item obtained at Pithagrus's second home in Suribus during the Curse of Stachion quest. Weight is simulation.",
                 PROGRESSIVE_5,
                 TIMELINE_REFERENCE,
+            ),
+        ),
+    )
+    catalog.items.setdefault(
+        POISON_JAR_ID,
+        ItemTemplate(
+            template_id=POISON_JAR_ID,
+            name="Namnepenth's Poison Jar",
+            kind=ItemKind.TOOL,
+            weight=0.35,
+            stack_limit=1,
+            tags=("floor_6", "curse_of_stachion", "paralysis_gas", "cylon", "skull_marked_jar"),
+            provenance=_canon(
+                "Skull-marked jar used by Cylon to release the scripted paralysis gas that incapacitates the players at Pithagrus's Suribus house. Weight is simulation.",
+                PROGRESSIVE_5,
+                PROGRESSIVE_6,
             ),
         ),
     )
