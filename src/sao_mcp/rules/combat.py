@@ -232,10 +232,15 @@ def resolve_physical_attack(
     skill_multiplier = sword_skill.total_multiplier if sword_skill else 1.0
     raw = rolled * power * skill_multiplier * weapon_item.quality
 
-    crit_chance = tuning.base_crit + proficiency * tuning.proficiency_crit_scale
-    crit_chance += accuracy_plus * tuning.accuracy_enhancement_crit
-    crit_chance = _clamp(crit_chance, 0.0, 0.25)
-    critical = rng.random() < crit_chance
+    guaranteed_critical = "guaranteed_critical" in weapon.tags
+    if guaranteed_critical:
+        crit_chance = 1.0
+        critical = True
+    else:
+        crit_chance = tuning.base_crit + proficiency * tuning.proficiency_crit_scale
+        crit_chance += accuracy_plus * tuning.accuracy_enhancement_crit
+        crit_chance = _clamp(crit_chance, 0.0, 0.25)
+        critical = rng.random() < crit_chance
     if critical:
         raw *= 1.55
 
