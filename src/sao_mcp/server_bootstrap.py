@@ -19,6 +19,7 @@ from sao_mcp.scenarios.floor6_irrational_cube import install_floor6_irrational_c
 from sao_mcp.scenarios.floor6_south import install_floor6_south_scenario
 from sao_mcp.scenarios.floor6_stachion import install_floor6_stachion_scenario
 from sao_mcp.scenarios.floor6_trials import install_floor6_trials_scenario
+from sao_mcp.scenarios.floor7_volupta import install_floor7_volupta_scenario
 from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 from sao_mcp.server_adventure import register_adventure_tools
 from sao_mcp.server_communications import register_communication_tools
@@ -32,6 +33,7 @@ from sao_mcp.server_floor5 import register_floor5_tools
 from sao_mcp.server_floor6 import register_floor6_tools
 from sao_mcp.server_floor6_buxum import register_floor6_buxum_tools
 from sao_mcp.server_floor6_elfwar import register_floor6_elfwar_tools
+from sao_mcp.server_floor7 import register_floor7_tools
 from sao_mcp.server_floor22 import register_floor22_tools
 from sao_mcp.server_housing import register_housing_tools
 from sao_mcp.server_inventory import register_inventory_tools
@@ -62,6 +64,7 @@ floor6_stachion = install_floor6_stachion_scenario(runtime)
 floor6_trials = install_floor6_trials_scenario(runtime)
 floor6_south = install_floor6_south_scenario(runtime)
 floor6_elfwar = install_floor6_elfwar_scenario(runtime)
+floor7_volupta = install_floor7_volupta_scenario(runtime)
 floor22_witch = install_floor22_witch_scenario(runtime)
 
 if not hasattr(runtime, "economy"):
@@ -86,6 +89,7 @@ register_floor5_tools(mcp, floor5_karluin, floor5_fuscus, floor5_shortcut)
 register_floor6_tools(mcp, floor6_irrational_cube, floor6_stachion, floor6_trials, floor6_south)
 register_floor6_buxum_tools(mcp, floor6_buxum, floor6_irrational_cube)
 register_floor6_elfwar_tools(mcp, floor6_elfwar)
+register_floor7_tools(mcp, floor7_volupta)
 register_floor22_tools(mcp, floor22_witch)
 
 from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
@@ -112,5 +116,6 @@ __all__ = [
     "floor6_trials",
     "floor6_south",
     "floor6_elfwar",
+    "floor7_volupta",
     "floor22_witch",
 ]
