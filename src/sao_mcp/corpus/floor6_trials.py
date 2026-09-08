@@ -10,15 +10,12 @@ PROGRESSIVE_6 = "Sword Art Online Progressive Volume 6: Canon of the Golden Rule
 MYIA_ID = "npc_floor6_myia"
 THEANO_ID = "npc_floor6_theano"
 BARRO_ID = "npc_floor6_pithagrus_former_gardener"
+TERRO_ID = "npc_floor6_terro"
 THEANO_IRON_KEY_ID = "theano_iron_key"
 
 
 def _canon(notes: str) -> Provenance:
     return Provenance(ProvenanceKind.CANON, sources=(PROGRESSIVE_6,), notes=notes)
-
-
-def _inferred(notes: str) -> Provenance:
-    return Provenance(ProvenanceKind.CANON_INFERRED, sources=(PROGRESSIVE_6,), notes=notes)
 
 
 def apply_floor6_trials_corpus(catalog: Catalog) -> Catalog:
@@ -80,7 +77,7 @@ def apply_floor6_trials_corpus(catalog: Catalog) -> Catalog:
                 "paired_iron_keys",
             ),
             provenance=_canon(
-                "Former servant of the Stachion lord's manor, secretly trained by Pithagrus as his intended successor, and witness to Cylon's murder of Pithagrus. In the release route she disappears into the Dungeon of Trials after Cylon dies."
+                "Former servant of the Stachion lord's manor, secretly trained by Pithagrus as his intended successor, and witness to Cylon's murder of Pithagrus. In the release route she enters the Dungeon of Trials through its secret back route, takes the Golden Cube, and disappears."
             ),
         ),
     )
@@ -92,9 +89,23 @@ def apply_floor6_trials_corpus(catalog: Catalog) -> Catalog:
         home_location_id="floor_6_stachion_puzzle_quarter",
         roles=("stachion_witness", "pithagrus_associate", "former_gardener", "terro_father"),
         quest_ids=(),
-        knowledge_tags=("pithagrus", "theano", "suribus_second_home", "curse_of_stachion"),
+        knowledge_tags=("pithagrus", "theano", "terro", "suribus_second_home", "curse_of_stachion"),
         provenance=_canon(
             "Former gardener at the lord's mansion during Theano's service and father of Terro. Theano's disappearance note tells Myia to visit Barro if she does not return."
+        ),
+    )
+    CORE_NPCS.setdefault(
+        TERRO_ID,
+        NPCDefinition(
+            npc_id=TERRO_ID,
+            name="Terro",
+            home_location_id="floor_6_cylon_lord_manor",
+            roles=("current_manor_gardener", "barro_son", "secret_route_guide"),
+            quest_ids=(),
+            knowledge_tags=("dungeon_of_trials", "secret_back_door", "manor_garden_statue", "theano"),
+            provenance=_canon(
+                "Barro's son and the current gardener at the Stachion lord's mansion. He leads the release-route party to the garden statue whose movable base conceals the Dungeon of Trials secret back door."
+            ),
         ),
     )
     return catalog
