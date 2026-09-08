@@ -59,6 +59,19 @@ class Floor7ElfWarScenario:
                 return actor
         return None
 
+    def _put_generated_weapon_in_cache(self, cache: CombatantState, template_id: str) -> ItemInstance:
+        template = self.runtime.catalog.weapons[template_id]
+        item = ItemInstance(
+            instance_id=f"harin_weapon_{uuid.uuid4().hex[:12]}",
+            template_id=template_id,
+            owner_id=cache.actor_id,
+            durability=template.base_durability,
+            max_durability=template.base_durability,
+            metadata={"confiscated_dark_elf_weapon": True},
+        )
+        cache.inventory[item.instance_id] = item
+        return item
+
     def _make_storage_cache(self) -> CombatantState:
         cache = CombatantState(
             actor_id=f"harin_store_{uuid.uuid4().hex[:12]}",
@@ -73,19 +86,42 @@ class Floor7ElfWarScenario:
             location_id=WEAPON_STORE,
             metadata={"noncombatant": True, "harin_confiscated_storage": True},
         )
-        for template_id in (ELVEN_STOUT_SWORD_ID, KIZMEL_SABER_ID, LAVIK_SABER_ID):
-            template = self.runtime.catalog.weapons[template_id]
-            item = ItemInstance(
-                instance_id=f"harin_weapon_{uuid.uuid4().hex[:12]}",
-                template_id=template_id,
-                owner_id=cache.actor_id,
-                durability=template.base_durability,
-                max_durability=template.base_durability,
-                metadata={"confiscated_dark_elf_weapon": True},
-            )
-            cache.inventory[item.instance_id] = item
+        # These two are independent canon weapons found in Harin's store. Kizmel's currently
+        # equipped weapon is handled separately so a continuous Floor-6 -> Floor-7 campaign
+        # does not silently duplicate her equipment.
+        self._put_generated_weapon_in_cache(cache, ELVEN_STOUT_SWORD_ID)
+        self._put_generated_weapon_in_cache(cache, LAVIK_SABER_ID)
         self.runtime.actors[cache.actor_id] = cache
         return cache
+
+    def _confiscate_kizmel_weapon(self, cache: CombatantState) -> tuple[str | None, list[str]]:
+        kizmel = self._active_actor_for_npc(KIZMEL_ID)
+        confiscated_ids: list[str] = []
+        if kizmel is None:
+            saber = self._put_generated_weapon_in_cache(cache, KIZMEL_SABER_ID)
+            saber.metadata["standalone_kizmel_weapon_seed"] = True
+            return None, [saber.instance_id]
+
+        for slot in ("weapon", "offhand"):
+            item_id = kizmel.equipment.pop(slot, None)
+            if item_id is None or item_id not in kizmel.inventory:
+                continue
+            item = kizmel.inventory.pop(item_id)
+            item.owner_id = cache.actor_id
+            item.metadata["harin_confiscated_from_kizmel"] = True
+            item.metadata["harin_original_slot"] = slot
+            cache.inventory[item_id] = item
+            confiscated_ids.append(item_id)
+        recompute_equipment_stats(kizmel, self.runtime.catalog)
+        kizmel.location_id = SEVENTH_PRISON
+        kizmel.metadata["harin_prisoner"] = True
+        kizmel.metadata["accused_of_fallen_elf_treachery"] = True
+        self.runtime.npcs.states[KIZMEL_ID].location_id = SEVENTH_PRISON
+        if not confiscated_ids:
+            saber = self._put_generated_weapon_in_cache(cache, KIZMEL_SABER_ID)
+            saber.metadata["standalone_kizmel_weapon_seed"] = True
+            confiscated_ids.append(saber.instance_id)
+        return kizmel.actor_id, confiscated_ids
 
     def arrive_and_be_arrested(self, player_ids: list[str]) -> dict:
         players = list(dict.fromkeys(player_ids))
@@ -97,6 +133,7 @@ class Floor7ElfWarScenario:
                 raise ValueError("all arrested characters must be living players at Harin Tree Palace")
 
         cache = self._make_storage_cache()
+        preexisting_kizmel_id, kizmel_confiscated_ids = self._confiscate_kizmel_weapon(cache)
         instance_id = f"harin7_{uuid.uuid4().hex[:12]}"
         confiscated: dict[str, dict[str, str]] = {}
         self.runtime.advance_world(ARREST_PROCESSING_MS)
@@ -128,7 +165,9 @@ class Floor7ElfWarScenario:
             "confiscated_slots": confiscated,
             "cell_lock_burns": 0,
             "lavik_actor_id": None,
-            "kizmel_actor_id": None,
+            "kizmel_actor_id": preexisting_kizmel_id,
+            "kizmel_preexisting_actor_id": preexisting_kizmel_id,
+            "kizmel_confiscated_item_ids": kizmel_confiscated_ids,
             "guards_subdued_nonlethally": 0,
             "palace_blackout": False,
             "escaped_at_ms": None,
@@ -253,7 +292,12 @@ class Floor7ElfWarScenario:
         for actor_id in state["player_ids"][1:]:
             self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.TALK, target_id=KIZMEL_ID)
 
-        kizmel = self._active_actor_for_npc(KIZMEL_ID)
+        kizmel = None
+        preexisting_id = state.get("kizmel_preexisting_actor_id")
+        if preexisting_id and preexisting_id in self.runtime.actors and self.runtime.actors[preexisting_id].alive:
+            kizmel = self.runtime.actors[preexisting_id]
+        if kizmel is None:
+            kizmel = self._active_actor_for_npc(KIZMEL_ID)
         if kizmel is None:
             kizmel = CombatantState(
                 actor_id=f"questnpc_kizmel_{uuid.uuid4().hex[:12]}",
@@ -276,14 +320,30 @@ class Floor7ElfWarScenario:
                 },
             )
             self.runtime.actors[kizmel.actor_id] = kizmel
+        kizmel.location_id = SEVENTH_PRISON
 
         cache = self.runtime.actors[state["storage_actor_id"]]
-        saber = next((item for item in cache.inventory.values() if item.template_id == KIZMEL_SABER_ID), None)
-        if saber is not None:
-            cache.inventory.pop(saber.instance_id)
-            saber.owner_id = kizmel.actor_id
-            kizmel.inventory[saber.instance_id] = saber
-            kizmel.equipment["weapon"] = saber.instance_id
+        restored = False
+        for item_id in list(state.get("kizmel_confiscated_item_ids", ())):
+            item = cache.inventory.pop(item_id, None)
+            if item is None:
+                continue
+            slot = str(item.metadata.pop("harin_original_slot", "weapon"))
+            item.metadata.pop("harin_confiscated_from_kizmel", None)
+            item.metadata.pop("standalone_kizmel_weapon_seed", None)
+            item.owner_id = kizmel.actor_id
+            kizmel.inventory[item.instance_id] = item
+            kizmel.equipment[slot] = item.instance_id
+            restored = True
+        if not restored:
+            saber = next((item for item in cache.inventory.values() if item.template_id == KIZMEL_SABER_ID), None)
+            if saber is not None:
+                cache.inventory.pop(saber.instance_id)
+                saber.owner_id = kizmel.actor_id
+                kizmel.inventory[saber.instance_id] = saber
+                kizmel.equipment["weapon"] = saber.instance_id
+        recompute_equipment_stats(kizmel, self.runtime.catalog)
+
         stout = next((item for item in cache.inventory.values() if item.template_id == ELVEN_STOUT_SWORD_ID), None)
         if stout is not None:
             carrier = self.runtime.actors[state["player_ids"][0]]
@@ -291,6 +351,7 @@ class Floor7ElfWarScenario:
             add_item(carrier, stout, self.runtime.catalog, allow_overweight=True)
             stout.metadata["recovered_for_kizmel"] = True
 
+        kizmel.metadata.pop("harin_prisoner", None)
         kizmel.metadata["harin_status"] = "prisoner_refusing_escape"
         state["kizmel_actor_id"] = kizmel.actor_id
         state["stage"] = "convince_kizmel_to_escape"
