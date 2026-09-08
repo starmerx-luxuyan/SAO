@@ -17,6 +17,8 @@ from sao_mcp.corpus.floor6_south import apply_floor6_south_corpus
 from sao_mcp.corpus.floor6_stachion import apply_floor6_stachion_corpus
 from sao_mcp.corpus.floor6_trials import apply_floor6_trials_corpus
 from sao_mcp.corpus.floor7 import apply_floor7_corpus
+from sao_mcp.corpus.floor7_monsters import apply_floor7_monster_corpus
+from sao_mcp.corpus.floor7_nirrnir import apply_floor7_nirrnir_corpus
 from sao_mcp.corpus.items import apply_aincrad_item_seed
 from sao_mcp.corpus.skills import apply_aincrad_skill_seed
 from sao_mcp.corpus.weapons import apply_aincrad_weapon_seed
@@ -75,6 +77,8 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
     apply_floor6_finale_corpus(catalog)
     apply_floor6_buxum_corpus(catalog)
     apply_floor7_corpus(catalog)
+    apply_floor7_monster_corpus(catalog)
+    apply_floor7_nirrnir_corpus(catalog)
 
     catalog.weapons.setdefault(
         "anneal_blade",
