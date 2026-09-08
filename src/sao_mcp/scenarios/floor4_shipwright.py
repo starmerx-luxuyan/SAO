@@ -25,6 +25,7 @@ BEAR_FOREST = "floor_4_bear_forest"
 FALLEN_ELF_HIDEOUT = "floor_4_fallen_elf_hideout"
 YOFEL_CASTLE = "floor_4_yofel_castle"
 MAGNATHERIUM_ID = "magnatherium"
+BICEPS_CLEAR_FLAG = "floor4_biceps_archelon_defeated"
 BUILD_TIME_MS = 3 * 60 * 60 * 1000
 NOBLEWOOD_HARVEST_TIME_MS = 10_000  # Simulation action time per felled tree/core.
 FOLLOW_TRANSPORT_TIME_MS = 45 * 60_000  # Simulation travel abstraction from Rovia to the hidden waterfall route.
@@ -37,6 +38,7 @@ WATER_ROUTES: dict[frozenset[str], int] = {
     frozenset(("floor_4_usco", "floor_4_yofel_castle")): 20 * 60_000,
     frozenset(("floor_4_rovia", FALLEN_ELF_HIDEOUT)): 45 * 60_000,
 }
+SOUTHERN_GATE_ROUTE = frozenset(("floor_4_caldera_lake", "floor_4_usco"))
 
 
 class Floor4ShipwrightScenario:
@@ -217,6 +219,8 @@ class Floor4ShipwrightScenario:
         route = frozenset((origin, destination_id))
         if len(route) != 2 or route not in WATER_ROUTES:
             raise ValueError("destination is not connected by an implemented Floor 4 gondola route")
+        if route == SOUTHERN_GATE_ROUTE and not self.runtime.world.global_flags.get(BICEPS_CLEAR_FLAG):
+            raise ValueError("Biceps Archelon blocks passage from Caldera Lake to the southern half of Floor 4")
 
         self.runtime.advance_world(WATER_ROUTES[route])
         actor.location_id = destination_id
