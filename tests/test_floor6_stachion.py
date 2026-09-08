@@ -15,7 +15,7 @@ from sao_mcp.scenarios.floor6_stachion import (
 )
 
 
-def test_curse_of_stachion_hands_scripted_capture_back_to_normal_pvp():
+def test_curse_of_stachion_returns_from_scripted_capture_to_world_and_normal_pvp():
     runtime = HousingAincradRuntime(seed=47)
     stachion = install_floor6_stachion_scenario(runtime)
     player = runtime.create_character("StachionSolver", level=40)
@@ -96,11 +96,39 @@ def test_curse_of_stachion_hands_scripted_capture_back_to_normal_pvp():
     assert state["stage"] == "morte_joe_pvp_active"
     assert not state["paralysed"]
 
-    # From here the scenario stops scripting combat. Existing PvP rules decide the result.
+    # From here existing PvP rules decide the exchange rather than a scripted fight result.
     hostile_strike = runtime.attack(encounter.encounter_id, morte.actor_id, player.actor_id, seed=3)
     assert hostile_strike.legal
     assert morte.cursor is CursorColor.ORANGE
     counter = runtime.attack(encounter.encounter_id, player.actor_id, morte.actor_id, seed=4)
     assert counter.legal
     assert player.cursor is CursorColor.GREEN
+
+    # Canon establishes a retreat, but the exact trigger is simulation. Crossing the low-HP
+    # threshold lets the living pair disengage; killing them instead would unlock the same loot state.
+    morte.hp = max(1, int(morte.max_hp * 0.20))
+    morte.alive = True
+    state = stachion.resolve_ambusher_retreat(player.actor_id)
+    assert state["stage"] == "ambushers_neutralized_ground_loot"
+    assert state["ambushers_neutralized"]
+    assert morte.alive and joe.alive
+    assert morte.metadata["retreated"] is True
+    assert joe.metadata["retreated"] is True
+    assert morte.actor_id not in encounter.participants
+    assert joe.actor_id not in encounter.participants
+
+    recovery = stachion.recover_cylon_ground_loot(player.actor_id)
+    state = recovery["state"]
+    assert state["stage"] == "post_ambush_loot_recovered"
+    assert state["ground_items"] == []
+    assert original_key_id in recovery["recovered_instance_ids"]
+    assert player.inventory[original_key_id].template_id == GOLDEN_KEY_ID
+    assert player.inventory[original_key_id].owner_id == player.actor_id
+    recovered_templates = {player.inventory[item_id].template_id for item_id in recovery["recovered_instance_ids"]}
+    assert {GOLDEN_KEY_ID, IRON_KEY_ID, POISON_JAR_ID, GAS_MASK_ID}.issubset(recovered_templates)
+
+    # The scripted road node now rejoins the normal world graph and there is no living opponent left in the encounter.
+    runtime.travel_actor(player.actor_id, SURIBUS)
+    assert player.location_id == SURIBUS
     assert state["ready_to_claim"] is False
+    assert QUEST_ID not in runtime.quests.completed_by_actor[player.actor_id]
