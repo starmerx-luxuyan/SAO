@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 
 from sao_mcp.corpus.floor4 import (
     GONDOLA_TARGET,
     OPTIONAL_RAM_MATERIAL,
     PREMIUM_MATERIALS,
     QUEST_ID,
+    ROMOLO_ID,
+    SECRET_TARGET,
     STANDARD_MATERIALS,
+    YOFILIS_ID,
 )
 from sao_mcp.corpus.loot import CORE_LOOT_TABLES
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES
@@ -18,21 +22,25 @@ from sao_mcp.rules.quests import QuestObjectiveKind
 
 ROVIA = "floor_4_rovia"
 BEAR_FOREST = "floor_4_bear_forest"
+FALLEN_ELF_HIDEOUT = "floor_4_fallen_elf_hideout"
+YOFEL_CASTLE = "floor_4_yofel_castle"
 MAGNATHERIUM_ID = "magnatherium"
 BUILD_TIME_MS = 3 * 60 * 60 * 1000
 NOBLEWOOD_HARVEST_TIME_MS = 10_000  # Simulation action time per felled tree/core.
+FOLLOW_TRANSPORT_TIME_MS = 45 * 60_000  # Simulation travel abstraction from Rovia to the hidden waterfall route.
+HIDEOUT_NAVIGATION_MS = 6 * 60 * 60 * 1000  # Mirrors the documented Kirito/Asuna traversal duration.
 
 # Canon establishes free player-controlled navigation around Floor 4. These route times are simulation.
 WATER_ROUTES: dict[frozenset[str], int] = {
     frozenset(("floor_4_rovia", "floor_4_caldera_lake")): 20 * 60_000,
     frozenset(("floor_4_caldera_lake", "floor_4_usco")): 16 * 60_000,
     frozenset(("floor_4_usco", "floor_4_yofel_castle")): 20 * 60_000,
-    frozenset(("floor_4_rovia", "floor_4_fallen_elf_hideout")): 45 * 60_000,
+    frozenset(("floor_4_rovia", FALLEN_ELF_HIDEOUT)): 45 * 60_000,
 }
 
 
 class Floor4ShipwrightScenario:
-    """Shipwright of Yore through construction and free use of a personal gondola."""
+    """Shipwright of Yore from material gathering through the Dark-Elf-route intelligence report."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
@@ -70,6 +78,10 @@ class Floor4ShipwrightScenario:
                 "gondola_built_at_ms": None,
                 "first_sail_at_ms": None,
                 "water_carriers_suspicious": False,
+                "romolo_followup_at_ms": None,
+                "transport_followed_at_ms": None,
+                "secret_discovered_at_ms": None,
+                "completed_at_ms": None,
             },
         )
         return self.status(actor_id)
@@ -197,12 +209,16 @@ class Floor4ShipwrightScenario:
         gondola = actor.metadata.get("floor4_gondola")
         if not gondola:
             raise ValueError("character does not own a personal gondola")
-        route = frozenset((str(actor.location_id), destination_id))
+        origin = str(actor.location_id)
+        if origin == ROVIA and destination_id == FALLEN_ELF_HIDEOUT:
+            raise ValueError("the hidden Fallen Elf route is reached by following the Water Carriers transport")
+        if origin == FALLEN_ELF_HIDEOUT and destination_id == ROVIA and state["stage"] != "report_to_yofel":
+            raise ValueError("the transport secret must be discovered before leaving the hideout")
+        route = frozenset((origin, destination_id))
         if len(route) != 2 or route not in WATER_ROUTES:
             raise ValueError("destination is not connected by an implemented Floor 4 gondola route")
 
         self.runtime.advance_world(WATER_ROUTES[route])
-        origin = actor.location_id
         actor.location_id = destination_id
         gondola["moored_at"] = destination_id
         if state["first_sail_at_ms"] is None:
@@ -216,6 +232,76 @@ class Floor4ShipwrightScenario:
             "travel_ms": WATER_ROUTES[route],
             "gondola": dict(gondola),
             "shipwright_state": self.status(actor_id),
+        }
+
+    def receive_romolo_followup(self, actor_id: str) -> dict:
+        actor = self.runtime.actors[actor_id]
+        self._active_progress(actor_id)
+        state = self._state(actor_id)
+        if actor.location_id != ROVIA:
+            raise ValueError("Romolo's Water Carriers lead is given in Rovia")
+        if state["stage"] != "return_to_romolo":
+            raise ValueError("the Water Carriers' hostility must be observed before returning to Romolo")
+        self.runtime.interact_npc(actor_id, ROMOLO_ID)
+        state["stage"] = "follow_transport_at_nightfall"
+        state["romolo_followup_at_ms"] = self.runtime.world.now_ms
+        return self.status(actor_id)
+
+    def follow_water_carrier_transport(self, actor_id: str) -> dict:
+        actor = self.runtime.actors[actor_id]
+        self._active_progress(actor_id)
+        state = self._state(actor_id)
+        gondola = actor.metadata.get("floor4_gondola")
+        if actor.location_id != ROVIA or not gondola:
+            raise ValueError("the transport must be followed from Rovia in the player's gondola")
+        if state["stage"] != "follow_transport_at_nightfall":
+            raise ValueError("Romolo must first identify the evening transport to follow")
+
+        self.runtime.advance_world(FOLLOW_TRANSPORT_TIME_MS)
+        actor.location_id = FALLEN_ELF_HIDEOUT
+        gondola["moored_at"] = FALLEN_ELF_HIDEOUT
+        state["stage"] = "hideout_search"
+        state["transport_followed_at_ms"] = self.runtime.world.now_ms
+        return self.status(actor_id)
+
+    def investigate_fallen_elf_hideout(self, actor_id: str) -> dict:
+        actor = self.runtime.actors[actor_id]
+        self._active_progress(actor_id)
+        state = self._state(actor_id)
+        if actor.location_id != FALLEN_ELF_HIDEOUT or state["stage"] != "hideout_search":
+            raise ValueError("the Water Carriers secret is investigated inside the submerged Fallen Elf hideout")
+
+        self.runtime.advance_world(HIDEOUT_NAVIGATION_MS)
+        self.runtime.quests.record_event(
+            actor_id,
+            kind=QuestObjectiveKind.DISCOVER,
+            target_id=SECRET_TARGET,
+        )
+        state["stage"] = "report_to_yofel"
+        state["secret_discovered_at_ms"] = self.runtime.world.now_ms
+        state["discovered_facts"] = [
+            "Water Carriers Guild transports wooden boxes to Fallen Elves",
+            "the delivered boxes are empty because the timber itself is shipbuilding material",
+            "the Fallen Elves are supporting a future ship-borne assault on Yofel Castle",
+        ]
+        return self.status(actor_id)
+
+    def report_to_yofel(self, actor_id: str) -> dict:
+        actor = self.runtime.actors[actor_id]
+        state = self._state(actor_id)
+        if actor.location_id != YOFEL_CASTLE:
+            raise ValueError("the Dark Elf route completes by reporting the intelligence at Yofel Castle")
+        if state["stage"] != "report_to_yofel":
+            raise ValueError("the Water Carriers secret has not yet been uncovered")
+        self.runtime.interact_npc(actor_id, YOFILIS_ID)
+        claim = self.runtime.claim_quest(actor_id, QUEST_ID)
+        state["stage"] = "completed"
+        state["completed_at_ms"] = self.runtime.world.now_ms
+        actor.metadata["floor4_laketop_fortress_unlocked"] = True
+        return {
+            "claim": asdict(claim),
+            "shipwright_state": self.status(actor_id),
+            "next_quest_id": "laketop_fortress",
         }
 
     def status(self, actor_id: str) -> dict:
