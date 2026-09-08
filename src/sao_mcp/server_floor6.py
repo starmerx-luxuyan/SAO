@@ -59,8 +59,18 @@ def register_floor6_tools(mcp, cube, stachion) -> None:
         return _json(stachion.advance_to_paralysis_release(actor_id))
 
     @mcp.tool()
+    def resolve_floor6_ambusher_retreat(actor_id: str) -> str:
+        """After ordinary PvP begins, let living ambushers retreat once one is defeated or the simulation low-HP retreat condition is reached."""
+        return _json(stachion.resolve_ambusher_retreat(actor_id))
+
+    @mcp.tool()
+    def recover_floor6_cylon_ground_loot(actor_id: str) -> str:
+        """After Morte/Joe are dead or gone, recover Cylon's exact dropped item instances and reopen the road to Suribus/Stachion."""
+        return _json(stachion.recover_cylon_ground_loot(actor_id))
+
+    @mcp.tool()
     def get_floor6_stachion_curse_state(actor_id: str) -> str:
-        """Inspect Curse of Stachion witness/key/capture/ambush progress. The quest remains active after the key is found."""
+        """Inspect Curse of Stachion witness/key/capture/ambush progress. The quest remains active after the key is recovered."""
         return _json(stachion.status(actor_id))
 
     @mcp.tool()
