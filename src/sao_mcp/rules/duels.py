@@ -175,6 +175,32 @@ class DuelRuntime:
             loser.metadata.pop("active_duel_id", None)
         return DuelEvaluation(duel.duel_id, True, winner_id, loser_id, reason)
 
+    def draw(
+        self,
+        duel_id: str,
+        actors: dict[str, CombatantState],
+        *,
+        now_ms: int,
+        reason: str = "draw",
+    ) -> DuelEvaluation:
+        duel = self.duels[duel_id]
+        if duel.status is not DuelStatus.ACTIVE:
+            raise ValueError("only an active duel can end in a draw")
+        challenger = actors[duel.challenger_id]
+        target = actors[duel.target_id]
+        self._deauthorize(challenger, target.actor_id)
+        self._deauthorize(target, challenger.actor_id)
+        if challenger.metadata.get("active_duel_id") == duel.duel_id:
+            challenger.metadata.pop("active_duel_id", None)
+        if target.metadata.get("active_duel_id") == duel.duel_id:
+            target.metadata.pop("active_duel_id", None)
+        duel.status = DuelStatus.COMPLETED
+        duel.winner_id = None
+        duel.loser_id = None
+        duel.completion_reason = reason
+        duel.completed_at_ms = now_ms
+        return DuelEvaluation(duel.duel_id, True, reason=reason)
+
     def evaluate_attack(
         self,
         attacker: CombatantState,
