@@ -2,6 +2,7 @@ import pytest
 
 from sao_mcp.corpus.floor6_ambush import GAS_MASK_ID, IRON_KEY_ID
 from sao_mcp.corpus.floor6_stachion import GOLDEN_KEY_ID, POISON_JAR_ID, QUEST_ID, WITNESSES
+from sao_mcp.corpus.floor6_trials import THEANO_IRON_KEY_ID
 from sao_mcp.domain.models import CursorColor
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.scenarios.floor6_stachion import (
@@ -13,11 +14,17 @@ from sao_mcp.scenarios.floor6_stachion import (
     SURIBUS,
     install_floor6_stachion_scenario,
 )
+from sao_mcp.scenarios.floor6_trials import (
+    DUNGEON_ENTRANCE,
+    DUNGEON_OF_TRIALS,
+    install_floor6_trials_scenario,
+)
 
 
-def test_curse_of_stachion_returns_from_scripted_capture_to_world_and_normal_pvp():
+def test_curse_of_stachion_release_route_reaches_changed_dungeon_of_trials():
     runtime = HousingAincradRuntime(seed=47)
     stachion = install_floor6_stachion_scenario(runtime)
+    trials = install_floor6_trials_scenario(runtime)
     player = runtime.create_character("StachionSolver", level=40)
     runtime.world.floors[6].unlocked = True
     player.location_id = CYLON_MANOR
@@ -96,7 +103,6 @@ def test_curse_of_stachion_returns_from_scripted_capture_to_world_and_normal_pvp
     assert state["stage"] == "morte_joe_pvp_active"
     assert not state["paralysed"]
 
-    # From here existing PvP rules decide the exchange rather than a scripted fight result.
     hostile_strike = runtime.attack(encounter.encounter_id, morte.actor_id, player.actor_id, seed=3)
     assert hostile_strike.legal
     assert morte.cursor is CursorColor.ORANGE
@@ -104,8 +110,6 @@ def test_curse_of_stachion_returns_from_scripted_capture_to_world_and_normal_pvp
     assert counter.legal
     assert player.cursor is CursorColor.GREEN
 
-    # Canon establishes a retreat, but the exact trigger is simulation. Crossing the low-HP
-    # threshold lets the living pair disengage; killing them instead would unlock the same loot state.
     morte.hp = max(1, int(morte.max_hp * 0.20))
     morte.alive = True
     state = stachion.resolve_ambusher_retreat(player.actor_id)
@@ -127,8 +131,42 @@ def test_curse_of_stachion_returns_from_scripted_capture_to_world_and_normal_pvp
     recovered_templates = {player.inventory[item_id].template_id for item_id in recovery["recovered_instance_ids"]}
     assert {GOLDEN_KEY_ID, IRON_KEY_ID, POISON_JAR_ID, GAS_MASK_ID}.issubset(recovered_templates)
 
-    # The scripted road node now rejoins the normal world graph and there is no living opponent left in the encounter.
     runtime.travel_actor(player.actor_id, SURIBUS)
-    assert player.location_id == SURIBUS
-    assert state["ready_to_claim"] is False
+    runtime.travel_actor(player.actor_id, "floor_6_field")
+    runtime.travel_actor(player.actor_id, STACHION)
+    assert player.location_id == STACHION
+
+    trial_state = trials.meet_myia(player.actor_id)
+    myia = runtime.actors[trial_state["myia_actor_id"]]
+    assert trial_state["stage"] == "myia_met_paired_keys"
+    assert trial_state["myia_asks_player_to_keep_cylon_key"] is True
+    assert any(item.template_id == THEANO_IRON_KEY_ID for item in myia.inventory.values())
+
+    signal = trials.paired_iron_key_signal(player.actor_id)
+    assert signal["route_hops"] == 0
+    assert signal["resonance"] == "strong"
+    assert signal["canon_mechanic"]["vibration_indicates_direction"] is True
+    assert signal["canon_mechanic"]["sound_resonance_indicates_distance"] is True
+
+    trial_state = trials.hear_theano_note(player.actor_id)
+    assert trial_state["stage"] == "seek_barro_after_theano_note"
+    runtime.travel_actor(player.actor_id, PUZZLE_QUARTER)
+    signal = trials.paired_iron_key_signal(player.actor_id)
+    assert signal["direction_next_location_id"] == STACHION
+    assert signal["route_hops"] == 1
+
+    trial_state = trials.consult_barro(player.actor_id)
+    assert trial_state["stage"] == "dungeon_route_known"
+    runtime.travel_actor(player.actor_id, STACHION)
+    runtime.travel_actor(player.actor_id, CYLON_MANOR)
+    runtime.travel_actor(player.actor_id, DUNGEON_ENTRANCE)
+    trial_state = trials.open_dungeon_of_trials(player.actor_id)
+    assert trial_state["stage"] == "dungeon_of_trials_open"
+    assert player.inventory[original_key_id].metadata["opened_dungeon_of_trials"] is True
+
+    runtime.travel_actor(player.actor_id, DUNGEON_OF_TRIALS)
+    trial_state = trials.inspect_release_dungeon(player.actor_id)
+    assert trial_state["stage"] == "dungeon_of_trials_release_route"
+    assert trial_state["dungeon_open"] is True
+    assert trial_state["ready_to_claim"] is False
     assert QUEST_ID not in runtime.quests.completed_by_actor[player.actor_id]
