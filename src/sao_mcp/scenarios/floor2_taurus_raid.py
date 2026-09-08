@@ -37,8 +37,8 @@ class Floor2TaurusRaidScenario:
             if not actor.alive or actor.location_id != BOSS_ROOM:
                 raise ValueError("all raid participants must be living players in the Floor 2 Boss Room")
 
-        # Create Asterius now only so the existing boss-minion factory can bind Nato/Baran to it.
-        # He is deliberately withheld from encounter.participants until both mid-bosses are down.
+        # Asterius is constructed up front only to bind the existing minion factory to his encounter family;
+        # he is not an encounter participant until both Taurus mid-bosses have fallen.
         asterius = self.runtime.create_floor_boss(BOSS_DEFINITION_ID)
         nato = self.runtime._create_boss_minion(NATO_ID, boss_id=asterius.actor_id)
         baran = self.runtime._create_boss_minion(BARAN_ID, boss_id=asterius.actor_id)
@@ -82,10 +82,7 @@ class Floor2TaurusRaidScenario:
 
         boss = self.runtime.actors[instance["asterius_id"]]
         encounter.participants[boss.actor_id] = boss
-        if hasattr(self.runtime, "_arrange_raid_formation"):
-            self.runtime._arrange_raid_formation(encounter, boss)
-        else:
-            encounter.positions[boss.actor_id] = (0.0, 0.0)
+        self.runtime._arrange_raid_formation(encounter, boss)
         self.runtime._append(
             encounter,
             "floor2_asterius_entered",
@@ -109,7 +106,4 @@ class Floor2TaurusRaidScenario:
 
 
 def install_floor2_taurus_raid_scenario(runtime) -> Floor2TaurusRaidScenario:
-    if BOSS_DEFINITION_ID not in runtime.catalog.weapons and False:
-        raise RuntimeError("unreachable")
-    # create_floor_boss is the definitive validation that the Progressive boss corpus is registered.
     return Floor2TaurusRaidScenario(runtime)
