@@ -79,6 +79,46 @@ def floor7_locations() -> dict[str, LocationDefinition]:
             "floor_7_harin_tree_palace", 7, "Harin Tree Palace", ZoneKind.DUNGEON,
             provenance=_canon("Dark Elf palace reached through the Looserock Forest during the continuing Elf War campaign."),
         ),
+        "floor_7_harin_b2_cell": LocationDefinition(
+            "floor_7_harin_b2_cell", 7, "Harin Tree Palace - B2 Prison Cell", ZoneKind.DUNGEON,
+            provenance=_canon(
+                "Kirito and Asuna are held on the west side of the second basement prison level after being suspected of collaborating with the Fallen Elves."
+            ),
+        ),
+        "floor_7_harin_b2_guard_station": LocationDefinition(
+            "floor_7_harin_b2_guard_station", 7, "Harin Tree Palace - B2 Guard Station", ZoneKind.DUNGEON,
+            provenance=_canon("Central guard post between the basement cell blocks."),
+        ),
+        "floor_7_harin_weapon_store": LocationDefinition(
+            "floor_7_harin_weapon_store", 7, "Harin Tree Palace - Confiscated Weapon Store", ZoneKind.DUNGEON,
+            provenance=_inferred(
+                "Small storage room beside the basement guard station where the players' swords, their Lyusula sigils, the Elven Stout Sword and Kizmel's saber are held."
+            ),
+        ),
+        "floor_7_harin_lavik_cell": LocationDefinition(
+            "floor_7_harin_lavik_cell", 7, "Harin Tree Palace - Lavik's Cell", ZoneKind.DUNGEON,
+            provenance=_inferred(
+                "Descriptive node for the basement cell occupied for roughly thirty years by Lavik Fen Cortassios; exact cell number is not asserted."
+            ),
+        ),
+        "floor_7_harin_seventh_prison": LocationDefinition(
+            "floor_7_harin_seventh_prison", 7, "Harin Tree Palace - Seventh-Story Clergy Prison", ZoneKind.DUNGEON,
+            provenance=_canon(
+                "Prison in the priests' living quarters on the seventh story where Kizmel is held on suspicion of Fallen Elf treachery."
+            ),
+        ),
+        "floor_7_harin_escape_window": LocationDefinition(
+            "floor_7_harin_escape_window", 7, "Harin Tree Palace - Seventh-Story Escape Window", ZoneKind.DUNGEON,
+            provenance=_inferred(
+                "Scenario node for the seventh-story window used by Kirito, Asuna, Kizmel and Lavik to begin their exterior descent."
+            ),
+        ),
+        "floor_7_harin_outer_trunk": LocationDefinition(
+            "floor_7_harin_outer_trunk", 7, "Harin Tree Palace - Outer Trunk", ZoneKind.FIELD,
+            provenance=_canon(
+                "The escape route descends roughly fifty metres down the natural outer trunk using thin lifelines while the palace is blacked out."
+            ),
+        ),
         "floor_7_ant_tunnel_valley": LocationDefinition(
             "floor_7_ant_tunnel_valley", 7, "Ant Tunnel Valley", ZoneKind.FIELD,
             provenance=_inferred("Named Floor 7 field region; exact internal geometry is abstracted."),
@@ -112,6 +152,14 @@ def floor7_connections() -> tuple[TravelConnection, ...]:
             ),
         ),
         TravelConnection("floor_7_looserock_forest", "floor_7_harin_tree_palace", 22 * 60_000, provenance=p),
+        # Internal Harin prison routes are scenario-controlled while the party is detained; they are still real map nodes.
+        TravelConnection("floor_7_harin_tree_palace", "floor_7_harin_b2_guard_station", 7 * 60_000, provenance=p),
+        TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_weapon_store", 1 * 60_000, provenance=p),
+        TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_lavik_cell", 2 * 60_000, provenance=p),
+        TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_seventh_prison", 22 * 60_000, provenance=p),
+        TravelConnection("floor_7_harin_seventh_prison", "floor_7_harin_escape_window", 2 * 60_000, provenance=p),
+        TravelConnection("floor_7_harin_escape_window", "floor_7_harin_outer_trunk", 28 * 60_000, provenance=p),
+        TravelConnection("floor_7_harin_outer_trunk", "floor_7_looserock_forest", 8 * 60_000, provenance=p),
         TravelConnection("floor_7_verdian_plains", "floor_7_ant_tunnel_valley", 30 * 60_000, provenance=p),
         TravelConnection("floor_7_ant_tunnel_valley", "floor_7_tribula", 20 * 60_000, provenance=p),
         TravelConnection("floor_7_volupta", "floor_7_field_of_bones", 44 * 60_000, provenance=p),
