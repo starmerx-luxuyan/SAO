@@ -107,6 +107,13 @@ _CANON_MAIN_SETTLEMENTS: dict[int, tuple[str, str, Provenance]] = {
 
 
 def build_world_map_catalog() -> WorldMapCatalog:
+    # Imported here to keep the low-floor content module data-only while it reuses the world dataclasses.
+    from sao_mcp.corpus.low_floors import (
+        LOW_FLOOR_MAIN_SETTLEMENTS,
+        low_floor_connections,
+        low_floor_locations,
+    )
+
     locations: dict[str, LocationDefinition] = {}
     connections: list[TravelConnection] = []
 
@@ -165,9 +172,9 @@ def build_world_map_catalog() -> WorldMapCatalog:
     )
 
     # Every floor retains functional field/labyrinth/boss nodes so the runtime can progress to Floor 100.
-    # Where the novels identify the main settlement, the canonical name/identity replaces the generic town.
+    # Named settlements replace placeholders as verified corpus becomes available.
     for floor in range(2, 101):
-        settlement = _CANON_MAIN_SETTLEMENTS.get(floor)
+        settlement = LOW_FLOOR_MAIN_SETTLEMENTS.get(floor) or _CANON_MAIN_SETTLEMENTS.get(floor)
         if settlement:
             town_id, town_name, town_provenance = settlement
         else:
@@ -204,6 +211,10 @@ def build_world_map_catalog() -> WorldMapCatalog:
                 TravelConnection(labyrinth_id, boss_id, 60 * 60_000),
             )
         )
+
+    # Canonical Progressive landmarks on Floors 2-5 are additive to the generic field/labyrinth backbone.
+    locations.update(low_floor_locations())
+    connections.extend(low_floor_connections())
 
     # Canon player-run shops are real world nodes rather than lore-only labels. The short in-city
     # travel times below are simulation conveniences; shop identity and floor/city are canon.
