@@ -15,10 +15,22 @@ from sao_mcp.scenarios.floor7_pursuit import (
     FIELD_OF_BONES,
     LABYRINTH,
     PLATEAU,
+    RENDEZVOUS_PREPARATION_MS,
     TRAIL_MARGIN_MS,
     WATCH_HILL,
     install_floor7_pursuit_scenario,
 )
+
+
+LEGACY_ROUTE_MS_FIELDS = {
+    "volupta_to_field_ms",
+    "field_to_watch_ms",
+    "watch_to_dragon_ms",
+    "dragon_to_ant_ms",
+    "ant_to_plateau_ms",
+    "plateau_to_labyrinth_ms",
+    "boss_room_travel_ms",
+}
 
 
 def _finish_harin_escape(runtime, elfwar, player_ids):
@@ -60,6 +72,15 @@ def _seed_kysarah_key_bag(runtime):
     return kysarah, bag
 
 
+def _assert_route(route, actor_ids, expected_segments):
+    assert [
+        (row["from_location_id"], row["to_location_id"], row["elapsed_ms"])
+        for row in route
+    ] == expected_segments
+    assert all(row["actor_ids"] == actor_ids for row in route)
+    assert all("newly_discovered" in row and "traversal_tags" in row for row in route)
+
+
 def _setup(seed=83):
     runtime = HousingAincradRuntime(seed=seed)
     runtime.world.floors[7].unlocked = True
@@ -94,31 +115,56 @@ def _setup(seed=83):
     assert "target_key_bag_holder_id" not in raw_pursuit
     assert "ruby_key_fallen_holder_id" not in raw_pursuit
     assert raw_pursuit["ruby_key_ambusher_actor_id"] is None
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(raw_pursuit)
+    assert raw_pursuit["rendezvous_route"] == []
+    assert raw_pursuit["tail_to_ant_route"] == []
+    assert raw_pursuit["labyrinth_entry_route"] == []
+    assert raw_pursuit["boss_room_route"] == []
     return runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag
 
 
 def _reach_blocker_encounter(seed=83):
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag = _setup(seed)
+    actor_ids = [a.actor_id, b.actor_id, kizmel.actor_id]
     before_depart = runtime.world.now_ms
     state = pursuit.rest_and_reach_dragon_bone_watch(instance_id)
-    expected = (
-        30 * 60_000
-        + state["pursuit"]["volupta_to_field_ms"]
-        + state["pursuit"]["field_to_watch_ms"]
+    rendezvous = state["pursuit"]["rendezvous_route"]
+    assert runtime.world.now_ms - before_depart == RENDEZVOUS_PREPARATION_MS + sum(
+        row["elapsed_ms"] for row in rendezvous
     )
-    assert runtime.world.now_ms - before_depart == expected
+    assert len(rendezvous) == 2
+    assert rendezvous[0]["from_location_id"] == VOLUPTA
+    assert rendezvous[0]["to_location_id"] == FIELD_OF_BONES
+    assert rendezvous[1]["from_location_id"] == FIELD_OF_BONES
+    assert rendezvous[1]["to_location_id"] == WATCH_HILL
+    assert all(row["actor_ids"] == actor_ids for row in rendezvous)
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(state["pursuit"])
     assert {a.location_id, b.location_id, kizmel.location_id} == {WATCH_HILL}
 
     state = pursuit.observe_fallen_departure(instance_id)
     assert set(state["fallen_scout_locations"].values()) == {DRAGON_BONE}
     state = pursuit.pursue_to_ant_tunnel_valley(instance_id)
-    assert state["pursuit"]["watch_to_dragon_ms"] == 10 * 60_000
-    assert state["pursuit"]["dragon_to_ant_ms"] == 75 * 60_000
+    _assert_route(
+        state["pursuit"]["tail_to_ant_route"],
+        actor_ids,
+        [
+            (WATCH_HILL, DRAGON_BONE, 10 * 60_000),
+            (DRAGON_BONE, ANT_TUNNEL_VALLEY, 75 * 60_000),
+        ],
+    )
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(state["pursuit"])
     assert {a.location_id, b.location_id, kizmel.location_id} == {ANT_TUNNEL_VALLEY}
 
     state = pursuit.follow_through_valley_into_labyrinth(instance_id)
-    assert state["pursuit"]["ant_to_plateau_ms"] == 35 * 60_000
-    assert state["pursuit"]["plateau_to_labyrinth_ms"] == 25 * 60_000
+    _assert_route(
+        state["pursuit"]["labyrinth_entry_route"],
+        actor_ids,
+        [
+            (ANT_TUNNEL_VALLEY, PLATEAU, 35 * 60_000),
+            (PLATEAU, LABYRINTH, 25 * 60_000),
+        ],
+    )
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(state["pursuit"])
     assert {a.location_id, b.location_id, kizmel.location_id} == {LABYRINTH}
     assert len(state["blockers"]) == 2
     assert state["ruby_key_status"] == "fallen_control"
@@ -147,6 +193,7 @@ def _defeat_blockers(runtime, pursuit, instance_id, encounter_id, elapsed_ms):
 
 def test_floor7_pursuit_uses_corpus_route_real_keys_and_shared_travel_time():
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter()
+    actor_ids = [a.actor_id, b.actor_id, kizmel.actor_id]
     assert not any(
         edge.from_location_id == FIELD_OF_BONES and edge.to_location_id == ANT_TUNNEL_VALLEY
         for edge in runtime.world_map.connections
@@ -173,6 +220,13 @@ def test_floor7_pursuit_uses_corpus_route_real_keys_and_shared_travel_time():
 
     state = pursuit.advance_to_boss_room(instance_id)
     assert state["ready_for_aghyellr"] is True
+    boss_route = state["pursuit"]["boss_room_route"]
+    assert len(boss_route) == 1
+    assert boss_route[0]["actor_ids"] == actor_ids
+    assert boss_route[0]["from_location_id"] == LABYRINTH
+    assert boss_route[0]["to_location_id"] == BOSS_ROOM
+    assert boss_route[0]["elapsed_ms"] > 0
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(state["pursuit"])
     assert {a.location_id, b.location_id, kizmel.location_id} == {BOSS_ROOM}
 
 
@@ -227,12 +281,15 @@ def test_floor7_pursuit_survives_save_load_without_scenario_seeded_map_edges():
     before_save = pursuit.observe_fallen_departure(instance_id)
     scout_ids = list(before_save["pursuit"]["fallen_scout_ids"])
     actor_ids = [a.actor_id, b.actor_id, kizmel.actor_id]
+    rendezvous_route = list(before_save["pursuit"]["rendezvous_route"])
 
     restored = import_runtime(export_runtime(runtime))
     restored_pursuit = install_floor7_pursuit_scenario(restored)
     restored_state = restored_pursuit.status(instance_id)
 
     assert restored_state["stage"] == "fallen_departed_begin_tail"
+    assert restored_state["pursuit"]["rendezvous_route"] == rendezvous_route
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(restored_state["pursuit"])
     assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {WATCH_HILL}
     assert {restored.actors[scout_id].location_id for scout_id in scout_ids} == {DRAGON_BONE}
     assert restored.actors[kysarah.actor_id].inventory[bag.instance_id].template_id == SACRED_KEY_BAG_ID
@@ -245,8 +302,14 @@ def test_floor7_pursuit_survives_save_load_without_scenario_seeded_map_edges():
 
     restored_state = restored_pursuit.pursue_to_ant_tunnel_valley(instance_id)
     assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {ANT_TUNNEL_VALLEY}
-    assert restored_state["pursuit"]["watch_to_dragon_ms"] == 10 * 60_000
-    assert restored_state["pursuit"]["dragon_to_ant_ms"] == 75 * 60_000
+    _assert_route(
+        restored_state["pursuit"]["tail_to_ant_route"],
+        actor_ids,
+        [
+            (WATCH_HILL, DRAGON_BONE, 10 * 60_000),
+            (DRAGON_BONE, ANT_TUNNEL_VALLEY, 75 * 60_000),
+        ],
+    )
 
     restored_state = restored_pursuit.follow_through_valley_into_labyrinth(instance_id)
     assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {LABYRINTH}
@@ -254,6 +317,7 @@ def test_floor7_pursuit_survives_save_load_without_scenario_seeded_map_edges():
     assert restored_state["fallen_sacred_key_count"] == 5
     assert restored_state["ruby_key_owner_is_fallen"] is True
     assert restored_state["pursuit"]["ruby_key_ambusher_actor_id"] == restored_state["ruby_key_owner_id"]
+    assert LEGACY_ROUTE_MS_FIELDS.isdisjoint(restored_state["pursuit"])
 
 
 def test_group_travel_advances_one_edge_for_a_colocated_party():

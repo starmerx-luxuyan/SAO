@@ -15,7 +15,7 @@ from sao_mcp.corpus.location_access import DARK_ELVES, FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.duels import DuelMode
-from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.inventory import add_item, transfer_item
 
 
@@ -333,6 +333,10 @@ class Floor7PursuitScenario:
             "ruby_key_stolen_at_ms": None,
             "fallen_sacred_key_count": 4,
             "travelling_actor_ids": [],
+            "rendezvous_route": [],
+            "tail_to_ant_route": [],
+            "labyrinth_entry_route": [],
+            "boss_room_route": [],
             "fallen_scout_ids": [],
             "blocker_actor_ids": [],
             "blocker_encounter_id": None,
@@ -359,8 +363,7 @@ class Floor7PursuitScenario:
         to_watch = travel_together(self.runtime, travelling_actor_ids, WATCH_HILL)
         pursuit = state["pursuit"]
         pursuit["travelling_actor_ids"] = travelling_actor_ids
-        pursuit["volupta_to_field_ms"] = to_field.elapsed_ms
-        pursuit["field_to_watch_ms"] = to_watch.elapsed_ms
+        pursuit["rendezvous_route"] = [group_travel_record(to_field), group_travel_record(to_watch)]
         pursuit["watch_hill_arrived_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "waiting_at_field_of_bones_rendezvous"
         return self.status(instance_id)
@@ -399,8 +402,7 @@ class Floor7PursuitScenario:
         )
         for scout_id in pursuit["fallen_scout_ids"]:
             self.runtime.actors[scout_id].location_id = ANT_TUNNEL_VALLEY
-        pursuit["watch_to_dragon_ms"] = to_dragon.elapsed_ms
-        pursuit["dragon_to_ant_ms"] = to_ant.elapsed_ms
+        pursuit["tail_to_ant_route"] = [group_travel_record(to_dragon), group_travel_record(to_ant)]
         state["stage"] = "tracking_through_ant_tunnel_valley"
         return self.status(instance_id)
 
@@ -428,8 +430,7 @@ class Floor7PursuitScenario:
 
         self._resolve_ruby_key_loss(state)
         encounter, blockers = self._spawn_labyrinth_blockers(pursuit["travelling_actor_ids"])
-        pursuit["ant_to_plateau_ms"] = to_plateau.elapsed_ms
-        pursuit["plateau_to_labyrinth_ms"] = to_labyrinth.elapsed_ms
+        pursuit["labyrinth_entry_route"] = [group_travel_record(to_plateau), group_travel_record(to_labyrinth)]
         pursuit["blocker_actor_ids"] = [monster.actor_id for monster in blockers]
         pursuit["blocker_encounter_id"] = encounter.encounter_id
         pursuit["blocker_encounter_started_at_ms"] = encounter.time_ms
@@ -482,7 +483,7 @@ class Floor7PursuitScenario:
         )
         for scout_id in pursuit["fallen_scout_ids"]:
             self.runtime.actors[scout_id].metadata["pursuit_deferred_for_floor_boss"] = True
-        pursuit["boss_room_travel_ms"] = resolution.elapsed_ms
+        pursuit["boss_room_route"] = [group_travel_record(resolution)]
         pursuit["boss_room_reached_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "boss_room_reached"
         return self.status(instance_id)
