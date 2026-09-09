@@ -3,11 +3,20 @@ from __future__ import annotations
 import uuid
 
 from sao_mcp.corpus.floor7_pursuit import ARGO_ID
-from sao_mcp.corpus.floor8_world import FOREST_ELF_ESCAPE_CAVE, FRIEBEN
-from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
+from sao_mcp.corpus.floor8_world import (
+    FOREST_ELF_ESCAPE_CAVE,
+    FOREST_ELF_ESCAPE_CAVE_MOUTH,
+    FOREST_ELF_SACRED_WOODS,
+    FRIEBEN,
+    MANAGED_FOREST_OUTER,
+)
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
+from sao_mcp.rules.group_travel import travel_together
 
 
 EMERGENCY_TEXT = "Floor 8 emergency: sacred Forest Elf trees were cut; frontline players fled into a cave."
+ALS_GUILD_ID = "aincrad_liberation_squad"
+DKB_GUILD_ID = "dragon_knights_brigade"
 
 
 class Floor8ForestEmergencyScenario:
@@ -75,6 +84,97 @@ class Floor8ForestEmergencyScenario:
         if not self.runtime.relationships.are_friends(argo_id, recipient_id):
             raise RuntimeError("Argo friend contact did not become authoritative")
 
+    def _make_incident_player(self, name: str, guild_id: str, level: int) -> CombatantState:
+        actor = self.runtime.create_character(name, level=level)
+        actor.location_id = FOREST_ELF_ESCAPE_CAVE
+        actor.guild_id = guild_id
+        actor.metadata.update(
+            {
+                "floor8_protected_tree_incident": True,
+                "frontline_incident_group_member": True,
+                "personal_identity_provenance": "simulation",
+                "guild_affiliation_provenance": "canon",
+                "sheltering_in_escape_cave": True,
+            }
+        )
+        return actor
+
+    def _make_forest_elf_pursuer(self, role: str, index: int) -> CombatantState:
+        actor_id = f"forestelf8_{role}_{uuid.uuid4().hex[:10]}"
+        actor = CombatantState(
+            actor_id=actor_id,
+            name=f"Forest Elf {role.title()} {index}",
+            kind=EntityKind.NPC,
+            level=30,
+            max_hp=7600,
+            hp=7600,
+            strength=68,
+            agility=74,
+            armor=170,
+            evasion=16,
+            cursor=CursorColor.YELLOW,
+            location_id=FOREST_ELF_SACRED_WOODS,
+            skill_proficiencies={"one_hand_sword": 760.0},
+            metadata={
+                "forest_elf": True,
+                "floor8_protected_woods_enforcement": True,
+                "pursuing_frontline_incident_group": True,
+                "personal_identity_provenance": "simulation",
+                "combat_stats_provenance": "simulation",
+            },
+        )
+        template = self.runtime.catalog.weapons["starter_one_hand_sword"]
+        weapon = ItemInstance(
+            instance_id=f"forestelf_weapon_{uuid.uuid4().hex[:10]}",
+            template_id=template.template_id,
+            owner_id=actor_id,
+            durability=template.base_durability,
+            max_durability=template.base_durability,
+            metadata={"simulation_equipment_for_anonymous_canon_role": True},
+        )
+        actor.inventory[weapon.instance_id] = weapon
+        actor.equipment["weapon"] = weapon.instance_id
+        self.runtime.actors[actor_id] = actor
+        return actor
+
+    def _create_party(self, prefix: str, members: list[CombatantState]) -> PartyState:
+        if not members:
+            raise ValueError("incident party requires at least one actor")
+        party_id = f"{prefix}_{uuid.uuid4().hex[:12]}"
+        party = PartyState(party_id, members[0].actor_id, [member.actor_id for member in members])
+        self.runtime.world.parties[party_id] = party
+        for member in members:
+            member.party_id = party_id
+        return party
+
+    def _materialize_incident_actors(self, state: dict) -> None:
+        if state["incident"]["frontline_actor_ids"] or state["incident"]["forest_elf_actor_ids"]:
+            raise RuntimeError("Floor 8 incident actors were already materialized")
+
+        als = [
+            self._make_incident_player("ALS Incident Frontliner A", ALS_GUILD_ID, 26),
+            self._make_incident_player("ALS Incident Frontliner B", ALS_GUILD_ID, 25),
+        ]
+        dkb = [
+            self._make_incident_player("DKB Incident Frontliner A", DKB_GUILD_ID, 27),
+            self._make_incident_player("DKB Incident Frontliner B", DKB_GUILD_ID, 26),
+        ]
+        als_party = self._create_party("party8_als_incident", als)
+        dkb_party = self._create_party("party8_dkb_incident", dkb)
+
+        forest_elves = [
+            self._make_forest_elf_pursuer("warden", 1),
+            self._make_forest_elf_pursuer("ranger", 1),
+        ]
+        forest_party = self._create_party("party8_forest_elf_pursuit", forest_elves)
+
+        incident = state["incident"]
+        incident["frontline_party_ids"] = [als_party.party_id, dkb_party.party_id]
+        incident["frontline_actor_ids"] = [actor.actor_id for actor in als + dkb]
+        incident["forest_elf_party_id"] = forest_party.party_id
+        incident["forest_elf_actor_ids"] = [actor.actor_id for actor in forest_elves]
+        incident["actors_materialized_at_ms"] = self.runtime.world.now_ms
+
     def trigger_from_nocturne(self, nocturne_instance_id: str, recipient_actor_id: str) -> dict:
         if any(state["nocturne_instance_id"] == nocturne_instance_id for state in self._states().values()):
             raise ValueError("this Nocturne instance already has a Floor 8 forest emergency")
@@ -104,15 +204,25 @@ class Floor8ForestEmergencyScenario:
                 "forest_elf_pursuit_triggered": True,
                 "frontline_group_sheltering_in_cave": True,
                 "reported_by_actor_id": argo.actor_id,
+                "frontline_party_ids": [],
+                "frontline_actor_ids": [],
+                "forest_elf_party_id": None,
+                "forest_elf_actor_ids": [],
+                "actors_materialized_at_ms": None,
+                "sacred_woods_inspected_at_ms": None,
+                "cave_mouth_reached_at_ms": None,
+                "responders_entered_cave_at_ms": None,
             },
             "floor8_actor_ids": [],
             "hideout_actor_ids": [],
             "response_split_assigned_at_ms": None,
             "responders_arrived_frieben_at_ms": None,
+            "frieben_to_sacred_woods_ms": None,
             "stage": "argo_message_sent",
             "triggered_at_ms": self.runtime.world.now_ms,
         }
         self._states()[instance_id] = state
+        self._materialize_incident_actors(state)
         self.nocturne.link_floor8_emergency(nocturne_instance_id, instance_id, message.message_id)
         return self.status(instance_id)
 
@@ -150,11 +260,96 @@ class Floor8ForestEmergencyScenario:
         state["stage"] = "responders_at_frieben"
         return self.status(instance_id)
 
+    def depart_frieben_to_sacred_woods(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "responders_at_frieben":
+            raise ValueError("Floor 8 responders have not assembled at Frieben")
+        responders = state["floor8_actor_ids"]
+        self._require_responders_at(state, FRIEBEN)
+        started = self.runtime.world.now_ms
+        travel_together(self.runtime, responders, MANAGED_FOREST_OUTER)
+        travel_together(self.runtime, responders, FOREST_ELF_SACRED_WOODS)
+        state["frieben_to_sacred_woods_ms"] = self.runtime.world.now_ms - started
+        state["stage"] = "responders_at_sacred_woods"
+        return self.status(instance_id)
+
+    def inspect_sacred_woods_incident(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "responders_at_sacred_woods":
+            raise ValueError("responders have not reached the protected Forest Elf woods")
+        self._require_responders_at(state, FOREST_ELF_SACRED_WOODS)
+        incident = state["incident"]
+        forest_elves = [self.runtime.actors[actor_id] for actor_id in incident["forest_elf_actor_ids"]]
+        if any(actor.location_id != FOREST_ELF_SACRED_WOODS for actor in forest_elves):
+            raise RuntimeError("Forest Elf pursuit actors left the protected woods before inspection")
+        frontline = [self.runtime.actors[actor_id] for actor_id in incident["frontline_actor_ids"]]
+        if any(actor.location_id != FOREST_ELF_ESCAPE_CAVE for actor in frontline):
+            raise RuntimeError("incident frontline actors are not sheltering inside the cave")
+        incident["sacred_woods_inspected_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "sacred_woods_incident_confirmed"
+        return self.status(instance_id)
+
+    def follow_to_escape_cave_mouth(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "sacred_woods_incident_confirmed":
+            raise ValueError("the sacred-woods incident has not been confirmed")
+        self._require_responders_at(state, FOREST_ELF_SACRED_WOODS)
+        forest_ids = list(state["incident"]["forest_elf_actor_ids"])
+        self._require_actor_ids_at(forest_ids, FOREST_ELF_SACRED_WOODS)
+        moving = list(state["floor8_actor_ids"]) + forest_ids
+        travel_together(self.runtime, moving, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        state["incident"]["cave_mouth_reached_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "cave_mouth_standoff"
+        return self.status(instance_id)
+
+    def enter_escape_cave(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "cave_mouth_standoff":
+            raise ValueError("responders have not reached the cave mouth standoff")
+        self._require_responders_at(state, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        forest_ids = list(state["incident"]["forest_elf_actor_ids"])
+        self._require_actor_ids_at(forest_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        travel_together(self.runtime, state["floor8_actor_ids"], FOREST_ELF_ESCAPE_CAVE)
+        frontline_ids = list(state["incident"]["frontline_actor_ids"])
+        self._require_actor_ids_at(frontline_ids, FOREST_ELF_ESCAPE_CAVE)
+        state["incident"]["responders_entered_cave_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "responders_inside_cave_standoff"
+        return self.status(instance_id)
+
+    def _require_actor_ids_at(self, actor_ids: list[str], location_id: str) -> None:
+        wrong = [actor_id for actor_id in actor_ids if self.runtime.actors[actor_id].location_id != location_id]
+        if wrong:
+            raise ValueError(f"actors are not all at {location_id}: {', '.join(wrong)}")
+
+    def _require_responders_at(self, state: dict, location_id: str) -> None:
+        self._require_actor_ids_at(state["floor8_actor_ids"], location_id)
+
     def status(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         message = self.runtime.communications.messages[state["message_id"]]
         if message.sender_id != state["argo_actor_id"] or message.recipient_id != state["recipient_actor_id"]:
             raise RuntimeError("Floor 8 emergency points to the wrong authoritative short message")
+        incident = state["incident"]
+        frontline_actors = {
+            actor_id: {
+                "name": self.runtime.actors[actor_id].name,
+                "guild_id": self.runtime.actors[actor_id].guild_id,
+                "party_id": self.runtime.actors[actor_id].party_id,
+                "location_id": self.runtime.actors[actor_id].location_id,
+                "alive": self.runtime.actors[actor_id].alive,
+            }
+            for actor_id in incident["frontline_actor_ids"]
+        }
+        forest_elf_actors = {
+            actor_id: {
+                "name": self.runtime.actors[actor_id].name,
+                "party_id": self.runtime.actors[actor_id].party_id,
+                "location_id": self.runtime.actors[actor_id].location_id,
+                "alive": self.runtime.actors[actor_id].alive,
+                "cursor": self.runtime.actors[actor_id].cursor.value,
+            }
+            for actor_id in incident["forest_elf_actor_ids"]
+        }
         return {
             **state,
             "message": {
@@ -175,6 +370,24 @@ class Floor8ForestEmergencyScenario:
                 actor_id: self.runtime.actors[actor_id].location_id
                 for actor_id in state["hideout_actor_ids"]
             },
+            "frontline_actors": frontline_actors,
+            "forest_elf_actors": forest_elf_actors,
+            "frontline_parties": {
+                party_id: {
+                    "leader_id": self.runtime.world.parties[party_id].leader_id,
+                    "member_ids": list(self.runtime.world.parties[party_id].member_ids),
+                }
+                for party_id in incident["frontline_party_ids"]
+            },
+            "forest_elf_party": (
+                {
+                    "party_id": incident["forest_elf_party_id"],
+                    "leader_id": self.runtime.world.parties[incident["forest_elf_party_id"]].leader_id,
+                    "member_ids": list(self.runtime.world.parties[incident["forest_elf_party_id"]].member_ids),
+                }
+                if incident["forest_elf_party_id"] is not None
+                else None
+            ),
             "next_stage": (
                 "choose which Nocturne players respond to Floor 8 and which continue the sacred-key hideout route"
                 if state["stage"] == "argo_message_sent"
@@ -182,15 +395,29 @@ class Floor8ForestEmergencyScenario:
                 if state["stage"] == "response_split_assigned" and state["floor8_actor_ids"]
                 else "the Floor 8 incident remains unresolved because this split assigned no responder"
                 if state["stage"] == "response_split_assigned"
-                else "meet Argo in Frieben; the sacred-woods cave incident remains live for the next Floor 8 scenario slice"
+                else "leave Frieben through the outer managed forest and reach the protected Forest Elf woods"
                 if state["stage"] == "responders_at_frieben"
+                else "inspect the protected-woods damage and verify where each live incident party currently is"
+                if state["stage"] == "responders_at_sacred_woods"
+                else "follow the Forest Elf pursuit party to the escape-cave mouth"
+                if state["stage"] == "sacred_woods_incident_confirmed"
+                else "decide whether the responders enter the cave while Forest Elf pursuers remain outside"
+                if state["stage"] == "cave_mouth_standoff"
+                else "live standoff reached: frontline players are inside the cave and Forest Elf pursuers remain outside; negotiation, restitution or escalation is unresolved"
+                if state["stage"] == "responders_inside_cave_standoff"
                 else None
             ),
         }
 
 
 def install_floor8_forest_emergency_scenario(runtime, nocturne) -> Floor8ForestEmergencyScenario:
-    for location_id in (FRIEBEN, FOREST_ELF_ESCAPE_CAVE):
+    for location_id in (
+        FRIEBEN,
+        MANAGED_FOREST_OUTER,
+        FOREST_ELF_SACRED_WOODS,
+        FOREST_ELF_ESCAPE_CAVE_MOUTH,
+        FOREST_ELF_ESCAPE_CAVE,
+    ):
         if location_id not in runtime.world_map.locations:
             raise RuntimeError(f"Floor 8 world corpus is missing {location_id}")
     if ARGO_ID not in runtime.npcs.definitions:

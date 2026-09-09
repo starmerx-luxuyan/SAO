@@ -20,7 +20,7 @@ def _json(value: Any) -> str:
 def register_floor8_tools(mcp, emergency) -> None:
     @mcp.tool()
     def trigger_progressive9_floor8_forest_emergency(nocturne_instance_id: str, recipient_actor_id: str) -> str:
-        """Materialize Argo in Frieben, create the authoritative friend contact if needed, send a real persistent cross-floor message, and link the sacred-woods cave incident to Nocturne."""
+        """Materialize Argo plus the already-existing ALS/DKB cave parties and Forest Elf pursuit party, send a real persistent friend message, and link the Floor 8 incident to Nocturne."""
         return _json(emergency.trigger_from_nocturne(nocturne_instance_id, recipient_actor_id))
 
     @mcp.tool()
@@ -34,10 +34,30 @@ def register_floor8_tools(mcp, emergency) -> None:
 
     @mcp.tool()
     def arrive_progressive9_floor8_frieben(instance_id: str) -> str:
-        """Acknowledge the assigned emergency responders only after their real actor locations have reached Frieben through ordinary travel/teleport rules."""
+        """Acknowledge assigned emergency responders only after their real actor locations reach Frieben through ordinary teleport/travel rules."""
         return _json(emergency.arrive_frieben(instance_id))
 
     @mcp.tool()
+    def depart_progressive9_frieben_to_sacred_woods(instance_id: str) -> str:
+        """Move all assigned responders through the real Frieben -> managed-forest -> protected-woods route with one shared travel clock."""
+        return _json(emergency.depart_frieben_to_sacred_woods(instance_id))
+
+    @mcp.tool()
+    def inspect_progressive9_sacred_woods_incident(instance_id: str) -> str:
+        """Confirm the already-materialized frontline parties are sheltering in the cave while the live Forest Elf pursuit party remains at the damaged protected woods."""
+        return _json(emergency.inspect_sacred_woods_incident(instance_id))
+
+    @mcp.tool()
+    def follow_progressive9_forest_elves_to_cave_mouth(instance_id: str) -> str:
+        """Advance responders and the Forest Elf pursuit party through the same real elapsed route to the escape-cave mouth without treating them as allies."""
+        return _json(emergency.follow_to_escape_cave_mouth(instance_id))
+
+    @mcp.tool()
+    def enter_progressive9_escape_cave(instance_id: str) -> str:
+        """Move only the responders into the cave to meet the ALS/DKB incident parties while the Forest Elf pursuers remain outside in an unresolved standoff."""
+        return _json(emergency.enter_escape_cave(instance_id))
+
+    @mcp.tool()
     def get_progressive9_floor8_emergency_state(instance_id: str) -> str:
-        """Inspect Argo's real short message, branch assignment, responder locations and the still-live Forest Elf cave incident."""
+        """Inspect Argo's real short message, response branch, incident PartyState actors, Forest Elf pursuers, route progress and live cave standoff."""
         return _json(emergency.status(instance_id))

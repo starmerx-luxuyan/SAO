@@ -9,6 +9,7 @@ PROGRESSIVE_9 = "Sword Art Online Progressive Volume 9: Nocturne of the Blue Ref
 FRIEBEN = "floor_8_frieben"
 MANAGED_FOREST_OUTER = "floor_8_managed_forest_outer"
 FOREST_ELF_SACRED_WOODS = "floor_8_forest_elf_sacred_woods"
+FOREST_ELF_ESCAPE_CAVE_MOUTH = "floor_8_forest_elf_escape_cave_mouth"
 FOREST_ELF_ESCAPE_CAVE = "floor_8_forest_elf_escape_cave"
 SLUVA = "floor_8_sluva"
 
@@ -33,7 +34,10 @@ def floor8_locations() -> dict[str, LocationDefinition]:
             provenance=Provenance(
                 ProvenanceKind.CANON_INFERRED,
                 sources=(PROGRESSIVE_9,),
-                notes="Floor 8 is a waterlogged forest floor built around a circular artificial lake and managed woodland. This runtime node represents the outer approach from Frieben.",
+                notes=(
+                    "Floor 8 is a waterlogged, carefully managed forest floor around a circular artificial lake. "
+                    "This descriptive node represents the outer woodland approach from Frieben."
+                ),
             ),
         ),
         FOREST_ELF_SACRED_WOODS: LocationDefinition(
@@ -44,7 +48,24 @@ def floor8_locations() -> dict[str, LocationDefinition]:
             provenance=Provenance(
                 ProvenanceKind.CANON_INFERRED,
                 sources=(PROGRESSIVE_9,),
-                notes="Progressive 9's emergency involves frontline players cutting protected Forest Elf trees and provoking a pursuit. The exact runtime label is descriptive.",
+                notes=(
+                    "Progressive 9's emergency involves frontline players damaging protected Forest Elf trees and provoking pursuit. "
+                    "The English runtime label is descriptive rather than a claimed canon proper name."
+                ),
+            ),
+        ),
+        FOREST_ELF_ESCAPE_CAVE_MOUTH: LocationDefinition(
+            FOREST_ELF_ESCAPE_CAVE_MOUTH,
+            8,
+            "Floor 8 Forest Escape Cave - Mouth",
+            ZoneKind.FIELD,
+            provenance=Provenance(
+                ProvenanceKind.CANON_INFERRED,
+                sources=(PROGRESSIVE_9,),
+                notes=(
+                    "Descriptive exterior node separating the pursuing Forest Elves from the player group sheltering inside the cave. "
+                    "The separate node preserves the unresolved standoff without fabricating an automatic combat encounter."
+                ),
             ),
         ),
         FOREST_ELF_ESCAPE_CAVE: LocationDefinition(
@@ -55,7 +76,7 @@ def floor8_locations() -> dict[str, LocationDefinition]:
             provenance=Provenance(
                 ProvenanceKind.CANON_INFERRED,
                 sources=(PROGRESSIVE_9,),
-                notes="Descriptive node for the cave used by the player group after the Forest Elf sacred-woods incident in Progressive 9.",
+                notes="Descriptive node for the cave used by the frontline player group after the Forest Elf protected-woods incident in Progressive 9.",
             ),
         ),
         SLUVA: LocationDefinition(
@@ -67,7 +88,10 @@ def floor8_locations() -> dict[str, LocationDefinition]:
             provenance=Provenance(
                 ProvenanceKind.CANON_INFERRED,
                 sources=(PROGRESSIVE_9,),
-                notes="Forest Elf capital inside the managed inner forest of Floor 8. Dark Elves are barred from entering; that faction restriction remains a scenario rule rather than a generic map fallback.",
+                notes=(
+                    "Forest Elf capital inside the managed inner forest of Floor 8. Dark Elves are barred from entering; "
+                    "that faction restriction is enforced by scenario/faction rules rather than silently bypassed in the map."
+                ),
             ),
         ),
     }
@@ -82,6 +106,7 @@ def floor8_connections() -> tuple[TravelConnection, ...]:
     return (
         TravelConnection(FRIEBEN, MANAGED_FOREST_OUTER, 12 * 60_000, provenance=p),
         TravelConnection(MANAGED_FOREST_OUTER, FOREST_ELF_SACRED_WOODS, 18 * 60_000, provenance=p),
-        TravelConnection(FOREST_ELF_SACRED_WOODS, FOREST_ELF_ESCAPE_CAVE, 8 * 60_000, provenance=p),
+        TravelConnection(FOREST_ELF_SACRED_WOODS, FOREST_ELF_ESCAPE_CAVE_MOUTH, 6 * 60_000, provenance=p),
+        TravelConnection(FOREST_ELF_ESCAPE_CAVE_MOUTH, FOREST_ELF_ESCAPE_CAVE, 2 * 60_000, provenance=p),
         TravelConnection(FOREST_ELF_SACRED_WOODS, SLUVA, 16 * 60_000, provenance=p),
     )

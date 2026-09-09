@@ -9,7 +9,14 @@ from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_elfwar import LAVIK_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
-from sao_mcp.corpus.floor8_world import FOREST_ELF_ESCAPE_CAVE, FRIEBEN, SLUVA
+from sao_mcp.corpus.floor8_world import (
+    FOREST_ELF_ESCAPE_CAVE,
+    FOREST_ELF_ESCAPE_CAVE_MOUTH,
+    FOREST_ELF_SACRED_WOODS,
+    FRIEBEN,
+    MANAGED_FOREST_OUTER,
+    SLUVA,
+)
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS
 from sao_mcp.domain.models import CombatantState, CursorColor, DefenseMode, EntityKind, ItemInstance
 from sao_mcp.rules.inventory import add_item
@@ -17,7 +24,11 @@ from sao_mcp.rules.nightfolk import become_civis_nocte
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor4_nocturne import install_floor4_nocturne_scenario
-from sao_mcp.scenarios.floor8_emergency import install_floor8_forest_emergency_scenario
+from sao_mcp.scenarios.floor8_emergency import (
+    ALS_GUILD_ID,
+    DKB_GUILD_ID,
+    install_floor8_forest_emergency_scenario,
+)
 
 
 class _Campaign:
@@ -134,6 +145,17 @@ def _move_to_floor4_labyrinth(runtime, actor):
     runtime.travel_actor(actor.actor_id, "floor_4_labyrinth")
 
 
+def _send_responder_to_frieben(runtime, actor):
+    crystal = ItemInstance(
+        instance_id=f"teleport_{actor.actor_id}",
+        template_id="teleport_crystal",
+        owner_id=actor.actor_id,
+        quantity=1,
+    )
+    add_item(actor, crystal, runtime.catalog, allow_overweight=True)
+    runtime.teleport_actor(actor.actor_id, crystal.instance_id, FRIEBEN)
+
+
 def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence():
     runtime, campaign, nocturne, instance_id, a, b, kizmel, kysarah, bag, fallen, ruby = _setup_branch_state()
     emergency = install_floor8_forest_emergency_scenario(runtime, nocturne)
@@ -209,14 +231,7 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
     assert tubers[0].instance_id in kysarah.inventory
     assert bag.instance_id in kysarah.inventory
 
-    crystal = ItemInstance(
-        instance_id="branch_teleport_crystal",
-        template_id="teleport_crystal",
-        owner_id=a.actor_id,
-        quantity=1,
-    )
-    add_item(a, crystal, runtime.catalog, allow_overweight=True)
-    runtime.teleport_actor(a.actor_id, crystal.instance_id, FRIEBEN)
+    _send_responder_to_frieben(runtime, a)
     arrived = emergency.arrive_frieben(emergency_id)
     assert arrived["stage"] == "responders_at_frieben"
     assert arrived["argo_location_id"] == FRIEBEN
@@ -256,3 +271,65 @@ def test_kysarah_can_be_defeated_and_real_four_key_bag_recovered_instead_of_forc
     assert bag.instance_id in a.inventory
     assert bag.instance_id not in kysarah.inventory
     assert recovered["ruby_key_owner_id"] == fallen.actor_id
+
+
+def test_floor8_sacred_woods_and_cave_standoff_use_real_persistent_parties_and_positions():
+    runtime, campaign, nocturne, instance_id, a, b, kizmel, kysarah, bag, fallen, ruby = _setup_branch_state()
+    emergency = install_floor8_forest_emergency_scenario(runtime, nocturne)
+    notice = emergency.trigger_from_nocturne(instance_id, a.actor_id)
+    emergency_id = notice["instance_id"]
+    incident = notice["incident"]
+
+    assert len(incident["frontline_actor_ids"]) == 4
+    assert len(incident["frontline_party_ids"]) == 2
+    assert len(incident["forest_elf_actor_ids"]) == 2
+    assert incident["forest_elf_party_id"] in runtime.world.parties
+    assert set(notice["frontline_parties"]) == set(incident["frontline_party_ids"])
+    guilds = {runtime.actors[actor_id].guild_id for actor_id in incident["frontline_actor_ids"]}
+    assert guilds == {ALS_GUILD_ID, DKB_GUILD_ID}
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE for actor_id in incident["frontline_actor_ids"])
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_SACRED_WOODS for actor_id in incident["forest_elf_actor_ids"])
+
+    emergency.assign_response_split(emergency_id, [a.actor_id], [b.actor_id])
+    _send_responder_to_frieben(runtime, a)
+    emergency.arrive_frieben(emergency_id)
+
+    started = runtime.world.now_ms
+    woods = emergency.depart_frieben_to_sacred_woods(emergency_id)
+    assert runtime.world.now_ms - started == 30 * 60_000
+    assert woods["frieben_to_sacred_woods_ms"] == 30 * 60_000
+    assert a.location_id == FOREST_ELF_SACRED_WOODS
+    assert MANAGED_FOREST_OUTER in runtime.world.floors[8].discovered_locations
+    assert FOREST_ELF_SACRED_WOODS in runtime.world.floors[8].discovered_locations
+
+    confirmed = emergency.inspect_sacred_woods_incident(emergency_id)
+    assert confirmed["stage"] == "sacred_woods_incident_confirmed"
+    assert confirmed["incident"]["sacred_woods_inspected_at_ms"] is not None
+
+    before_mouth = runtime.world.now_ms
+    mouth = emergency.follow_to_escape_cave_mouth(emergency_id)
+    assert runtime.world.now_ms - before_mouth == 6 * 60_000
+    assert mouth["stage"] == "cave_mouth_standoff"
+    assert a.location_id == FOREST_ELF_ESCAPE_CAVE_MOUTH
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE_MOUTH for actor_id in incident["forest_elf_actor_ids"])
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE for actor_id in incident["frontline_actor_ids"])
+
+    inside = emergency.enter_escape_cave(emergency_id)
+    assert inside["stage"] == "responders_inside_cave_standoff"
+    assert a.location_id == FOREST_ELF_ESCAPE_CAVE
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE_MOUTH for actor_id in incident["forest_elf_actor_ids"])
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE for actor_id in incident["frontline_actor_ids"])
+
+    saved = export_runtime(runtime)
+    restored = import_runtime(saved)
+    restored_campaign = _Campaign(restored, campaign.handoff_state)
+    restored_nocturne = install_floor4_nocturne_scenario(restored, restored_campaign)
+    restored_emergency = install_floor8_forest_emergency_scenario(restored, restored_nocturne)
+    persisted = restored_emergency.status(emergency_id)
+    assert persisted["stage"] == "responders_inside_cave_standoff"
+    assert persisted["floor8_responder_locations"] == {a.actor_id: FOREST_ELF_ESCAPE_CAVE}
+    assert {row["guild_id"] for row in persisted["frontline_actors"].values()} == {ALS_GUILD_ID, DKB_GUILD_ID}
+    assert all(row["location_id"] == FOREST_ELF_ESCAPE_CAVE for row in persisted["frontline_actors"].values())
+    assert all(row["location_id"] == FOREST_ELF_ESCAPE_CAVE_MOUTH for row in persisted["forest_elf_actors"].values())
+    assert set(persisted["frontline_parties"]) == set(incident["frontline_party_ids"])
+    assert persisted["forest_elf_party"]["party_id"] == incident["forest_elf_party_id"]
