@@ -154,6 +154,11 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
 
     opened = nocturne.open_five_key_backtrack("harin7_nocturne_fixture", "aghyellr7_nocturne_fixture")
     instance_id = opened["instance_id"]
+    raw_state = nocturne._state(instance_id)
+    assert "four_key_bag_owner_id" not in raw_state
+    assert "ruby_key_owner_id" not in raw_state
+    assert opened["four_key_bag_owner_id"] == kysarah.actor_id
+    assert opened["ruby_key_owner_id"] == fallen.actor_id
     assert opened["stage"] == "five_key_trail_points_to_floor4"
     assert opened["five_key_count"] == 5
     assert opened["five_key_assets_intact"] is True
@@ -291,6 +296,11 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     restored_campaign = _ValidatedFloor7Campaign(restored, campaign._handoff)
     restored_nocturne = install_floor4_nocturne_scenario(restored, restored_campaign)
     restored_state = restored_nocturne.status(instance_id)
+    restored_raw_state = restored_nocturne._state(instance_id)
+    assert "four_key_bag_owner_id" not in restored_raw_state
+    assert "ruby_key_owner_id" not in restored_raw_state
+    assert restored_state["four_key_bag_owner_id"] == kysarah.actor_id
+    assert restored_state["ruby_key_owner_id"] == fallen.actor_id
     assert restored_state["stage"] == "five_key_hideout_recon_ready"
     assert restored_state["kelpie_search_route"] == prepared["kelpie_search_route"]
     assert restored_state["yofilis_north_beach_transport"] == transport_history["escort"]

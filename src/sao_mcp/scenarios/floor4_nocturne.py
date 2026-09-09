@@ -91,7 +91,7 @@ class Floor4NocturneScenario:
     def _require_group_at(self, state: dict, location_id: str) -> None:
         self._require_actor_ids_at(self._group_actor_ids(state), location_id)
 
-    def _validate_inherited_keys(self, state: dict) -> None:
+    def _validate_inherited_keys(self, state: dict) -> tuple[CombatantState, CombatantState]:
         bag_id = state["four_key_bag_instance_id"]
         ruby_id = state["ruby_key_instance_id"]
         bag_owners = [actor for actor in self.runtime.actors.values() if bag_id in actor.inventory]
@@ -106,8 +106,7 @@ class Floor4NocturneScenario:
             raise RuntimeError("the inherited Ruby Key has the wrong template")
         if FALLEN_ELVES not in actor_faction_ids(ruby_owners[0]) or ruby.metadata.get("fallen_control") is not True:
             raise RuntimeError("the inherited Ruby Key is no longer under real Fallen Elf control")
-        state["four_key_bag_owner_id"] = bag_owners[0].actor_id
-        state["ruby_key_owner_id"] = ruby_owners[0].actor_id
+        return bag_owners[0], ruby_owners[0]
 
     def _kelpie(self, state: dict) -> CombatantState:
         actor_id = state["kelpie_actor_id"]
@@ -212,9 +211,7 @@ class Floor4NocturneScenario:
             "target_location_id": LAKE_YOFEL_WEST_SHORE,
             "five_key_count": 5,
             "four_key_bag_instance_id": pursuit["target_key_bag_instance_id"],
-            "four_key_bag_owner_id": pursuit["target_key_bag_holder_id"],
             "ruby_key_instance_id": pursuit["ruby_key_instance_id"],
-            "ruby_key_owner_id": pursuit["ruby_key_fallen_holder_id"],
             "floor7_civis_actor_id": handoff["civisActorId"],
             "doleful_nocturne_instance_id": handoff["dolefulNocturneInstanceId"],
             "lavik_request_accepted_by_actor_id": None,
@@ -638,8 +635,7 @@ class Floor4NocturneScenario:
         actor = self.runtime.actors[actor_id]
         if actor.location_id != "floor_4_labyrinth":
             raise ValueError("the Kysarah interception occurs in the Floor 4 Labyrinth")
-        self._validate_inherited_keys(state)
-        bag_owner = self.runtime.actors[state["four_key_bag_owner_id"]]
+        bag_owner, _ = self._validate_inherited_keys(state)
         if bag_owner.metadata.get("npc_definition_id") != KYSARAH_ID:
             raise ValueError("Kysarah no longer owns the four-key bag, so this interception cannot occur")
         if not bag_owner.alive:
@@ -749,7 +745,7 @@ class Floor4NocturneScenario:
 
     def status(self, instance_id: str) -> dict:
         state = self._state(instance_id)
-        self._validate_inherited_keys(state)
+        bag_owner, ruby_owner = self._validate_inherited_keys(state)
         group_locations = {
             actor_id: self.runtime.actors[actor_id].location_id
             for actor_id in self._group_actor_ids(state)
@@ -786,6 +782,8 @@ class Floor4NocturneScenario:
             }
         return {
             **state,
+            "four_key_bag_owner_id": bag_owner.actor_id,
+            "ruby_key_owner_id": ruby_owner.actor_id,
             "group_locations": group_locations,
             "lavik_location_id": lavik.location_id,
             "yofilis_location_id": yofilis_state.location_id,
