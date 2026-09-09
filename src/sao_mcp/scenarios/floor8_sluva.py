@@ -7,7 +7,7 @@ from sao_mcp.corpus.floor8_world import FOREST_ELF_SACRED_WOODS, SLUVA
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
 from sao_mcp.rules.group_travel import travel_together
-from sao_mcp.scenarios.floor8_emergency import ALS_GUILD_ID, DKB_GUILD_ID
+from sao_mcp.runtime.canonical_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 
 
 FOREST_ELF_FACTION_ID = "forest_elves"
@@ -94,9 +94,26 @@ class Floor8SluvaJusticeScenario:
         return arbiter
 
     def _guild_ids(self, state: dict) -> list[str]:
-        guild_ids = sorted({self.runtime.actors[actor_id].guild_id for actor_id in self._custody_ids(state)})
+        custody_ids = self._custody_ids(state)
+        guild_ids = sorted({self.runtime.actors[actor_id].guild_id for actor_id in custody_ids})
         if guild_ids != [ALS_GUILD_ID, DKB_GUILD_ID]:
             raise RuntimeError("Sluva custody no longer matches the materialized ALS/DKB incident parties")
+        for guild_id in guild_ids:
+            if guild_id not in self.runtime.relationships.guilds:
+                raise RuntimeError(f"Sluva custody references missing authoritative GuildState {guild_id}")
+            guild = self.runtime.relationships.guilds[guild_id]
+            if guild.storage_id not in self.runtime.relationships.storages:
+                raise RuntimeError(f"authoritative GuildState {guild_id} has no shared storage")
+            storage = self.runtime.relationships.storages[guild.storage_id]
+            expected_members = {
+                actor_id
+                for actor_id in custody_ids
+                if self.runtime.actors[actor_id].guild_id == guild_id
+            }
+            if not expected_members.issubset(set(guild.member_ids)):
+                raise RuntimeError(f"Sluva custody actors are absent from GuildState {guild_id}")
+            if not expected_members.issubset(set(storage.member_ids)):
+                raise RuntimeError(f"Sluva custody actors are absent from guild storage membership {guild_id}")
         return guild_ids
 
     def _release_custody(self, state: dict, *, resolution: str) -> None:
@@ -125,7 +142,8 @@ class Floor8SluvaJusticeScenario:
 
         arbiter = self._arbiter()
         guild_changes = []
-        for guild_id in self._guild_ids(state):
+        guild_ids = self._guild_ids(state)
+        for guild_id in guild_ids:
             guild_changes.append(
                 asdict(
                     adjust_faction_standing(
@@ -143,7 +161,7 @@ class Floor8SluvaJusticeScenario:
             "arbiter_actor_id": arbiter.actor_id,
             "advocate_actor_id": advocate_actor_id,
             "custody_actor_ids": list(custody_ids),
-            "guild_ids": self._guild_ids(state),
+            "guild_ids": guild_ids,
             "charges": [
                 {
                     "code": "protected_woods_damage",

@@ -12,11 +12,14 @@ from sao_mcp.corpus.floor8_world import (
 )
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
 from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.runtime.canonical_guilds import (
+    ALS_GUILD_ID,
+    DKB_GUILD_ID,
+    install_progressive_clearing_guilds,
+)
 
 
 EMERGENCY_TEXT = "Floor 8 emergency: sacred Forest Elf trees were cut; frontline players fled into a cave."
-ALS_GUILD_ID = "aincrad_liberation_squad"
-DKB_GUILD_ID = "dragon_knights_brigade"
 
 
 class Floor8ForestEmergencyScenario:
@@ -27,6 +30,7 @@ class Floor8ForestEmergencyScenario:
             raise RuntimeError("Floor 8 emergency and Nocturne services must share one runtime")
         self.runtime = runtime
         self.nocturne = nocturne
+        self.clearing_guilds = install_progressive_clearing_guilds(runtime)
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor8_forest_emergency_instances", {})
@@ -85,9 +89,9 @@ class Floor8ForestEmergencyScenario:
             raise RuntimeError("Argo friend contact did not become authoritative")
 
     def _make_incident_player(self, name: str, guild_id: str, level: int) -> CombatantState:
+        guild = self.clearing_guilds[guild_id]
         actor = self.runtime.create_character(name, level=level)
         actor.location_id = FOREST_ELF_ESCAPE_CAVE
-        actor.guild_id = guild_id
         actor.metadata.update(
             {
                 "floor8_protected_tree_incident": True,
@@ -97,6 +101,14 @@ class Floor8ForestEmergencyScenario:
                 "sheltering_in_escape_cave": True,
             }
         )
+        invite = self.runtime.invite_to_guild(guild_id, guild.leader_id, actor.actor_id)
+        joined = self.runtime.accept_guild_invite(invite.invite_id, actor.actor_id)
+        if joined.guild_id != guild_id or actor.guild_id != guild_id:
+            raise RuntimeError("Floor 8 incident player did not join the authoritative clearing GuildState")
+        if actor.actor_id not in joined.member_ids:
+            raise RuntimeError("Floor 8 incident player is absent from authoritative guild membership")
+        if actor.actor_id not in self.runtime.relationships.storages[joined.storage_id].member_ids:
+            raise RuntimeError("Floor 8 incident player is absent from authoritative guild storage membership")
         return actor
 
     def _make_forest_elf_pursuer(self, role: str, index: int) -> CombatantState:
@@ -350,6 +362,15 @@ class Floor8ForestEmergencyScenario:
             }
             for actor_id in incident["forest_elf_actor_ids"]
         }
+        guilds = {
+            guild_id: {
+                "name": self.runtime.relationships.guilds[guild_id].name,
+                "leader_id": self.runtime.relationships.guilds[guild_id].leader_id,
+                "member_ids": list(self.runtime.relationships.guilds[guild_id].member_ids),
+                "storage_id": self.runtime.relationships.guilds[guild_id].storage_id,
+            }
+            for guild_id in (ALS_GUILD_ID, DKB_GUILD_ID)
+        }
         return {
             **state,
             "message": {
@@ -372,6 +393,7 @@ class Floor8ForestEmergencyScenario:
             },
             "frontline_actors": frontline_actors,
             "forest_elf_actors": forest_elf_actors,
+            "clearing_guilds": guilds,
             "frontline_parties": {
                 party_id: {
                     "leader_id": self.runtime.world.parties[party_id].leader_id,

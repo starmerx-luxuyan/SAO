@@ -1,10 +1,13 @@
 from sao_mcp.corpus.floor8_world import FOREST_ELF_SACRED_WOODS, SLUVA
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
+from sao_mcp.runtime.canonical_guilds import (
+    ALS_GUILD_ID,
+    DKB_GUILD_ID,
+    install_progressive_clearing_guilds,
+)
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
-from sao_mcp.scenarios.floor8_emergency import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.scenarios.floor8_sluva import (
-    FOREST_ELF_FACTION_ID,
     HEARING_TIME_MS,
     JUDGMENT_TIME_MS,
     RESTITUTION_COL,
@@ -46,13 +49,16 @@ def _forest_actor(actor_id, name):
 def _setup_custody(seed=241):
     runtime = HousingAincradRuntime(seed=seed)
     runtime.world.floors[8].unlocked = True
+    guilds = install_progressive_clearing_guilds(runtime)
     players = []
     for index, guild_id in enumerate((ALS_GUILD_ID, ALS_GUILD_ID, DKB_GUILD_ID, DKB_GUILD_ID), start=1):
         actor = runtime.create_character(f"Sluva Custody {index}", level=26)
         actor.location_id = SLUVA
-        actor.guild_id = guild_id
         actor.metadata["forest_elf_custody"] = True
         actor.metadata["forest_elf_custody_location_id"] = SLUVA
+        guild = guilds[guild_id]
+        invite = runtime.invite_to_guild(guild_id, guild.leader_id, actor.actor_id)
+        runtime.accept_guild_invite(invite.invite_id, actor.actor_id)
         players.append(actor)
 
     forest = [
@@ -116,6 +122,7 @@ def test_sluva_restitution_moves_real_col_changes_guild_standing_and_persists():
 
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
+    install_progressive_clearing_guilds(restored)
     restored_sluva = install_floor8_sluva_justice_scenario(restored, _EmergencyStub(restored))
     persisted = restored_sluva.status(INSTANCE_ID)
     assert persisted["stage"] == "sluva_justice_resolved_restitution"
