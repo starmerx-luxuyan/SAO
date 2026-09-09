@@ -1,4 +1,5 @@
 from sao_mcp.corpus.floor5 import RING_OF_LUMINESCENCE
+from sao_mcp.corpus.floor5_shortcut import KARLUIN_SHORTCUT_CONNECTION_ID
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor5_karluin import (
@@ -19,6 +20,13 @@ from sao_mcp.scenarios.floor5_shortcut import (
 )
 
 
+def _has_connection(runtime, origin, destination):
+    return any(
+        edge.from_location_id == origin and edge.to_location_id == destination
+        for edge in runtime.world_map.connections
+    )
+
+
 def test_karluin_relic_catacomb_and_shortcut_progression_use_base_world_state():
     runtime = HousingAincradRuntime(seed=37)
     locations_before = dict(runtime.world_map.locations)
@@ -31,6 +39,9 @@ def test_karluin_relic_catacomb_and_shortcut_progression_use_base_world_state():
     player = runtime.create_character("RelicHunter", level=24)
     runtime.world.floors[5].unlocked = True
     player.location_id = KARLUIN
+
+    assert not _has_connection(runtime, AREA_BOSS_ROOM, SHORTCUT_TUNNEL)
+    assert not _has_connection(runtime, SHORTCUT_TUNNEL, MANANARENA)
 
     runtime.travel_actor(player.actor_id, BLINK_AND_BRINK)
     buff = karluin.order_blue_blueberry_tart(player.actor_id)
@@ -106,9 +117,25 @@ def test_karluin_relic_catacomb_and_shortcut_progression_use_base_world_state():
     cleared = shortcut.status(state["instance_id"])
     assert cleared["stage"] == "cleared"
     assert cleared["shortcut_unlocked"] is True
+    assert cleared["shortcut_connection_id"] == KARLUIN_SHORTCUT_CONNECTION_ID
+    assert runtime.world.global_flags["dynamic_world_connection_ids"] == [KARLUIN_SHORTCUT_CONNECTION_ID]
+    assert _has_connection(runtime, AREA_BOSS_ROOM, SHORTCUT_TUNNEL)
+    assert _has_connection(runtime, SHORTCUT_TUNNEL, MANANARENA)
 
-    first_leg = shortcut.traverse_shortcut(player.actor_id)
+    first_leg = shortcut.traverse_shortcut(player.actor_id, SHORTCUT_TUNNEL)
     assert first_leg["to_location_id"] == SHORTCUT_TUNNEL
-    second_leg = shortcut.traverse_shortcut(player.actor_id)
+    assert first_leg["travel_ms"] == 4 * 60_000
+    assert "unlocked_area_boss_passage" in first_leg["traversal_tags"]
+    second_leg = shortcut.traverse_shortcut(player.actor_id, MANANARENA)
     assert second_leg["to_location_id"] == MANANARENA
+    assert second_leg["travel_ms"] == 8 * 60_000
     assert player.location_id == MANANARENA
+
+    restored_unlocked = import_runtime(export_runtime(runtime))
+    restored_player = restored_unlocked.actors[player.actor_id]
+    assert restored_unlocked.world.global_flags["dynamic_world_connection_ids"] == [KARLUIN_SHORTCUT_CONNECTION_ID]
+    assert _has_connection(restored_unlocked, AREA_BOSS_ROOM, SHORTCUT_TUNNEL)
+    assert _has_connection(restored_unlocked, SHORTCUT_TUNNEL, MANANARENA)
+    restored_unlocked.travel_actor(restored_player.actor_id, SHORTCUT_TUNNEL)
+    restored_unlocked.travel_actor(restored_player.actor_id, AREA_BOSS_ROOM)
+    assert restored_player.location_id == AREA_BOSS_ROOM
