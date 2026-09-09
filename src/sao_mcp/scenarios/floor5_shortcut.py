@@ -6,21 +6,21 @@ from sao_mcp.corpus.floor5_shortcut import (
     AREA_BOSS_ID,
     AREA_BOSS_ROOM,
     AREA_BOSS_WEAPON_ID,
+    KARLUIN_SHORTCUT_CONNECTION_ID,
+    MANANARENA,
+    SHORTCUT_TUNNEL,
 )
 from sao_mcp.corpus.loot import CORE_LOOT_TABLES
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES
 from sao_mcp.domain.models import EntityKind, ItemInstance
+from sao_mcp.rules.world import unlock_dynamic_world_connection
 
 
 LOWER_CATACOMBS = "floor_5_karluin_catacombs_lower"
-SHORTCUT_TUNNEL = "floor_5_karluin_mananarena_shortcut"
-MANANARENA = "floor_5_mananarena"
 PUZZLE_PROGRESS_REQUIRED_HOURS = 24.0  # Simulation abstraction around Argo spending about a day on the puzzle.
 BOSS_WEAKEN_HP_FACTOR = 0.72
 BOSS_WEAKEN_ARMOR_FACTOR = 0.55
 BOSS_WEAKEN_STRENGTH_FACTOR = 0.75
-BOSS_ROOM_TO_TUNNEL_MS = 4 * 60_000
-TUNNEL_TO_MANANARENA_MS = 8 * 60_000
 CLEAR_FLAG = "floor5_karluin_shortcut_area_boss_defeated"
 PUZZLE_FLAG = "floor5_karluin_shortcut_puzzle_solved"
 
@@ -153,35 +153,31 @@ class Floor5ShortcutScenario:
 
     def _sync_clear(self, state: dict) -> None:
         boss = self.runtime.actors[state["boss_id"]]
-        if boss.alive or state["stage"] == "cleared":
+        if boss.alive:
             return
-        state["stage"] = "cleared"
-        state["cleared_at_ms"] = self.runtime.world.now_ms
-        self.runtime.world.global_flags[CLEAR_FLAG] = True
+        if state["stage"] != "cleared":
+            state["stage"] = "cleared"
+            state["cleared_at_ms"] = self.runtime.world.now_ms
+            self.runtime.world.global_flags[CLEAR_FLAG] = True
+        unlock_dynamic_world_connection(
+            self.runtime.world,
+            self.runtime.world_map,
+            KARLUIN_SHORTCUT_CONNECTION_ID,
+        )
 
-    def traverse_shortcut(self, actor_id: str) -> dict:
-        actor = self.runtime.actors[actor_id]
+    def traverse_shortcut(self, actor_id: str, destination_id: str) -> dict:
         if not self.runtime.world.global_flags.get(CLEAR_FLAG):
             raise ValueError("the Karluin-Mananarena shortcut is still blocked by the area boss")
-        origin = str(actor.location_id)
-        if origin == AREA_BOSS_ROOM:
-            destination = SHORTCUT_TUNNEL
-            elapsed = BOSS_ROOM_TO_TUNNEL_MS
-        elif origin == SHORTCUT_TUNNEL:
-            destination = MANANARENA
-            elapsed = TUNNEL_TO_MANANARENA_MS
-        elif origin == MANANARENA:
-            destination = SHORTCUT_TUNNEL
-            elapsed = TUNNEL_TO_MANANARENA_MS
-        else:
-            raise ValueError("actor must enter the shortcut from its guardian room, tunnel or Mananarena")
-        self.runtime.advance_world(elapsed)
-        actor.location_id = destination
+        if destination_id not in {AREA_BOSS_ROOM, SHORTCUT_TUNNEL, MANANARENA}:
+            raise ValueError("destination is not part of the Karluin-Mananarena shortcut")
+        resolution = self.runtime.travel_actor(actor_id, destination_id)
         return {
             "actor_id": actor_id,
-            "from_location_id": origin,
-            "to_location_id": destination,
-            "travel_ms": elapsed,
+            "from_location_id": resolution.from_location_id,
+            "to_location_id": resolution.to_location_id,
+            "travel_ms": resolution.elapsed_ms,
+            "newly_discovered": resolution.newly_discovered,
+            "traversal_tags": list(resolution.traversal_tags),
             "shortcut_unlocked": True,
         }
 
@@ -199,6 +195,7 @@ class Floor5ShortcutScenario:
             "boss_strength": boss.strength,
             "puzzle": self.puzzle_state(),
             "shortcut_unlocked": bool(self.runtime.world.global_flags.get(CLEAR_FLAG)),
+            "shortcut_connection_id": KARLUIN_SHORTCUT_CONNECTION_ID,
         }
 
 
