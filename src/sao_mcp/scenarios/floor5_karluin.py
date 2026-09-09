@@ -12,8 +12,7 @@ from sao_mcp.corpus.floor5 import (
 )
 from sao_mcp.corpus.loot import CORE_LOOT_TABLES
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES
-from sao_mcp.corpus.world import LocationDefinition, TravelConnection
-from sao_mcp.domain.models import ItemInstance, Provenance, ProvenanceKind, ZoneKind
+from sao_mcp.domain.models import ItemInstance
 from sao_mcp.rules.inventory import add_item, recompute_equipment_stats
 
 
@@ -44,96 +43,11 @@ class Floor5KarluinScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        self._seed_world()
         for monster_id in (MOURNFUL_WRAITH, SLY_SHREWMAN):
             definition = AINCRAD_MONSTERS[monster_id]
             CORE_LOOT_TABLES[definition.loot_table_id] = AINCRAD_MONSTER_LOOT_TABLES[
                 definition.loot_table_id
             ]
-
-    def _seed_world(self) -> None:
-        world_map = self.runtime.world_map
-        canon = Provenance(
-            ProvenanceKind.CANON,
-            sources=("Sword Art Online Progressive Volume 4: Scherzo of Deep Night",),
-        )
-        locations = {
-            BLINK_AND_BRINK: LocationDefinition(
-                BLINK_AND_BRINK, 5, "BLINK & BRINK", ZoneKind.SAFE_TOWN, safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=("Sword Art Online Progressive Volume 4: Scherzo of Deep Night",),
-                    notes="Karluin tavern-inn selling the limited Blue-Blueberry Tart.",
-                ),
-            ),
-            CATACOMBS_L1: LocationDefinition(
-                CATACOMBS_L1, 5, "Karluin Catacombs - Upper Level", ZoneKind.SAFE_TOWN, safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=("https://swordartonline.fandom.com/wiki/Karluin",),
-                    notes="The first underground catacomb floor remains inside Karluin's Inner Area and has no monsters or traps.",
-                ),
-            ),
-            CATACOMBS_LOWER: LocationDefinition(
-                CATACOMBS_LOWER, 5, "Karluin Catacombs - Lower Levels", ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=("https://swordartonline.fandom.com/wiki/Karluin",),
-                    notes="The second and third catacomb floors are a true dungeon with monsters and traps.",
-                ),
-            ),
-            RUINED_TEMPLE: LocationDefinition(
-                RUINED_TEMPLE, 5, "Karluin Ruined Temple", ZoneKind.SAFE_TOWN, safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=("https://swordartonline.fandom.com/wiki/Items",),
-                    notes="A temple in Karluin is the canonical find location of the Ring of Luminescence; exact placement within town is abstracted here.",
-                ),
-            ),
-            OLD_CASTLE: LocationDefinition(
-                OLD_CASTLE, 5, "Karluin Ruined Old Castle", ZoneKind.SAFE_TOWN, safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=("https://swordartonline.fandom.com/wiki/Karluin",),
-                    notes="Ruined old castle on Karluin's eastern end; the castle itself is inside town.",
-                ),
-            ),
-            OLD_CASTLE_BASEMENT: LocationDefinition(
-                OLD_CASTLE_BASEMENT, 5, "Karluin Old Castle Basement", ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=("https://swordartonline.fandom.com/wiki/Karluin",),
-                    notes="The old castle basement lies outside Karluin's safe-zone boundary.",
-                ),
-            ),
-        }
-        world_map.locations.update({key: value for key, value in locations.items() if key not in world_map.locations})
-
-        existing = {(edge.from_location_id, edge.to_location_id) for edge in world_map.connections}
-        edges = (
-            TravelConnection(KARLUIN, BLINK_AND_BRINK, 2 * 60_000, provenance=canon),
-            TravelConnection(KARLUIN, CATACOMBS_L1, 3 * 60_000, provenance=canon),
-            TravelConnection(CATACOMBS_L1, CATACOMBS_LOWER, 2 * 60_000, provenance=canon),
-            TravelConnection(KARLUIN, RUINED_TEMPLE, 4 * 60_000, provenance=canon),
-            TravelConnection(KARLUIN, OLD_CASTLE, 5 * 60_000, provenance=canon),
-            TravelConnection(OLD_CASTLE, OLD_CASTLE_BASEMENT, 1 * 60_000, provenance=canon),
-        )
-        for edge in edges:
-            if (edge.from_location_id, edge.to_location_id) in existing:
-                continue
-            world_map.connections = tuple(world_map.connections) + (edge,)
-            world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
-            if edge.bidirectional:
-                world_map.adjacency.setdefault(edge.to_location_id, []).append(
-                    TravelConnection(
-                        edge.to_location_id,
-                        edge.from_location_id,
-                        edge.travel_ms,
-                        True,
-                        edge.requires_floor_unlocked,
-                        edge.provenance,
-                    )
-                )
 
     def order_blue_blueberry_tart(self, actor_id: str) -> dict:
         actor = self.runtime.actors[actor_id]
@@ -278,4 +192,23 @@ class Floor5KarluinScenario:
 
 
 def install_floor5_karluin_scenario(runtime) -> Floor5KarluinScenario:
+    required_locations = RELIC_LOCATIONS | {BLINK_AND_BRINK}
+    missing = sorted(required_locations - set(runtime.world_map.locations))
+    if missing:
+        raise RuntimeError(f"Floor 5 Karluin world corpus is incomplete: {missing}")
+    required_edges = {
+        frozenset((KARLUIN, BLINK_AND_BRINK)),
+        frozenset((KARLUIN, CATACOMBS_L1)),
+        frozenset((CATACOMBS_L1, CATACOMBS_LOWER)),
+        frozenset((KARLUIN, RUINED_TEMPLE)),
+        frozenset((KARLUIN, OLD_CASTLE)),
+        frozenset((OLD_CASTLE, OLD_CASTLE_BASEMENT)),
+    }
+    present_edges = {
+        frozenset((edge.from_location_id, edge.to_location_id))
+        for edge in runtime.world_map.connections
+    }
+    missing_edges = required_edges - present_edges
+    if missing_edges:
+        raise RuntimeError(f"Floor 5 Karluin world routes are incomplete: {sorted(map(sorted, missing_edges))}")
     return Floor5KarluinScenario(runtime)

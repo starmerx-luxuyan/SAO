@@ -1,5 +1,6 @@
 from sao_mcp.corpus.floor5 import RING_OF_LUMINESCENCE
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor5_karluin import (
     BLINK_AND_BRINK,
     CATACOMBS_L1,
@@ -18,9 +19,14 @@ from sao_mcp.scenarios.floor5_shortcut import (
 )
 
 
-def test_karluin_relic_catacomb_and_shortcut_progression_use_real_state():
+def test_karluin_relic_catacomb_and_shortcut_progression_use_base_world_state():
     runtime = HousingAincradRuntime(seed=37)
+    locations_before = dict(runtime.world_map.locations)
+    connections_before = tuple(runtime.world_map.connections)
     karluin = install_floor5_karluin_scenario(runtime)
+    assert runtime.world_map.locations == locations_before
+    assert runtime.world_map.connections == connections_before
+
     shortcut = install_floor5_shortcut_scenario(runtime)
     player = runtime.create_character("RelicHunter", level=24)
     runtime.world.floors[5].unlocked = True
@@ -66,6 +72,17 @@ def test_karluin_relic_catacomb_and_shortcut_progression_use_real_state():
     wraith.hp = 0
     wraith.alive = False
     runtime._resolve_defeat(wraith_encounter, wraith, player.actor_id)
+
+    restored = import_runtime(export_runtime(runtime))
+    assert KARLUIN in restored.world_map.locations
+    assert BLINK_AND_BRINK in restored.world_map.locations
+    assert CATACOMBS_L1 in restored.world_map.locations
+    assert CATACOMBS_LOWER in restored.world_map.locations
+    restored_locations_before = dict(restored.world_map.locations)
+    restored_connections_before = tuple(restored.world_map.connections)
+    install_floor5_karluin_scenario(restored)
+    assert restored.world_map.locations == restored_locations_before
+    assert restored.world_map.connections == restored_connections_before
 
     runtime.travel_actor(player.actor_id, AREA_BOSS_ROOM)
     before_puzzle = runtime.world.now_ms
