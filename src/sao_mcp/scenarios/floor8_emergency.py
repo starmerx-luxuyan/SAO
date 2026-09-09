@@ -22,10 +22,7 @@ from sao_mcp.runtime.canonical_guilds import (
 )
 
 
-EMERGENCY_TEXT = (
-    "Floor 8 emergency: most DKB and ALS members are immobilized in a Forest Elf dispute "
-    "after a large living tree was felled in the Forest Elf capital area."
-)
+EMERGENCY_TEXT = "Floor 8 emergency: DKB/ALS are trapped in a Forest Elf dispute. Meet me at the Acorn Shop."
 
 
 class Floor8ForestEmergencyScenario:
