@@ -46,6 +46,7 @@ from sao_mcp.rules.travel import (
     TravelResolution,
     apply_teleport_to_gate,
     discover_location,
+    has_surviving_colocated_outsider,
     require_active_teleport_gate,
     travel,
 )
@@ -572,14 +573,18 @@ class GameRuntime:
         return result
 
     def _in_live_encounter(self, actor_id: str) -> bool:
+        actor = self.actors[actor_id]
+        if not actor.alive or actor.location_id is None:
+            return False
+        member_ids = {actor_id}
         for encounter in self.encounters.values():
             if actor_id not in encounter.participants:
                 continue
-            other_alive = any(
-                member_id != actor_id and member.alive
-                for member_id, member in encounter.participants.items()
-            )
-            if other_alive:
+            if has_surviving_colocated_outsider(
+                encounter,
+                member_ids,
+                actor.location_id,
+            ):
                 return True
         return False
 
