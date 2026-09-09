@@ -6,16 +6,12 @@ from collections import deque
 from sao_mcp.corpus.floor6_ambush import IRON_KEY_ID
 from sao_mcp.corpus.floor6_stachion import GOLDEN_KEY_ID, QUEST_ID
 from sao_mcp.corpus.floor6_trials import BARRO_ID, MYIA_ID, TERRO_ID, THEANO_IRON_KEY_ID
-from sao_mcp.corpus.world import LocationDefinition, TravelConnection
-from sao_mcp.domain.models import (
-    CombatantState,
-    CursorColor,
-    EntityKind,
-    ItemInstance,
-    Provenance,
-    ProvenanceKind,
-    ZoneKind,
+from sao_mcp.corpus.floor6_world import (
+    TRIALS_MAIN_ENTRANCE_CONNECTION_ID,
+    TRIALS_SECRET_BACK_DOOR_CONNECTION_ID,
 )
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.world import unlock_dynamic_world_connection
 
 
 STACHION = "floor_6_stachion"
@@ -33,102 +29,6 @@ class Floor6TrialsScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        self._seed_world()
-
-    def _seed_world(self) -> None:
-        source = "Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)"
-        locations = {
-            MYIA_HOUSE: LocationDefinition(
-                MYIA_HOUSE,
-                6,
-                "Myia and Theano's House",
-                ZoneKind.SAFE_TOWN,
-                safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Theano's home in Stachion where Myia receives her mother's note and iron key; exact street placement is abstracted.",
-                ),
-            ),
-            DUNGEON_ENTRANCE: LocationDefinition(
-                DUNGEON_ENTRANCE,
-                6,
-                "Dungeon of Trials - Main Entrance",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Main basement entrance beneath the Stachion lord's mansion. The golden key from Suribus opens this original-route entrance; the release route does not enter here.",
-                ),
-            ),
-            DUNGEON_OF_TRIALS: LocationDefinition(
-                DUNGEON_OF_TRIALS,
-                6,
-                "Dungeon of Trials",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=(source,),
-                    notes="Puzzle-filled dungeon beneath the Stachion lord's mansion. The release-route party bypasses its ordinary puzzle and monster route through a secret rear entrance.",
-                ),
-            ),
-            DUNGEON_SECRET_BACK_DOOR: LocationDefinition(
-                DUNGEON_SECRET_BACK_DOOR,
-                6,
-                "Dungeon of Trials - Secret Back Door",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Hidden rear entrance beneath a movable statue base in the manor garden. Terro reveals it in the release route.",
-                ),
-            ),
-            DUNGEON_FINAL_CHAMBER: LocationDefinition(
-                DUNGEON_FINAL_CHAMBER,
-                6,
-                "Dungeon of Trials - Final Chamber",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=(source,),
-                    notes="Deepest chamber of the Dungeon of Trials. The secret rear route reaches it directly, bypassing the ordinary puzzle, ghost and monster sequence.",
-                ),
-            ),
-        }
-        for location_id, location in locations.items():
-            self.runtime.world_map.locations.setdefault(location_id, location)
-
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=(source,),
-            notes="Short local travel durations are simulation; endpoint relationships are canon-backed.",
-        )
-        self._add_edges(
-            (
-                TravelConnection(STACHION, MYIA_HOUSE, 5 * 60_000, provenance=p),
-                TravelConnection(CYLON_MANOR, DUNGEON_ENTRANCE, 2 * 60_000, provenance=p),
-            )
-        )
-
-    def _add_edges(self, edges: tuple[TravelConnection, ...]) -> None:
-        existing = {(edge.from_location_id, edge.to_location_id) for edge in self.runtime.world_map.connections}
-        for edge in edges:
-            if (edge.from_location_id, edge.to_location_id) in existing:
-                continue
-            self.runtime.world_map.connections = tuple(self.runtime.world_map.connections) + (edge,)
-            self.runtime.world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
-            if edge.bidirectional:
-                self.runtime.world_map.adjacency.setdefault(edge.to_location_id, []).append(
-                    TravelConnection(
-                        edge.to_location_id,
-                        edge.from_location_id,
-                        edge.travel_ms,
-                        True,
-                        edge.requires_floor_unlocked,
-                        edge.provenance,
-                    )
-                )
-            existing.add((edge.from_location_id, edge.to_location_id))
 
     def _state(self, actor_id: str) -> dict:
         states = self.runtime.world.global_flags.setdefault("floor6_stachion_quest_states", {})
@@ -305,16 +205,10 @@ class Floor6TrialsScenario:
         if actor.location_id != CYLON_MANOR:
             raise ValueError("Terro is found at Cylon's manor garden")
         self.runtime.interact_npc(actor_id, TERRO_ID)
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=("Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)",),
-            notes="Traversal durations are simulation; Terro revealing the movable statue-base secret route is canon.",
-        )
-        self._add_edges(
-            (
-                TravelConnection(CYLON_MANOR, DUNGEON_SECRET_BACK_DOOR, 1 * 60_000, provenance=p),
-                TravelConnection(DUNGEON_SECRET_BACK_DOOR, DUNGEON_FINAL_CHAMBER, 2 * 60_000, provenance=p),
-            )
+        unlock_dynamic_world_connection(
+            self.runtime.world,
+            self.runtime.world_map,
+            TRIALS_SECRET_BACK_DOOR_CONNECTION_ID,
         )
         state["stage"] = "secret_back_door_revealed"
         state["terro_consulted_at_ms"] = self.runtime.world.now_ms
@@ -331,12 +225,11 @@ class Floor6TrialsScenario:
         if actor.location_id != DUNGEON_ENTRANCE:
             raise ValueError("the golden key is used at the main Dungeon of Trials entrance")
         golden_key = self._find_player_item(actor_id, GOLDEN_KEY_ID)
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=("Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)",),
-            notes="Door traversal time is simulation; the golden key's main-entrance role is canon-backed.",
+        unlock_dynamic_world_connection(
+            self.runtime.world,
+            self.runtime.world_map,
+            TRIALS_MAIN_ENTRANCE_CONNECTION_ID,
         )
-        self._add_edges((TravelConnection(DUNGEON_ENTRANCE, DUNGEON_OF_TRIALS, 1 * 60_000, provenance=p),))
         golden_key.metadata["opened_dungeon_of_trials_main_entrance"] = True
         return {
             "actor_id": actor_id,
