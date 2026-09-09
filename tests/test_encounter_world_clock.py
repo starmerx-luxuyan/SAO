@@ -4,6 +4,7 @@ import pytest
 
 from sao_mcp.domain.models import ItemInstance
 from sao_mcp.rules.inventory import add_item
+from sao_mcp.runtime.engine import GameRuntime
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import SAVE_SCHEMA, SAVE_SCHEMA_V1, export_runtime, import_runtime
 
@@ -51,7 +52,7 @@ def test_parallel_encounters_share_one_absolute_world_clock_and_persist_their_an
 
 
 def test_historical_encounter_only_blocks_world_travel_while_outsider_is_colocated():
-    runtime = HousingAincradRuntime(seed=312)
+    runtime = GameRuntime(seed=312)
     player = runtime.create_character("Traveller", level=8)
     monster = runtime.create_training_monster(level=4)
     player.location_id = "floor_1_west_field"
@@ -79,7 +80,7 @@ def test_historical_encounter_only_blocks_world_travel_while_outsider_is_colocat
 
 
 def test_dead_actor_cannot_walk_or_consume_teleport_crystal():
-    runtime = HousingAincradRuntime(seed=314)
+    runtime = GameRuntime(seed=314)
     player = runtime.create_character("DeadTraveller", level=8)
     player.location_id = "floor_1_west_field"
     crystal = ItemInstance(
