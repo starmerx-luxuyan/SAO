@@ -5,7 +5,7 @@ import uuid
 
 from sao_mcp.corpus.floor5_flag import FLAG_OF_VALOR
 from sao_mcp.domain.models import EntityKind, ItemInstance
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, locate_item_container
 
 
 FUSCUS_ID = "fuscus_the_vacant_colossus"
@@ -55,7 +55,6 @@ class Floor5FuscusScenario:
             "flag_drop_resolved": False,
             "flag_recipient_id": None,
             "flag_instance_id": None,
-            "flag_deployment": None,
         }
         self._instances()[instance_id] = state
         return self.status(instance_id)
@@ -126,6 +125,41 @@ class Floor5FuscusScenario:
             actor.metadata.pop("flag_of_valor_source_actor_id", None)
             actor.metadata.pop("flag_of_valor_encounter_id", None)
 
+    def _deployment_state(self, state: dict) -> dict | None:
+        flag_id = state.get("flag_instance_id")
+        if not flag_id:
+            return None
+        located = locate_item_container(self.runtime.actors, flag_id)
+        if located is None:
+            if state.get("flag_drop_resolved"):
+                raise RuntimeError("resolved Flag of Valor instance is missing from authoritative inventories")
+            return None
+        container, flag = located
+        if flag.template_id != FLAG_OF_VALOR:
+            raise RuntimeError("Fuscus flag instance ID points to the wrong item template")
+        encounter_id = flag.metadata.get("deployed_encounter_id")
+        if encounter_id is None:
+            return None
+        if flag.owner_id != container.actor_id:
+            raise RuntimeError("deployed Flag of Valor owner_id disagrees with its authoritative inventory container")
+        if encounter_id not in self.runtime.encounters:
+            raise RuntimeError("deployed Flag of Valor references an unknown encounter")
+        encounter = self.runtime.encounters[encounter_id]
+        affected = sorted(
+            actor_id
+            for actor_id, actor in encounter.participants.items()
+            if actor.metadata.get("flag_of_valor_source_actor_id") == flag.owner_id
+            and actor.metadata.get("flag_of_valor_encounter_id") == encounter_id
+        )
+        return {
+            "owner_id": flag.owner_id,
+            "flag_instance_id": flag.instance_id,
+            "encounter_id": encounter_id,
+            "range_m": FLAG_AURA_RANGE_M,
+            "stat_bonus": FLAG_STAT_BONUS,
+            "affected_actor_ids": affected,
+        }
+
     def refresh_flag_aura(self, actor_id: str, encounter_id: str) -> dict:
         owner = self.runtime.actors[actor_id]
         flag = self._owned_flag(actor_id)
@@ -140,7 +174,6 @@ class Floor5FuscusScenario:
         if owner_pos is None:
             raise ValueError("encounter has no authoritative position for the flag wielder")
 
-        affected: list[str] = []
         for target_id, target in encounter.participants.items():
             if target_id == actor_id or target.kind is not EntityKind.PLAYER or not target.alive:
                 continue
@@ -155,32 +188,23 @@ class Floor5FuscusScenario:
             target.metadata["flag_of_valor_stat_bonus"] = FLAG_STAT_BONUS
             target.metadata["flag_of_valor_source_actor_id"] = actor_id
             target.metadata["flag_of_valor_encounter_id"] = encounter_id
-            affected.append(target_id)
 
-        flag.metadata["deployed"] = True
         flag.metadata["deployed_encounter_id"] = encounter_id
-        deployment = {
-            "owner_id": actor_id,
-            "flag_instance_id": flag.instance_id,
-            "encounter_id": encounter_id,
-            "range_m": FLAG_AURA_RANGE_M,
-            "stat_bonus": FLAG_STAT_BONUS,
-            "affected_actor_ids": affected,
-        }
-        for state in self._instances().values():
-            if state.get("flag_instance_id") == flag.instance_id:
-                state["flag_deployment"] = deployment
+        state = next(
+            state
+            for state in self._instances().values()
+            if state.get("flag_instance_id") == flag.instance_id
+        )
+        deployment = self._deployment_state(state)
+        if deployment is None:
+            raise RuntimeError("Flag of Valor deployment did not become authoritative")
         return deployment
 
     def withdraw_flag(self, actor_id: str, encounter_id: str) -> dict:
         flag = self._owned_flag(actor_id)
         encounter = self.runtime.encounters[encounter_id]
         self._clear_flag_source(encounter, actor_id)
-        flag.metadata["deployed"] = False
         flag.metadata.pop("deployed_encounter_id", None)
-        for state in self._instances().values():
-            if state.get("flag_instance_id") == flag.instance_id:
-                state["flag_deployment"] = None
         return {"owner_id": actor_id, "encounter_id": encounter_id, "deployed": False}
 
     def status(self, instance_id: str) -> dict:
@@ -194,7 +218,7 @@ class Floor5FuscusScenario:
             "boss": self.runtime.boss_bar_state(boss),
             "stage": state["stage"],
             "flag_drop_resolved": state["flag_drop_resolved"],
-            "flag_deployment": state["flag_deployment"],
+            "flag_deployment": self._deployment_state(state),
         }
 
 
