@@ -48,6 +48,7 @@ def test_floor8_scenario_persists_executed_route_segments_with_actual_traversal_
 
     opened = emergency.trigger_from_nocturne("floor8_route_nocturne", responder.actor_id)
     instance_id = opened["instance_id"]
+    forest_ids = list(opened["incident"]["forest_elf_actor_ids"])
     emergency.assign_response_split(instance_id, [responder.actor_id], [])
     responder.location_id = FRIEBEN
     emergency.arrive_frieben(instance_id)
@@ -55,6 +56,7 @@ def test_floor8_scenario_persists_executed_route_segments_with_actual_traversal_
     met = emergency.meet_argo_and_klein(instance_id)
     assert met["frieben_to_acorn_shop_route"] == [
         {
+            "actor_ids": [responder.actor_id],
             "from_location_id": FRIEBEN,
             "to_location_id": ACORN_SHOP,
             "elapsed_ms": 5 * 60_000,
@@ -71,6 +73,7 @@ def test_floor8_scenario_persists_executed_route_segments_with_actual_traversal_
         (FRIEBEN, MANAGED_FOREST_OUTER),
         (MANAGED_FOREST_OUTER, FOREST_ELF_SACRED_WOODS),
     ]
+    assert all(row["actor_ids"] == [responder.actor_id] for row in route)
     assert route[0]["traversal_tags"] == ["safe_town_route", "multi_level_access"]
     assert route[1]["traversal_tags"] == list(ARBOREAL_ROUTE_TAGS)
     assert route[2]["traversal_tags"] == list(ARBOREAL_ROUTE_TAGS)
@@ -81,6 +84,7 @@ def test_floor8_scenario_persists_executed_route_segments_with_actual_traversal_
     mouth = emergency.follow_to_escape_cave_mouth(instance_id)
     assert mouth["incident"]["sacred_woods_to_cave_mouth_route"] == [
         {
+            "actor_ids": [responder.actor_id] + forest_ids,
             "from_location_id": FOREST_ELF_SACRED_WOODS,
             "to_location_id": FOREST_ELF_ESCAPE_CAVE_MOUTH,
             "elapsed_ms": 6 * 60_000,
@@ -92,6 +96,7 @@ def test_floor8_scenario_persists_executed_route_segments_with_actual_traversal_
     inside = emergency.enter_escape_cave(instance_id)
     assert inside["incident"]["cave_mouth_to_cave_route"] == [
         {
+            "actor_ids": [responder.actor_id],
             "from_location_id": FOREST_ELF_ESCAPE_CAVE_MOUTH,
             "to_location_id": FOREST_ELF_ESCAPE_CAVE,
             "elapsed_ms": 2 * 60_000,
