@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 
 from sao_mcp.corpus.floor7_pursuit import ARGO_ID
+from sao_mcp.corpus.floor8_progressive import KLEIN_ID
 from sao_mcp.corpus.floor8_world import (
+    ACORN_SHOP,
     FOREST_ELF_ESCAPE_CAVE,
     FOREST_ELF_ESCAPE_CAVE_MOUTH,
     FOREST_ELF_SACRED_WOODS,
@@ -67,7 +69,7 @@ class Floor8ForestEmergencyScenario:
                 armor=105,
                 evasion=18,
                 cursor=CursorColor.GREEN,
-                location_id=FRIEBEN,
+                location_id=ACORN_SHOP,
                 skill_proficiencies={"claw": 760.0, "searching": 920.0},
                 metadata={
                     "npc_definition_id": ARGO_ID,
@@ -77,9 +79,53 @@ class Floor8ForestEmergencyScenario:
                 },
             )
             self.runtime.actors[actor_id] = argo
-        argo.location_id = FRIEBEN
-        self.runtime.npcs.states[ARGO_ID].location_id = FRIEBEN
+        argo.location_id = ACORN_SHOP
+        self.runtime.npcs.states[ARGO_ID].location_id = ACORN_SHOP
         return argo
+
+    def _klein_actor(self) -> CombatantState:
+        matches = [
+            actor
+            for actor in self.runtime.actors.values()
+            if actor.metadata.get("npc_definition_id") == KLEIN_ID
+        ]
+        if len(matches) > 1:
+            raise RuntimeError("multiple authoritative Klein player actors exist")
+        if matches:
+            klein = matches[0]
+            if klein.kind is not EntityKind.PLAYER:
+                raise RuntimeError("the materialized Klein actor is not a player character")
+            if not klein.alive:
+                raise ValueError("Klein is not alive for the Floor 8 rendezvous")
+        else:
+            actor_id = f"pc_klein_{uuid.uuid4().hex[:12]}"
+            klein = CombatantState(
+                actor_id=actor_id,
+                name="Klein",
+                kind=EntityKind.PLAYER,
+                level=28,
+                max_hp=7000,
+                hp=7000,
+                strength=66,
+                agility=62,
+                armor=120,
+                evasion=12,
+                cursor=CursorColor.GREEN,
+                location_id=ACORN_SHOP,
+                skill_proficiencies={"katana": 760.0, "one_hand_curved_sword": 720.0},
+                metadata={
+                    "npc_definition_id": KLEIN_ID,
+                    "named_player": True,
+                    "combat_stats_provenance": "simulation",
+                    "progressive9_acorn_shop_rendezvous": True,
+                    "combat_equipment_unmodelled_for_floor8_period": True,
+                },
+            )
+            self.runtime.actors[actor_id] = klein
+        klein.location_id = ACORN_SHOP
+        klein.metadata["progressive9_acorn_shop_rendezvous"] = True
+        self.runtime.npcs.states[KLEIN_ID].location_id = ACORN_SHOP
+        return klein
 
     def _ensure_friend_contact(self, argo_id: str, recipient_id: str) -> None:
         if self.runtime.relationships.are_friends(argo_id, recipient_id):
@@ -201,6 +247,7 @@ class Floor8ForestEmergencyScenario:
             raise ValueError("Argo's recipient must be a player in the linked Nocturne pursuit")
 
         argo = self._argo_actor()
+        klein = self._klein_actor()
         self._ensure_friend_contact(argo.actor_id, recipient_actor_id)
         message = self.runtime.send_short_message(argo.actor_id, recipient_actor_id, EMERGENCY_TEXT)
         instance_id = f"floor8_emergency_{uuid.uuid4().hex[:12]}"
@@ -208,9 +255,11 @@ class Floor8ForestEmergencyScenario:
             "instance_id": instance_id,
             "nocturne_instance_id": nocturne_instance_id,
             "argo_actor_id": argo.actor_id,
+            "klein_actor_id": klein.actor_id,
             "recipient_actor_id": recipient_actor_id,
             "message_id": message.message_id,
             "message_channel": message.channel.value,
+            "rendezvous_location_id": ACORN_SHOP,
             "incident": {
                 "location_id": FOREST_ELF_ESCAPE_CAVE,
                 "protected_trees_cut": True,
@@ -230,7 +279,9 @@ class Floor8ForestEmergencyScenario:
             "hideout_actor_ids": [],
             "response_split_assigned_at_ms": None,
             "responders_arrived_frieben_at_ms": None,
-            "frieben_to_sacred_woods_ms": None,
+            "acorn_shop_rendezvous_at_ms": None,
+            "frieben_to_acorn_shop_ms": None,
+            "acorn_shop_to_sacred_woods_ms": None,
             "stage": "argo_message_sent",
             "triggered_at_ms": self.runtime.world.now_ms,
         }
@@ -273,16 +324,33 @@ class Floor8ForestEmergencyScenario:
         state["stage"] = "responders_at_frieben"
         return self.status(instance_id)
 
-    def depart_frieben_to_sacred_woods(self, instance_id: str) -> dict:
+    def meet_argo_and_klein(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "responders_at_frieben":
             raise ValueError("Floor 8 responders have not assembled at Frieben")
-        responders = state["floor8_actor_ids"]
         self._require_responders_at(state, FRIEBEN)
+        argo = self.runtime.actors[state["argo_actor_id"]]
+        klein = self.runtime.actors[state["klein_actor_id"]]
+        if argo.location_id != ACORN_SHOP or klein.location_id != ACORN_SHOP:
+            raise RuntimeError("Argo and Klein are not both waiting at the Acorn Shop rendezvous")
         started = self.runtime.world.now_ms
+        travel_together(self.runtime, state["floor8_actor_ids"], ACORN_SHOP)
+        state["frieben_to_acorn_shop_ms"] = self.runtime.world.now_ms - started
+        state["acorn_shop_rendezvous_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "responders_briefed_at_acorn_shop"
+        return self.status(instance_id)
+
+    def depart_acorn_shop_to_sacred_woods(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "responders_briefed_at_acorn_shop":
+            raise ValueError("responders have not completed the Acorn Shop rendezvous")
+        responders = state["floor8_actor_ids"]
+        self._require_responders_at(state, ACORN_SHOP)
+        started = self.runtime.world.now_ms
+        travel_together(self.runtime, responders, FRIEBEN)
         travel_together(self.runtime, responders, MANAGED_FOREST_OUTER)
         travel_together(self.runtime, responders, FOREST_ELF_SACRED_WOODS)
-        state["frieben_to_sacred_woods_ms"] = self.runtime.world.now_ms - started
+        state["acorn_shop_to_sacred_woods_ms"] = self.runtime.world.now_ms - started
         state["stage"] = "responders_at_sacred_woods"
         return self.status(instance_id)
 
@@ -384,6 +452,7 @@ class Floor8ForestEmergencyScenario:
                 "read_at_ms": message.read_at_ms,
             },
             "argo_location_id": self.runtime.actors[state["argo_actor_id"]].location_id,
+            "klein_location_id": self.runtime.actors[state["klein_actor_id"]].location_id,
             "floor8_responder_locations": {
                 actor_id: self.runtime.actors[actor_id].location_id
                 for actor_id in state["floor8_actor_ids"]
@@ -418,8 +487,10 @@ class Floor8ForestEmergencyScenario:
                 if state["stage"] == "response_split_assigned" and state["floor8_actor_ids"]
                 else "the Floor 8 incident remains unresolved because this split assigned no responder"
                 if state["stage"] == "response_split_assigned"
-                else "leave Frieben through the outer managed forest and reach the protected Forest Elf woods"
+                else "walk from the Frieben gate to Argo and Klein at the Acorn Shop rendezvous"
                 if state["stage"] == "responders_at_frieben"
+                else "leave the Acorn Shop through Frieben and enter the outer managed forest toward the protected woods"
+                if state["stage"] == "responders_briefed_at_acorn_shop"
                 else "inspect the protected-woods damage and verify where each live incident party currently is"
                 if state["stage"] == "responders_at_sacred_woods"
                 else "follow the Forest Elf pursuit party to the escape-cave mouth"
@@ -436,6 +507,7 @@ class Floor8ForestEmergencyScenario:
 def install_floor8_forest_emergency_scenario(runtime, nocturne) -> Floor8ForestEmergencyScenario:
     for location_id in (
         FRIEBEN,
+        ACORN_SHOP,
         MANAGED_FOREST_OUTER,
         FOREST_ELF_SACRED_WOODS,
         FOREST_ELF_ESCAPE_CAVE_MOUTH,
@@ -443,8 +515,9 @@ def install_floor8_forest_emergency_scenario(runtime, nocturne) -> Floor8ForestE
     ):
         if location_id not in runtime.world_map.locations:
             raise RuntimeError(f"Floor 8 world corpus is missing {location_id}")
-    if ARGO_ID not in runtime.npcs.definitions:
-        raise RuntimeError("Argo corpus was not loaded")
+    for npc_id in (ARGO_ID, KLEIN_ID):
+        if npc_id not in runtime.npcs.definitions:
+            raise RuntimeError(f"Floor 8 Progressive corpus was not loaded: {npc_id}")
     if not hasattr(runtime, "communications") or not hasattr(runtime, "relationships"):
         raise RuntimeError("Floor 8 emergency requires the communicating relationship runtime")
     return Floor8ForestEmergencyScenario(runtime, nocturne)

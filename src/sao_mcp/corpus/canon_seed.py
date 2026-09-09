@@ -23,6 +23,7 @@ from sao_mcp.corpus.floor7_intrigue import apply_floor7_intrigue_corpus
 from sao_mcp.corpus.floor7_monsters import apply_floor7_monster_corpus
 from sao_mcp.corpus.floor7_nirrnir import apply_floor7_nirrnir_corpus
 from sao_mcp.corpus.floor7_pursuit import apply_floor7_pursuit_corpus
+from sao_mcp.corpus.floor8_progressive import apply_floor8_progressive_corpus
 from sao_mcp.corpus.items import apply_aincrad_item_seed
 from sao_mcp.corpus.skills import apply_aincrad_skill_seed
 from sao_mcp.corpus.weapons import apply_aincrad_weapon_seed
@@ -87,6 +88,7 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
     apply_floor7_intrigue_corpus(catalog)
     apply_floor7_elfwar_corpus(catalog)
     apply_floor7_pursuit_corpus(catalog)
+    apply_floor8_progressive_corpus(catalog)
 
     catalog.weapons.setdefault(
         "anneal_blade",

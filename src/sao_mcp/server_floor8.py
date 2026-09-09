@@ -20,7 +20,7 @@ def _json(value: Any) -> str:
 def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
     @mcp.tool()
     def trigger_progressive9_floor8_forest_emergency(nocturne_instance_id: str, recipient_actor_id: str) -> str:
-        """Materialize Argo plus the already-existing ALS/DKB cave parties and Forest Elf pursuit party, send a real persistent friend message, and link the Floor 8 incident to Nocturne."""
+        """Materialize Argo and Klein at the Acorn Shop, plus the already-existing ALS/DKB cave parties and Forest Elf pursuit party; send a real persistent friend message and link the Floor 8 incident to Nocturne."""
         return _json(emergency.trigger_from_nocturne(nocturne_instance_id, recipient_actor_id))
 
     @mcp.tool()
@@ -38,9 +38,14 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         return _json(emergency.arrive_frieben(instance_id))
 
     @mcp.tool()
-    def depart_progressive9_frieben_to_sacred_woods(instance_id: str) -> str:
-        """Move all assigned responders through the real Frieben -> managed-forest -> protected-woods route with one shared travel clock."""
-        return _json(emergency.depart_frieben_to_sacred_woods(instance_id))
+    def meet_progressive9_argo_and_klein(instance_id: str) -> str:
+        """Walk the assigned responders from the Frieben Teleport Gate to the real Acorn Shop rendezvous where Argo and Klein are waiting."""
+        return _json(emergency.meet_argo_and_klein(instance_id))
+
+    @mcp.tool()
+    def depart_progressive9_acorn_shop_to_sacred_woods(instance_id: str) -> str:
+        """Leave the Acorn Shop through Frieben, cross the managed outer forest, and reach the protected Forest Elf woods on the shared world clock."""
+        return _json(emergency.depart_acorn_shop_to_sacred_woods(instance_id))
 
     @mcp.tool()
     def inspect_progressive9_sacred_woods_incident(instance_id: str) -> str:
@@ -131,7 +136,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def get_progressive9_floor8_emergency_state(instance_id: str) -> str:
-        """Inspect Argo's message, response branch, live PartyState actors, cave positions and any active restitution/custody/combat resolution state."""
+        """Inspect Argo/Klein rendezvous state, response branch, live PartyState actors, cave positions and any active restitution/custody/combat resolution state."""
         return _json(standoff.status(instance_id))
 
     @mcp.tool()

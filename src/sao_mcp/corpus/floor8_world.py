@@ -7,6 +7,7 @@ from sao_mcp.domain.models import Provenance, ProvenanceKind, ZoneKind
 PROGRESSIVE_9 = "Sword Art Online Progressive Volume 9: Nocturne of the Blue Reflected Moon (Start)"
 
 FRIEBEN = "floor_8_frieben"
+ACORN_SHOP = "floor_8_frieben_acorn_shop"
 MANAGED_FOREST_OUTER = "floor_8_managed_forest_outer"
 FOREST_ELF_SACRED_WOODS = "floor_8_forest_elf_sacred_woods"
 FOREST_ELF_ESCAPE_CAVE_MOUTH = "floor_8_forest_elf_escape_cave_mouth"
@@ -26,6 +27,21 @@ FLOOR8_MAIN_SETTLEMENT = (
 
 def floor8_locations() -> dict[str, LocationDefinition]:
     return {
+        ACORN_SHOP: LocationDefinition(
+            ACORN_SHOP,
+            8,
+            "Acorn Shop",
+            ZoneKind.SAFE_TOWN,
+            safe_zone=True,
+            provenance=Provenance(
+                ProvenanceKind.CANON_INFERRED,
+                sources=(PROGRESSIVE_9,),
+                notes=(
+                    "Progressive 9 places Argo's Floor 8 rendezvous at the Acorn Shop (団栗屋), "
+                    "a small shop on the twelfth level inside Frieben, where Klein is already waiting."
+                ),
+            ),
+        ),
         MANAGED_FOREST_OUTER: LocationDefinition(
             MANAGED_FOREST_OUTER,
             8,
@@ -104,6 +120,7 @@ def floor8_connections() -> tuple[TravelConnection, ...]:
         notes="Named Floor 8 relationships are canon-backed; exact travel durations are simulation calibration.",
     )
     return (
+        TravelConnection(FRIEBEN, ACORN_SHOP, 5 * 60_000, provenance=p),
         TravelConnection(FRIEBEN, MANAGED_FOREST_OUTER, 12 * 60_000, provenance=p),
         TravelConnection(MANAGED_FOREST_OUTER, FOREST_ELF_SACRED_WOODS, 18 * 60_000, provenance=p),
         TravelConnection(FOREST_ELF_SACRED_WOODS, FOREST_ELF_ESCAPE_CAVE_MOUTH, 6 * 60_000, provenance=p),

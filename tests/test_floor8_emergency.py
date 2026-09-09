@@ -9,7 +9,9 @@ from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_elfwar import LAVIK_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
+from sao_mcp.corpus.floor8_progressive import KLEIN_ID
 from sao_mcp.corpus.floor8_world import (
+    ACORN_SHOP,
     FOREST_ELF_ESCAPE_CAVE,
     FOREST_ELF_ESCAPE_CAVE_MOUTH,
     FOREST_ELF_SACRED_WOODS,
@@ -162,17 +164,25 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
     emergency = install_floor8_forest_emergency_scenario(runtime, nocturne)
 
     assert FRIEBEN in runtime.world_map.locations
+    assert ACORN_SHOP in runtime.world_map.locations
     assert SLUVA in runtime.world_map.locations
     assert FOREST_ELF_ESCAPE_CAVE in runtime.world_map.locations
     assert "floor_8_main_town" not in runtime.world_map.locations
     assert runtime.world_map.locations[FRIEBEN].teleport_gate is True
+    assert KLEIN_ID in runtime.npcs.definitions
 
     notice = emergency.trigger_from_nocturne(instance_id, a.actor_id)
     emergency_id = notice["instance_id"]
     argo_id = notice["argo_actor_id"]
+    klein_id = notice["klein_actor_id"]
     assert runtime.relationships.are_friends(argo_id, a.actor_id)
     assert notice["message"]["channel"] == "friend"
     assert runtime.communications.messages[notice["message_id"]].text == notice["message"]["text"]
+    assert notice["argo_location_id"] == ACORN_SHOP
+    assert notice["klein_location_id"] == ACORN_SHOP
+    assert runtime.actors[klein_id].kind is EntityKind.PLAYER
+    assert runtime.actors[klein_id].metadata["npc_definition_id"] == KLEIN_ID
+    assert runtime.actors[klein_id].equipment == {}
     assert nocturne.status(instance_id)["stage"] == "floor8_emergency_received"
 
     split = emergency.assign_response_split(emergency_id, [a.actor_id], [b.actor_id])
@@ -235,15 +245,25 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
     _send_responder_to_frieben(runtime, a)
     arrived = emergency.arrive_frieben(emergency_id)
     assert arrived["stage"] == "responders_at_frieben"
-    assert arrived["argo_location_id"] == FRIEBEN
+    assert arrived["argo_location_id"] == ACORN_SHOP
+    assert arrived["klein_location_id"] == ACORN_SHOP
     assert arrived["floor8_responder_locations"] == {a.actor_id: FRIEBEN}
+
+    met = emergency.meet_argo_and_klein(emergency_id)
+    assert met["stage"] == "responders_briefed_at_acorn_shop"
+    assert met["frieben_to_acorn_shop_ms"] == 5 * 60_000
+    assert met["floor8_responder_locations"] == {a.actor_id: ACORN_SHOP}
 
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
     restored_campaign = _Campaign(restored, campaign.handoff_state)
     restored_nocturne = install_floor4_nocturne_scenario(restored, restored_campaign)
     restored_emergency = install_floor8_forest_emergency_scenario(restored, restored_nocturne)
-    assert restored_emergency.status(emergency_id)["stage"] == "responders_at_frieben"
+    persisted = restored_emergency.status(emergency_id)
+    assert persisted["stage"] == "responders_briefed_at_acorn_shop"
+    assert persisted["argo_location_id"] == ACORN_SHOP
+    assert persisted["klein_location_id"] == ACORN_SHOP
+    assert persisted["floor8_responder_locations"] == {a.actor_id: ACORN_SHOP}
     assert restored.relationships.are_friends(argo_id, a.actor_id)
     assert restored_nocturne.status(instance_id)["kysarah_interception_outcome"] == "falhari_truce"
     assert restored.actors[kysarah.actor_id].inventory[bag.instance_id].template_id == SACRED_KEY_BAG_ID
@@ -295,10 +315,16 @@ def test_floor8_sacred_woods_and_cave_standoff_use_real_persistent_parties_and_p
     _send_responder_to_frieben(runtime, a)
     emergency.arrive_frieben(emergency_id)
 
+    before_meet = runtime.world.now_ms
+    met = emergency.meet_argo_and_klein(emergency_id)
+    assert runtime.world.now_ms - before_meet == 5 * 60_000
+    assert met["stage"] == "responders_briefed_at_acorn_shop"
+    assert a.location_id == ACORN_SHOP
+
     started = runtime.world.now_ms
-    woods = emergency.depart_frieben_to_sacred_woods(emergency_id)
-    assert runtime.world.now_ms - started == 30 * 60_000
-    assert woods["frieben_to_sacred_woods_ms"] == 30 * 60_000
+    woods = emergency.depart_acorn_shop_to_sacred_woods(emergency_id)
+    assert runtime.world.now_ms - started == 35 * 60_000
+    assert woods["acorn_shop_to_sacred_woods_ms"] == 35 * 60_000
     assert a.location_id == FOREST_ELF_SACRED_WOODS
     assert MANAGED_FOREST_OUTER in runtime.world.floors[8].discovered_locations
     assert FOREST_ELF_SACRED_WOODS in runtime.world.floors[8].discovered_locations
@@ -328,6 +354,8 @@ def test_floor8_sacred_woods_and_cave_standoff_use_real_persistent_parties_and_p
     restored_emergency = install_floor8_forest_emergency_scenario(restored, restored_nocturne)
     persisted = restored_emergency.status(emergency_id)
     assert persisted["stage"] == "responders_inside_cave_standoff"
+    assert persisted["argo_location_id"] == ACORN_SHOP
+    assert persisted["klein_location_id"] == ACORN_SHOP
     assert persisted["floor8_responder_locations"] == {a.actor_id: FOREST_ELF_ESCAPE_CAVE}
     assert {row["guild_id"] for row in persisted["frontline_actors"].values()} == {ALS_GUILD_ID, DKB_GUILD_ID}
     assert all(row["location_id"] == FOREST_ELF_ESCAPE_CAVE for row in persisted["frontline_actors"].values())
