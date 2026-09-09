@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor8_tools(mcp, emergency, standoff) -> None:
+def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
     @mcp.tool()
     def trigger_progressive9_floor8_forest_emergency(nocturne_instance_id: str, recipient_actor_id: str) -> str:
         """Materialize Argo plus the already-existing ALS/DKB cave parties and Forest Elf pursuit party, send a real persistent friend message, and link the Floor 8 incident to Nocturne."""
@@ -83,6 +83,31 @@ def register_floor8_tools(mcp, emergency, standoff) -> None:
         return _json(standoff.surrender_incident_players_to_custody(instance_id, mediator_actor_id))
 
     @mcp.tool()
+    def start_progressive9_sluva_hearing(instance_id: str, advocate_actor_id: str) -> str:
+        """Open a simulation Sluva legal docket only after the real custody branch reaches the Forest Elf capital; formal charges immediately affect ALS/DKB faction standing."""
+        return _json(sluva.open_hearing(instance_id, advocate_actor_id))
+
+    @mcp.tool()
+    def issue_progressive9_sluva_restorative_judgment(instance_id: str, arbiter_actor_id: str) -> str:
+        """Have the authoritative Sluva arbiter issue the simulation restorative judgment: explicit Col restitution, restorative forest service, or refusal."""
+        return _json(sluva.issue_restorative_judgment(instance_id, arbiter_actor_id))
+
+    @mcp.tool()
+    def satisfy_progressive9_sluva_judgment_with_col(instance_id: str, payer_actor_id: str) -> str:
+        """Pay the exact Sluva judgment from a real linked player's Col balance, credit the real arbiter actor, release custody, and update Forest Elf political standing."""
+        return _json(sluva.satisfy_with_restitution(instance_id, payer_actor_id))
+
+    @mcp.tool()
+    def satisfy_progressive9_sluva_judgment_with_service(instance_id: str) -> str:
+        """Escort the real custody and Forest Elf actors back to the protected woods, spend the full restorative-service time, release custody there, and update faction standing."""
+        return _json(sluva.satisfy_with_restorative_service(instance_id))
+
+    @mcp.tool()
+    def refuse_progressive9_sluva_judgment(instance_id: str, actor_id: str) -> str:
+        """Refuse the issued Sluva judgment while leaving the refusing incident player and the rest of the custody group physically detained; payment or service may still be accepted later."""
+        return _json(sluva.refuse_judgment(instance_id, actor_id))
+
+    @mcp.tool()
     def start_progressive9_cave_mouth_combat(instance_id: str, player_combatant_ids: list[str]) -> str:
         """Escalate the unresolved standoff: selected live responder/frontline players walk out to the cave mouth and enter an ordinary encounter with the real Forest Elf pursuers."""
         return _json(standoff.start_cave_mouth_combat(instance_id, player_combatant_ids))
@@ -96,3 +121,8 @@ def register_floor8_tools(mcp, emergency, standoff) -> None:
     def get_progressive9_floor8_emergency_state(instance_id: str) -> str:
         """Inspect Argo's message, response branch, live PartyState actors, cave positions and any active restitution/custody/combat resolution state."""
         return _json(standoff.status(instance_id))
+
+    @mcp.tool()
+    def get_progressive9_sluva_justice_state(instance_id: str) -> str:
+        """Inspect the Sluva docket, real custody locations, arbiter, judgment/resolution, and authoritative ALS/DKB standing toward the Forest Elves."""
+        return _json(sluva.status(instance_id))
