@@ -10,6 +10,7 @@ from sao_mcp.corpus.floor8_world import (
     FRIEBEN,
     MANAGED_FOREST_OUTER,
 )
+from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.runtime.canonical_guilds import (
@@ -128,7 +129,7 @@ class Floor8ForestEmergencyScenario:
             location_id=FOREST_ELF_SACRED_WOODS,
             skill_proficiencies={"one_hand_sword": 760.0},
             metadata={
-                "forest_elf": True,
+                "faction_ids": (FOREST_ELVES,),
                 "floor8_protected_woods_enforcement": True,
                 "pursuing_frontline_incident_group": True,
                 "personal_identity_provenance": "simulation",

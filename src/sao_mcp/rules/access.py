@@ -15,9 +15,17 @@ ROLE_FACTIONS = {
     "forest_elf": FOREST_ELVES,
     "fallen_elf": FALLEN_ELVES,
 }
+LEGACY_FACTION_METADATA_KEYS = frozenset(ROLE_FACTIONS)
 
 
 def actor_faction_ids(actor: CombatantState) -> tuple[str, ...]:
+    legacy = LEGACY_FACTION_METADATA_KEYS.intersection(actor.metadata)
+    if legacy:
+        joined = ", ".join(sorted(legacy))
+        raise RuntimeError(
+            f"actor {actor.actor_id} uses legacy faction metadata keys: {joined}; use faction_ids or NPCDefinition roles"
+        )
+
     explicit = actor.metadata.get("faction_ids", ())
     if not isinstance(explicit, (list, tuple, set)) or any(not isinstance(value, str) for value in explicit):
         raise RuntimeError(f"actor {actor.actor_id} has invalid faction_ids metadata")

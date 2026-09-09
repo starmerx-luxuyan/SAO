@@ -25,7 +25,9 @@ from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_elfwar import LAVIK_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
+from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.rules.inventory import transfer_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, night_rank, tame_lower_level_monster
@@ -102,7 +104,7 @@ class Floor4NocturneScenario:
             raise RuntimeError("the inherited four-key bag is not the Kysarah theft asset")
         if ruby.template_id != RUBY_KEY_ID:
             raise RuntimeError("the inherited Ruby Key has the wrong template")
-        if not ruby_owners[0].metadata.get("fallen_elf") or ruby.metadata.get("fallen_control") is not True:
+        if FALLEN_ELVES not in actor_faction_ids(ruby_owners[0]) or ruby.metadata.get("fallen_control") is not True:
             raise RuntimeError("the inherited Ruby Key is no longer under real Fallen Elf control")
         state["four_key_bag_owner_id"] = bag_owners[0].actor_id
         state["ruby_key_owner_id"] = ruby_owners[0].actor_id

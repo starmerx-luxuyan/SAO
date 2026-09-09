@@ -53,6 +53,43 @@ def test_sluva_access_rule_blocks_dark_elf_definition_before_group_time_or_movem
     assert kizmel.location_id == FOREST_ELF_SACRED_WOODS
 
 
+def test_dynamic_faction_ids_share_access_policy_and_legacy_boolean_factions_are_invalid():
+    runtime = HousingAincradRuntime(seed=282)
+    runtime.world.floors[8].unlocked = True
+    dynamic_dark_elf = CombatantState(
+        actor_id="dynamic_dark_elf_access_fixture",
+        name="Dark Elf Courier",
+        kind=EntityKind.NPC,
+        level=24,
+        max_hp=6000,
+        hp=6000,
+        strength=56,
+        agility=60,
+        cursor=CursorColor.YELLOW,
+        location_id=FOREST_ELF_SACRED_WOODS,
+        metadata={"faction_ids": (DARK_ELVES,)},
+    )
+    runtime.actors[dynamic_dark_elf.actor_id] = dynamic_dark_elf
+
+    assert actor_faction_ids(dynamic_dark_elf) == (DARK_ELVES,)
+    with pytest.raises(ValueError, match=DARK_ELVES):
+        runtime.travel_actor(dynamic_dark_elf.actor_id, SLUVA)
+
+    legacy = CombatantState(
+        actor_id="legacy_dark_elf_fixture",
+        name="Legacy Dark Elf",
+        kind=EntityKind.NPC,
+        level=24,
+        max_hp=6000,
+        hp=6000,
+        strength=56,
+        agility=60,
+        metadata={"dark_elf": True},
+    )
+    with pytest.raises(RuntimeError, match="legacy faction metadata"):
+        actor_faction_ids(legacy)
+
+
 def test_restricted_teleport_gate_rejects_before_crystal_is_consumed(monkeypatch):
     runtime = HousingAincradRuntime(seed=283)
     runtime.world.floors[8].unlocked = True

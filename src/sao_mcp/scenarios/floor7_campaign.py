@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
+from sao_mcp.corpus.location_access import FALLEN_ELVES
+from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE
 
 
@@ -36,7 +38,7 @@ class Floor7CampaignScenario:
         ruby = ruby_owner.inventory[pursuit_state["ruby_key_instance_id"]]
         if ruby.template_id != RUBY_KEY_ID:
             raise RuntimeError("the recorded Ruby Key instance has the wrong template")
-        if not ruby_owner.metadata.get("fallen_elf") or ruby.metadata.get("fallen_control") is not True:
+        if FALLEN_ELVES not in actor_faction_ids(ruby_owner) or ruby.metadata.get("fallen_control") is not True:
             raise RuntimeError("the Ruby Key handoff claims Fallen control without a real Fallen holder")
 
         if raid_state["boss_alive"]:

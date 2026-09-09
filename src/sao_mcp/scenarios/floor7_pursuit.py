@@ -11,7 +11,9 @@ from sao_mcp.corpus.floor7_pursuit import (
     MAP_OF_SCYIA_ID,
     RUBY_KEY_ID,
 )
+from sao_mcp.corpus.location_access import DARK_ELVES, FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.duels import DuelMode
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.rules.inventory import add_item, transfer_item
@@ -120,7 +122,7 @@ class Floor7PursuitScenario:
             cursor=CursorColor.YELLOW,
             location_id="floor_7_field",
             metadata={
-                "dark_elf": True,
+                "faction_ids": (DARK_ELVES,),
                 "ruby_key_retrieval_team": True,
                 "combat_stats_provenance": "simulation",
             },
@@ -161,7 +163,7 @@ class Floor7PursuitScenario:
             cursor=CursorColor.YELLOW,
             location_id="floor_7_field",
             metadata={
-                "fallen_elf": True,
+                "faction_ids": (FALLEN_ELVES,),
                 "ruby_key_ambush_participant": True,
                 "combat_stats_provenance": "simulation",
             },
@@ -206,7 +208,7 @@ class Floor7PursuitScenario:
                 cursor=CursorColor.YELLOW,
                 location_id=DRAGON_BONE,
                 metadata={
-                    "fallen_elf": True,
+                    "faction_ids": (FALLEN_ELVES,),
                     "unnamed_canon_scout": True,
                     "pursuit_role": role,
                     "combat_stats_provenance": "simulation",
@@ -514,7 +516,8 @@ class Floor7PursuitScenario:
 
         ruby_owner = self._ruby_key_owner(pursuit["ruby_key_instance_id"])
         ruby_item = ruby_owner.inventory[pursuit["ruby_key_instance_id"]]
-        if pursuit["ruby_key_status"] == "fallen_control" and not ruby_owner.metadata.get("fallen_elf"):
+        ruby_owner_factions = set(actor_faction_ids(ruby_owner))
+        if pursuit["ruby_key_status"] == "fallen_control" and FALLEN_ELVES not in ruby_owner_factions:
             raise RuntimeError("Ruby Key is marked Fallen-controlled but its real holder is not a Fallen Elf")
 
         blocker_state = {}
@@ -541,7 +544,7 @@ class Floor7PursuitScenario:
             "target_key_bag_matches": key_bag_matches,
             "ruby_key_instance_id": ruby_item.instance_id,
             "ruby_key_owner_id": ruby_owner.actor_id,
-            "ruby_key_owner_is_fallen": bool(ruby_owner.metadata.get("fallen_elf")),
+            "ruby_key_owner_is_fallen": FALLEN_ELVES in ruby_owner_factions,
             "ruby_key_status": pursuit["ruby_key_status"],
             "fallen_sacred_key_count": pursuit["fallen_sacred_key_count"],
             "travelling_actor_locations": {
