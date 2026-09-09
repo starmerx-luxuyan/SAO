@@ -17,6 +17,7 @@ from sao_mcp.scenarios.floor8_sluva import (
     RESTORATIVE_SERVICE_MS,
     install_floor8_sluva_justice_scenario,
 )
+from sao_mcp.scenarios.floor8_standoff import FOREST_ELF_CUSTODY_RESTRICTION
 
 
 INSTANCE_ID = "floor8_sluva_fixture"
@@ -72,9 +73,7 @@ def _setup_custody(seed=241):
     for index, guild_id in enumerate((ALS_GUILD_ID, ALS_GUILD_ID, DKB_GUILD_ID, DKB_GUILD_ID), start=1):
         actor = runtime.create_character(f"Sluva Custody {index}", level=26)
         actor.location_id = SLUVA
-        actor.metadata["forest_elf_custody"] = True
-        actor.metadata["forest_elf_custody_location_id"] = SLUVA
-        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = "forest_elf_custody"
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = FOREST_ELF_CUSTODY_RESTRICTION
         guild = guilds[guild_id]
         invite = runtime.invite_to_guild(guild_id, guild.leader_id, actor.actor_id)
         runtime.accept_guild_invite(invite.invite_id, actor.actor_id)
@@ -177,7 +176,11 @@ def test_sluva_principal_finding_is_explicit_before_strict_disposition():
         assert strict["sentences"][actor.actor_id] == "imprisonment_ordered"
     assert all("forest_elf_sentence" not in actor.metadata for actor in players)
     assert all(
-        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
+        for actor in players
+    )
+    assert all(
+        "forest_elf_custody" not in actor.metadata and "forest_elf_custody_location_id" not in actor.metadata
         for actor in players
     )
     assert all(strict["custody_active"][actor.actor_id] is True for actor in players)
@@ -199,7 +202,13 @@ def test_sluva_principal_finding_is_explicit_before_strict_disposition():
     assert persisted["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
     assert all("forest_elf_sentence" not in restored.actors[actor.actor_id].metadata for actor in players)
     assert all(
-        restored.actors[actor.actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        restored.actors[actor.actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY]
+        == FOREST_ELF_CUSTODY_RESTRICTION
+        for actor in players
+    )
+    assert all(
+        "forest_elf_custody" not in restored.actors[actor.actor_id].metadata
+        and "forest_elf_custody_location_id" not in restored.actors[actor.actor_id].metadata
         for actor in players
     )
     assert restored.actors[arbiter_id].col == RESTITUTION_COL
@@ -242,7 +251,11 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     assert all(actor.location_id == SLUVA for actor in players + forest)
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
     assert all(
-        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
+        for actor in players
+    )
+    assert all(
+        "forest_elf_custody" not in actor.metadata and "forest_elf_custody_location_id" not in actor.metadata
         for actor in players
     )
     assert mitigated["sluva_case_scope"]["custody_actor_ids"] == [actor.actor_id for actor in players]
@@ -257,5 +270,9 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     assert pardoned["sentences"] == pardoned["sluva_justice"]["disposition"]["sentences"]
     assert all("forest_elf_sentence" not in actor.metadata for actor in players)
     assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players)
+    assert all(
+        "forest_elf_custody" not in actor.metadata and "forest_elf_custody_location_id" not in actor.metadata
+        for actor in players
+    )
     assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
     assert pardoned["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"

@@ -11,6 +11,9 @@ from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 
 
+FOREST_ELF_CUSTODY_RESTRICTION = "forest_elf_custody"
+
+
 class Floor8CaveStandoffScenario:
     """Live resolution branches for the materialized local Floor 8 cave standoff."""
 
@@ -151,10 +154,8 @@ class Floor8CaveStandoffScenario:
         state["custody_transfer_route"] = [group_travel_record(segment) for segment in segments]
         for actor_id in representative_ids:
             actor = self.runtime.actors[actor_id]
-            actor.metadata["forest_elf_custody"] = True
             actor.metadata["forest_elf_custody_started_at_ms"] = self.runtime.world.now_ms
-            actor.metadata["forest_elf_custody_location_id"] = SLUVA
-            actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = "forest_elf_custody"
+            actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = FOREST_ELF_CUSTODY_RESTRICTION
         state["custody_actor_ids"] = list(representative_ids)
         state["custody_mediator_actor_id"] = mediator_actor_id
         state["custody_started_at_ms"] = self.runtime.world.now_ms

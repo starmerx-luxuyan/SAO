@@ -14,7 +14,10 @@ from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor8_emergency import install_floor8_forest_emergency_scenario
-from sao_mcp.scenarios.floor8_standoff import install_floor8_cave_standoff_scenario
+from sao_mcp.scenarios.floor8_standoff import (
+    FOREST_ELF_CUSTODY_RESTRICTION,
+    install_floor8_cave_standoff_scenario,
+)
 
 
 class _NocturneStub:
@@ -185,9 +188,13 @@ def test_cave_standoff_can_transfer_only_local_representatives_to_sluva_custody(
     assert runtime.world.now_ms - started == sum(segment["elapsed_ms"] for segment in route) == 24 * 60_000
     assert set(result["custody_actor_ids"]) == set(representative_ids)
     assert all(runtime.actors[actor_id].location_id == SLUVA for actor_id in representative_ids + forest_ids)
-    assert all(runtime.actors[actor_id].metadata["forest_elf_custody"] is True for actor_id in representative_ids)
     assert all(
-        runtime.actors[actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        runtime.actors[actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
+        for actor_id in representative_ids
+    )
+    assert all(
+        "forest_elf_custody" not in runtime.actors[actor_id].metadata
+        and "forest_elf_custody_location_id" not in runtime.actors[actor_id].metadata
         for actor_id in representative_ids
     )
     assert responder.location_id == FOREST_ELF_ESCAPE_CAVE

@@ -10,6 +10,7 @@ from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
+from sao_mcp.scenarios.floor8_standoff import FOREST_ELF_CUSTODY_RESTRICTION
 
 
 FORMAL_CHARGE_STANDING_DELTA = -15
@@ -114,7 +115,6 @@ class Floor8SluvaJusticeScenario:
     def _release_custody(self, state: dict, *, resolution: str) -> None:
         for actor_id in self._custody_ids(state):
             actor = self.runtime.actors[actor_id]
-            actor.metadata["forest_elf_custody"] = False
             actor.metadata["forest_elf_custody_ended_at_ms"] = self.runtime.world.now_ms
             actor.metadata["forest_elf_custody_resolution"] = resolution
             del actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY]
@@ -415,7 +415,10 @@ class Floor8SluvaJusticeScenario:
                     for actor_id in docket["custody_actor_ids"]
                 },
                 "custody_active": {
-                    actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_custody") is True
+                    actor_id: (
+                        self.runtime.actors[actor_id].metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY)
+                        == FOREST_ELF_CUSTODY_RESTRICTION
+                    )
                     for actor_id in docket["custody_actor_ids"]
                 },
                 "sentences": sentences,
