@@ -14,6 +14,7 @@ class GroupTravelResolution:
     to_location_id: str
     elapsed_ms: int
     newly_discovered: bool
+    traversal_tags: tuple[str, ...] = ()
 
 
 def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination_id: str) -> GroupTravelResolution:
@@ -89,4 +90,5 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
         to_location_id=destination_id,
         elapsed_ms=edge.travel_ms,
         newly_discovered=newly_discovered,
+        traversal_tags=edge.traversal_tags,
     )

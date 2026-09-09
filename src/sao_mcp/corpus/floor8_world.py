@@ -24,6 +24,12 @@ FLOOR8_MAIN_SETTLEMENT = (
     ),
 )
 
+ARBOREAL_ROUTE_TAGS = (
+    "tree_branch_route",
+    "suspension_bridge_route",
+    "flooded_ground_below",
+)
+
 
 def floor8_locations() -> dict[str, LocationDefinition]:
     return {
@@ -117,13 +123,52 @@ def floor8_connections() -> tuple[TravelConnection, ...]:
     p = Provenance(
         ProvenanceKind.SIMULATION,
         sources=(PROGRESSIVE_9,),
-        notes="Named Floor 8 relationships are canon-backed; exact travel durations are simulation calibration.",
+        notes=(
+            "Named Floor 8 relationships and the floor-wide use of branches and suspension bridges above flooded ground are canon-backed; "
+            "exact travel durations are simulation calibration. Traversal tags describe the route family and do not assert that every metre uses every tagged structure."
+        ),
     )
     return (
-        TravelConnection(FRIEBEN, ACORN_SHOP, 5 * 60_000, provenance=p),
-        TravelConnection(FRIEBEN, MANAGED_FOREST_OUTER, 12 * 60_000, provenance=p),
-        TravelConnection(MANAGED_FOREST_OUTER, FOREST_ELF_SACRED_WOODS, 18 * 60_000, provenance=p),
-        TravelConnection(FOREST_ELF_SACRED_WOODS, FOREST_ELF_ESCAPE_CAVE_MOUTH, 6 * 60_000, provenance=p),
-        TravelConnection(FOREST_ELF_ESCAPE_CAVE_MOUTH, FOREST_ELF_ESCAPE_CAVE, 2 * 60_000, provenance=p),
-        TravelConnection(FOREST_ELF_SACRED_WOODS, SLUVA, 16 * 60_000, provenance=p),
+        TravelConnection(
+            FRIEBEN,
+            ACORN_SHOP,
+            5 * 60_000,
+            provenance=p,
+            traversal_tags=("safe_town_route", "multi_level_access"),
+        ),
+        TravelConnection(
+            FRIEBEN,
+            MANAGED_FOREST_OUTER,
+            12 * 60_000,
+            provenance=p,
+            traversal_tags=ARBOREAL_ROUTE_TAGS,
+        ),
+        TravelConnection(
+            MANAGED_FOREST_OUTER,
+            FOREST_ELF_SACRED_WOODS,
+            18 * 60_000,
+            provenance=p,
+            traversal_tags=ARBOREAL_ROUTE_TAGS,
+        ),
+        TravelConnection(
+            FOREST_ELF_SACRED_WOODS,
+            FOREST_ELF_ESCAPE_CAVE_MOUTH,
+            6 * 60_000,
+            provenance=p,
+            traversal_tags=ARBOREAL_ROUTE_TAGS,
+        ),
+        TravelConnection(
+            FOREST_ELF_ESCAPE_CAVE_MOUTH,
+            FOREST_ELF_ESCAPE_CAVE,
+            2 * 60_000,
+            provenance=p,
+            traversal_tags=("cave_entry",),
+        ),
+        TravelConnection(
+            FOREST_ELF_SACRED_WOODS,
+            SLUVA,
+            16 * 60_000,
+            provenance=p,
+            traversal_tags=ARBOREAL_ROUTE_TAGS + ("managed_inner_forest",),
+        ),
     )

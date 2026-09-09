@@ -25,6 +25,7 @@ class TravelConnection:
     bidirectional: bool = True
     requires_floor_unlocked: bool = True
     provenance: Provenance = Provenance(ProvenanceKind.SIMULATION)
+    traversal_tags: tuple[str, ...] = ()
 
 
 class WorldMapCatalog:
@@ -43,6 +44,7 @@ class WorldMapCatalog:
                         True,
                         connection.requires_floor_unlocked,
                         connection.provenance,
+                        connection.traversal_tags,
                     )
                 )
         self.adjacency = adjacency

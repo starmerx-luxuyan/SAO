@@ -14,6 +14,7 @@ class TravelResolution:
     elapsed_ms: int
     newly_discovered: bool
     teleport: bool = False
+    traversal_tags: tuple[str, ...] = ()
 
 
 def discover_location(world: WorldState, actor: CombatantState, location: LocationDefinition) -> bool:
@@ -50,7 +51,13 @@ def travel(
     origin = actor.location_id
     world.now_ms += edge.travel_ms
     newly_discovered = discover_location(world, actor, destination)
-    return TravelResolution(origin, destination_id, edge.travel_ms, newly_discovered)
+    return TravelResolution(
+        origin,
+        destination_id,
+        edge.travel_ms,
+        newly_discovered,
+        traversal_tags=edge.traversal_tags,
+    )
 
 
 def require_active_teleport_gate(
