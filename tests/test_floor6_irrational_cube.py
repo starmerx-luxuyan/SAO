@@ -33,7 +33,7 @@ def test_floor6_release_finale_preserves_cube_and_combined_key_instances_through
     add_item(kysarah, combined_key, runtime.catalog, allow_overweight=True)
     runtime.world.global_flags["floor6_kysarah_combined_iron_key_created"] = True
     runtime.world.global_flags["floor6_combined_iron_key_instance_id"] = combined_key.instance_id
-    runtime.world.global_flags["floor6_combined_iron_key_holder_id"] = kysarah.actor_id
+    assert "floor6_combined_iron_key_holder_id" not in runtime.world.global_flags
 
     state = cube.activate_guardian(
         [player.actor_id],
@@ -67,6 +67,8 @@ def test_floor6_release_finale_preserves_cube_and_combined_key_instances_through
     assert combined_key.instance_id not in kysarah.inventory
     assert combined_key.instance_id in boss.inventory
     assert boss.inventory[combined_key.instance_id].owner_id == boss.actor_id
+    assert betrayal["combined_key_holder_id"] == boss.actor_id
+    assert "floor6_combined_iron_key_holder_id" not in runtime.world.global_flags
     assert betrayal["cube_state"]["combined_key_in_reverse_keyhole"] is True
     assert golden_cube.instance_id in buxum.inventory
     assert buxum.cursor is CursorColor.ORANGE
@@ -98,8 +100,11 @@ def test_floor6_release_finale_preserves_cube_and_combined_key_instances_through
     assert cleared["combined_key_grounded"] is True
     assert not boss.alive and boss.hp == 0
     assert runtime.world.floors[6].floor_boss_defeated
+    grounded = buxum_scene.status(state["instance_id"])
+    assert grounded["combined_key_holder_id"] is None
 
     key_recovery = cube.recover_surviving_combined_key(state["instance_id"], player.actor_id)
     assert key_recovery["combined_key_instance_id"] == combined_key.instance_id
     assert combined_key.instance_id in player.inventory
     assert player.inventory[combined_key.instance_id].owner_id == player.actor_id
+    assert buxum_scene.status(state["instance_id"])["combined_key_holder_id"] == player.actor_id
