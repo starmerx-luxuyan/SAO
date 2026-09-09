@@ -5,20 +5,11 @@ import uuid
 from sao_mcp.corpus.floor6_finale import GOLDEN_CUBE_ID
 from sao_mcp.corpus.floor6_south import BASALT_MORPHA_ID, BASALT_MORPHA_WEAPON_ID
 from sao_mcp.corpus.floor6_trials import MYIA_ID, THEANO_ID
-from sao_mcp.corpus.world import LocationDefinition, TravelConnection
-from sao_mcp.domain.models import (
-    CombatantState,
-    CursorColor,
-    EntityKind,
-    ItemInstance,
-    Provenance,
-    ProvenanceKind,
-    ZoneKind,
-)
+from sao_mcp.corpus.floor6_world import GOLDEN_CUBE_LABYRINTH_BREACH_CONNECTION_ID
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.world import unlock_dynamic_world_connection
 
 
-STACHION = "floor_6_stachion"
-FLOOR_FIELD = "floor_6_field"
 LAKE_TALPHA = "floor_6_lake_talpha"
 GOSKAI = "floor_6_goskai"
 GOSKAI_CAVES = "floor_6_goskai_caves"
@@ -37,95 +28,6 @@ class Floor6SouthScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        self._seed_world()
-
-    def _seed_world(self) -> None:
-        source = "Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)"
-        locations = {
-            GOSKAI: LocationDefinition(
-                GOSKAI,
-                6,
-                "Cave City of Goskai",
-                ZoneKind.SAFE_TOWN,
-                safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=(source,),
-                    notes="Cave City in Floor 6's fourth area on the southern pursuit route.",
-                ),
-            ),
-            GOSKAI_CAVES: LocationDefinition(
-                GOSKAI_CAVES,
-                6,
-                "Goskai Southern Caves",
-                ZoneKind.FIELD,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Playable cave-field node around Goskai where Theano is sighted and Basalt Morpha is encountered; exact cave geometry is abstracted.",
-                ),
-            ),
-            MURUTSUKI: LocationDefinition(
-                MURUTSUKI,
-                6,
-                "Murutsuki",
-                ZoneKind.SAFE_TOWN,
-                safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=(source,),
-                    notes="Central village in Floor 6's fifth area on the route to the Labyrinth.",
-                ),
-            ),
-            LABYRINTH_BREACH: LocationDefinition(
-                LABYRINTH_BREACH,
-                6,
-                "Golden-Cube Labyrinth Breach",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Theano uses the Golden Cube to dismantle labyrinth walls into blocks, leaving an abnormal direct route. This node represents that physical breach rather than a new dungeon system.",
-                ),
-            ),
-        }
-        for location_id, location in locations.items():
-            self.runtime.world_map.locations.setdefault(location_id, location)
-
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=(source,),
-            notes="Travel times are simulation; ordered Floor 6 southern-area endpoints are canon-backed.",
-        )
-        self._add_edges(
-            (
-                TravelConnection(FLOOR_FIELD, LAKE_TALPHA, 38 * 60_000, provenance=p),
-                TravelConnection(LAKE_TALPHA, GOSKAI, 34 * 60_000, provenance=p),
-                TravelConnection(GOSKAI, GOSKAI_CAVES, 8 * 60_000, provenance=p),
-                TravelConnection(GOSKAI, MURUTSUKI, 42 * 60_000, provenance=p),
-                TravelConnection(MURUTSUKI, LABYRINTH, 30 * 60_000, provenance=p),
-            )
-        )
-
-    def _add_edges(self, edges: tuple[TravelConnection, ...]) -> None:
-        existing = {(edge.from_location_id, edge.to_location_id) for edge in self.runtime.world_map.connections}
-        for edge in edges:
-            if (edge.from_location_id, edge.to_location_id) in existing:
-                continue
-            self.runtime.world_map.connections = tuple(self.runtime.world_map.connections) + (edge,)
-            self.runtime.world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
-            if edge.bidirectional:
-                self.runtime.world_map.adjacency.setdefault(edge.to_location_id, []).append(
-                    TravelConnection(
-                        edge.to_location_id,
-                        edge.from_location_id,
-                        edge.travel_ms,
-                        True,
-                        edge.requires_floor_unlocked,
-                        edge.provenance,
-                    )
-                )
-            existing.add((edge.from_location_id, edge.to_location_id))
 
     def _state(self, actor_id: str) -> dict:
         states = self.runtime.world.global_flags.setdefault("floor6_stachion_quest_states", {})
@@ -329,16 +231,10 @@ class Floor6SouthScenario:
             raise ValueError("Theano is no longer carrying the Golden Cube")
         cube.metadata["break_used_on_labyrinth_walls"] = True
         cube.metadata["last_break_at_ms"] = self.runtime.world.now_ms
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=("Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)",),
-            notes="The wall-destruction shortcut is canon; exact traversal duration through the resulting breach is simulation.",
-        )
-        self._add_edges(
-            (
-                TravelConnection(LABYRINTH, LABYRINTH_BREACH, 2 * 60_000, provenance=p),
-                TravelConnection(LABYRINTH_BREACH, BOSS_ROOM, 18 * 60_000, provenance=p),
-            )
+        unlock_dynamic_world_connection(
+            self.runtime.world,
+            self.runtime.world_map,
+            GOLDEN_CUBE_LABYRINTH_BREACH_CONNECTION_ID,
         )
         theano.location_id = BOSS_ROOM
         state["stage"] = "theano_reached_floor6_boss_room"
