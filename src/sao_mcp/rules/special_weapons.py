@@ -13,7 +13,7 @@ EQUIPMENT_HP_REGEN_RATIO_PER_SECOND = 0.0025
 
 @dataclass(slots=True, frozen=True)
 class SoulCostResolution:
-    actor_id: str
+    wielder_actor_id: str
     item_instance_id: str
     drained_experience: int
     experience_after: int
