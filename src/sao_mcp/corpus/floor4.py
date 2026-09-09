@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES
 from sao_mcp.corpus.quests import CORE_QUESTS
@@ -35,6 +37,82 @@ PREMIUM_MATERIALS = {
     "upholstery": "fire_bear_pelt",
 }
 OPTIONAL_RAM_MATERIAL = "fire_bear_horn"
+
+
+@dataclass(slots=True, frozen=True)
+class ShipwrightTransportSpec:
+    transport_id: str
+    endpoint_a: str
+    endpoint_b: str
+    elapsed_ms: int
+    transport_tags: tuple[str, ...]
+    provenance: Provenance
+
+
+def _shipwright_transport(
+    transport_id: str,
+    endpoint_a: str,
+    endpoint_b: str,
+    elapsed_ms: int,
+    *transport_tags: str,
+) -> ShipwrightTransportSpec:
+    return ShipwrightTransportSpec(
+        transport_id=transport_id,
+        endpoint_a=endpoint_a,
+        endpoint_b=endpoint_b,
+        elapsed_ms=elapsed_ms,
+        transport_tags=tuple(transport_tags),
+        provenance=Provenance(
+            ProvenanceKind.CANON_INFERRED,
+            sources=(PROGRESSIVE_3, REFERENCE),
+            notes=(
+                "The Floor 4 waterway/quest route is canon-backed. Exact travel duration is runtime simulation calibration; "
+                "this transport is intentionally separate from ordinary on-foot world-map travel."
+            ),
+        ),
+    )
+
+
+SHIPWRIGHT_GONDOLA_TRANSPORTS = (
+    _shipwright_transport(
+        "shipwright_gondola_rovia_caldera",
+        "floor_4_rovia",
+        "floor_4_caldera_lake",
+        20 * 60_000,
+        "personal_gondola",
+        "floor4_waterway",
+        "shipwright_of_yore",
+    ),
+    _shipwright_transport(
+        "shipwright_gondola_caldera_usco",
+        "floor_4_caldera_lake",
+        "floor_4_usco",
+        16 * 60_000,
+        "personal_gondola",
+        "floor4_waterway",
+        "southern_gate_route",
+        "shipwright_of_yore",
+    ),
+    _shipwright_transport(
+        "shipwright_gondola_usco_yofel",
+        "floor_4_usco",
+        "floor_4_yofel_castle",
+        20 * 60_000,
+        "personal_gondola",
+        "floor4_waterway",
+        "shipwright_of_yore",
+    ),
+)
+WATER_CARRIER_HIDDEN_TRANSPORT = _shipwright_transport(
+    "shipwright_water_carriers_hidden_route",
+    "floor_4_rovia",
+    "floor_4_fallen_elf_hideout",
+    45 * 60_000,
+    "personal_gondola",
+    "floor4_waterway",
+    "water_carriers_follow",
+    "hidden_fallen_elf_route",
+)
 
 
 def _material(template_id: str, name: str, *, premium: bool = False, notes: str = "") -> ItemTemplate:

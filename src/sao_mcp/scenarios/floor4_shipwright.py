@@ -10,7 +10,9 @@ from sao_mcp.corpus.floor4 import (
     QUEST_ID,
     ROMOLO_ID,
     SECRET_TARGET,
+    SHIPWRIGHT_GONDOLA_TRANSPORTS,
     STANDARD_MATERIALS,
+    WATER_CARRIER_HIDDEN_TRANSPORT,
     YOFILIS_ID,
 )
 from sao_mcp.corpus.loot import CORE_LOOT_TABLES
@@ -18,27 +20,20 @@ from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLE
 from sao_mcp.domain.models import ItemInstance
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.transport import authorized_transport, authorized_transport_record
 
 
 ROVIA = "floor_4_rovia"
 BEAR_FOREST = "floor_4_bear_forest"
 FALLEN_ELF_HIDEOUT = "floor_4_fallen_elf_hideout"
 YOFEL_CASTLE = "floor_4_yofel_castle"
+CALDERA_LAKE = "floor_4_caldera_lake"
+USCO = "floor_4_usco"
 MAGNATHERIUM_ID = "magnatherium"
 BICEPS_CLEAR_FLAG = "floor4_biceps_archelon_defeated"
 BUILD_TIME_MS = 3 * 60 * 60 * 1000
 NOBLEWOOD_HARVEST_TIME_MS = 10_000  # Simulation action time per felled tree/core.
-FOLLOW_TRANSPORT_TIME_MS = 45 * 60_000  # Simulation travel abstraction from Rovia to the hidden waterfall route.
 HIDEOUT_NAVIGATION_MS = 6 * 60 * 60 * 1000  # Mirrors the documented Kirito/Asuna traversal duration.
-
-# Canon establishes free player-controlled navigation around Floor 4. These route times are simulation.
-WATER_ROUTES: dict[frozenset[str], int] = {
-    frozenset(("floor_4_rovia", "floor_4_caldera_lake")): 20 * 60_000,
-    frozenset(("floor_4_caldera_lake", "floor_4_usco")): 16 * 60_000,
-    frozenset(("floor_4_usco", "floor_4_yofel_castle")): 20 * 60_000,
-    frozenset(("floor_4_rovia", FALLEN_ELF_HIDEOUT)): 45 * 60_000,
-}
-SOUTHERN_GATE_ROUTE = frozenset(("floor_4_caldera_lake", "floor_4_usco"))
 
 
 class Floor4ShipwrightScenario:
@@ -66,6 +61,39 @@ class Floor4ShipwrightScenario:
             raise ValueError("Shipwright of Yore must be active")
         return progress
 
+    @staticmethod
+    def _transport_spec(origin: str, destination: str):
+        specs = (*SHIPWRIGHT_GONDOLA_TRANSPORTS, WATER_CARRIER_HIDDEN_TRANSPORT)
+        matches = [
+            spec
+            for spec in specs
+            if {spec.endpoint_a, spec.endpoint_b} == {origin, destination}
+        ]
+        if len(matches) != 1:
+            raise ValueError("destination is not connected by an implemented Floor 4 gondola route")
+        return matches[0]
+
+    def _execute_gondola_transport(self, actor_id: str, origin: str, destination: str, spec) -> dict:
+        actor = self.runtime.actors[actor_id]
+        gondola = actor.metadata["floor4_gondola"]
+        if gondola["moored_at"] != origin:
+            raise ValueError("the personal gondola is not moored at the actor's current location")
+        resolution = authorized_transport(
+            self.runtime,
+            transport_id=spec.transport_id,
+            actor_ids=[actor_id],
+            carrier_actor_id=None,
+            from_location_id=origin,
+            to_location_id=destination,
+            elapsed_ms=spec.elapsed_ms,
+            transport_tags=spec.transport_tags,
+        )
+        record = authorized_transport_record(resolution)
+        record["gondola_id"] = gondola["gondola_id"]
+        gondola["moored_at"] = destination
+        self._state(actor_id)["gondola_transport_history"].append(record)
+        return record
+
     def start_quest(self, actor_id: str) -> dict:
         actor = self.runtime.actors[actor_id]
         if actor.location_id != ROVIA:
@@ -79,8 +107,10 @@ class Floor4ShipwrightScenario:
                 "started_at_ms": self.runtime.world.now_ms,
                 "gondola_built_at_ms": None,
                 "first_sail_at_ms": None,
+                "gondola_transport_history": [],
                 "water_carriers_suspicious": False,
                 "romolo_followup_at_ms": None,
+                "water_carrier_follow_transport": None,
                 "transport_followed_at_ms": None,
                 "secret_discovered_at_ms": None,
                 "completed_at_ms": None,
@@ -165,7 +195,6 @@ class Floor4ShipwrightScenario:
     ) -> dict:
         actor = self.runtime.actors[actor_id]
         self._active_progress(actor_id)
-        state = self._state(actor_id)
         if actor.location_id != ROVIA:
             raise ValueError("Romolo builds the gondola at his Rovia workshop")
         if actor.metadata.get("floor4_gondola"):
@@ -201,6 +230,7 @@ class Floor4ShipwrightScenario:
             kind=QuestObjectiveKind.DISCOVER,
             target_id=GONDOLA_TARGET,
         )
+        state = self._state(actor_id)
         state["stage"] = "gondola_built"
         state["gondola_built_at_ms"] = self.runtime.world.now_ms
         return self.status(actor_id)
@@ -216,24 +246,18 @@ class Floor4ShipwrightScenario:
             raise ValueError("the hidden Fallen Elf route is reached by following the Water Carriers transport")
         if origin == FALLEN_ELF_HIDEOUT and destination_id == ROVIA and state["stage"] != "report_to_yofel":
             raise ValueError("the transport secret must be discovered before leaving the hideout")
-        route = frozenset((origin, destination_id))
-        if len(route) != 2 or route not in WATER_ROUTES:
-            raise ValueError("destination is not connected by an implemented Floor 4 gondola route")
-        if route == SOUTHERN_GATE_ROUTE and not self.runtime.world.global_flags.get(BICEPS_CLEAR_FLAG):
+        spec = self._transport_spec(origin, destination_id)
+        if {origin, destination_id} == {CALDERA_LAKE, USCO} and not self.runtime.world.global_flags.get(BICEPS_CLEAR_FLAG):
             raise ValueError("Biceps Archelon blocks passage from Caldera Lake to the southern half of Floor 4")
 
-        self.runtime.advance_world(WATER_ROUTES[route])
-        actor.location_id = destination_id
-        gondola["moored_at"] = destination_id
+        record = self._execute_gondola_transport(actor_id, origin, destination_id, spec)
         if state["first_sail_at_ms"] is None:
             state["first_sail_at_ms"] = self.runtime.world.now_ms
             state["water_carriers_suspicious"] = True
             state["stage"] = "return_to_romolo"
         return {
             "actor_id": actor_id,
-            "from_location_id": origin,
-            "to_location_id": destination_id,
-            "travel_ms": WATER_ROUTES[route],
+            "transport": record,
             "gondola": dict(gondola),
             "shipwright_state": self.status(actor_id),
         }
@@ -258,12 +282,20 @@ class Floor4ShipwrightScenario:
         gondola = actor.metadata.get("floor4_gondola")
         if actor.location_id != ROVIA or not gondola:
             raise ValueError("the transport must be followed from Rovia in the player's gondola")
+        if gondola["moored_at"] != ROVIA:
+            raise ValueError("the player's gondola is not moored in Rovia")
         if state["stage"] != "follow_transport_at_nightfall":
             raise ValueError("Romolo must first identify the evening transport to follow")
 
-        self.runtime.advance_world(FOLLOW_TRANSPORT_TIME_MS)
-        actor.location_id = FALLEN_ELF_HIDEOUT
-        gondola["moored_at"] = FALLEN_ELF_HIDEOUT
+        record = self._execute_gondola_transport(
+            actor_id,
+            ROVIA,
+            FALLEN_ELF_HIDEOUT,
+            WATER_CARRIER_HIDDEN_TRANSPORT,
+        )
+        record["followed_water_carriers"] = True
+        state["gondola_transport_history"][-1] = record
+        state["water_carrier_follow_transport"] = record
         state["stage"] = "hideout_search"
         state["transport_followed_at_ms"] = self.runtime.world.now_ms
         return self.status(actor_id)
