@@ -2,23 +2,20 @@ from __future__ import annotations
 
 import uuid
 
-from sao_mcp.corpus.floor6 import apply_floor6_world_seed
 from sao_mcp.corpus.floor6_ambush import GAS_MASK_ID, IRON_KEY_ID, JOE_DAGGER_ID, MORTE_HATCHET_ID
 from sao_mcp.corpus.floor6_stachion import CYLON_ID, GOLDEN_KEY_ID, POISON_JAR_ID, QUEST_ID, WITNESSES
-from sao_mcp.corpus.world import LocationDefinition, TravelConnection
+from sao_mcp.corpus.floor6_world import STACHION_POST_AMBUSH_CONNECTION_ID
 from sao_mcp.domain.models import (
     CombatantState,
     CursorColor,
     EntityKind,
     ItemInstance,
-    Provenance,
-    ProvenanceKind,
     StatusEffectState,
     StatusType,
-    ZoneKind,
 )
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.world import unlock_dynamic_world_connection
 
 
 STACHION = "floor_6_stachion"
@@ -40,84 +37,6 @@ class Floor6StachionScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        apply_floor6_world_seed(runtime.world_map)
-        self._seed_world()
-
-    def _seed_world(self) -> None:
-        source = "Sword Art Online Progressive Volume 5: Canon of the Golden Rule (Start)"
-        locations = {
-            CYLON_MANOR: LocationDefinition(
-                CYLON_MANOR, 6, "Cylon's Lord Manor", ZoneKind.SAFE_TOWN, safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Stachion lord's manor where Cylon gives Curse of Stachion; exact building geometry is abstracted.",
-                ),
-            ),
-            TRAVELLER_GRAVE: LocationDefinition(
-                TRAVELLER_GRAVE, 6, "Traveller's Grave", ZoneKind.SAFE_TOWN, safe_zone=True,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Grave where Cylon asks the players to offer the missing golden cube. Exact city placement is abstracted.",
-                ),
-            ),
-            CYLON_TRANSPORT: LocationDefinition(
-                CYLON_TRANSPORT, 6, "Cylon's Carriage - Suribus to Stachion Road", ZoneKind.FIELD,
-                safe_zone=False,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Scenario-space node for Cylon's carriage transport; ordinary road edges unlock only after the ambush is resolved.",
-                ),
-            ),
-        }
-        for location_id, location in locations.items():
-            self.runtime.world_map.locations.setdefault(location_id, location)
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=(source,),
-            notes="In-city travel durations are simulation; endpoint relationships are canon-backed.",
-        )
-        edges = (
-            TravelConnection(STACHION, CYLON_MANOR, 4 * 60_000, provenance=p),
-            TravelConnection(STACHION, TRAVELLER_GRAVE, 5 * 60_000, provenance=p),
-            TravelConnection(PUZZLE_QUARTER, CYLON_MANOR, 3 * 60_000, provenance=p),
-        )
-        self._add_world_edges(edges)
-
-    def _add_world_edges(self, edges: tuple[TravelConnection, ...]) -> None:
-        existing = {(edge.from_location_id, edge.to_location_id) for edge in self.runtime.world_map.connections}
-        for edge in edges:
-            if (edge.from_location_id, edge.to_location_id) in existing:
-                continue
-            self.runtime.world_map.connections = tuple(self.runtime.world_map.connections) + (edge,)
-            self.runtime.world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
-            if edge.bidirectional:
-                self.runtime.world_map.adjacency.setdefault(edge.to_location_id, []).append(
-                    TravelConnection(
-                        edge.to_location_id,
-                        edge.from_location_id,
-                        edge.travel_ms,
-                        True,
-                        edge.requires_floor_unlocked,
-                        edge.provenance,
-                    )
-                )
-            existing.add((edge.from_location_id, edge.to_location_id))
-
-    def _open_post_ambush_road_edges(self) -> None:
-        provenance = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=("Sword Art Online Progressive Volume 5: Canon of the Golden Rule (Start)",),
-            notes="The ambush occurs on the road between Suribus and Stachion; exact remaining travel minutes are runtime calibration.",
-        )
-        self._add_world_edges(
-            (
-                TravelConnection(CYLON_TRANSPORT, SURIBUS, 14 * 60_000, provenance=provenance),
-                TravelConnection(CYLON_TRANSPORT, STACHION, 20 * 60_000, provenance=provenance),
-            )
-        )
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_stachion_quest_states", {})
@@ -529,7 +448,11 @@ class Floor6StachionScenario:
             recovered.append(instance_id)
         cache.metadata["emptied"] = True
         cache.metadata["recovered_by_actor_id"] = actor_id
-        self._open_post_ambush_road_edges()
+        unlock_dynamic_world_connection(
+            self.runtime.world,
+            self.runtime.world_map,
+            STACHION_POST_AMBUSH_CONNECTION_ID,
+        )
         state["stage"] = "post_ambush_loot_recovered"
         state["ground_loot_recovered_at_ms"] = self.runtime.world.now_ms
         state["recovered_instance_ids"] = recovered
