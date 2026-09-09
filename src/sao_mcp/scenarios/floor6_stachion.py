@@ -13,7 +13,7 @@ from sao_mcp.domain.models import (
     StatusEffectState,
     StatusType,
 )
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, locate_item_container
 from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.world import unlock_dynamic_world_connection
 
@@ -474,18 +474,24 @@ class Floor6StachionScenario:
         progress = self.runtime.quests.progress_by_actor.get(actor_id, {}).get(QUEST_ID)
         player_key = next((item for item in actor.inventory.values() if item.template_id == GOLDEN_KEY_ID), None)
         key_owner_id = player_key.owner_id if player_key else None
-        if key_owner_id is None and state.get("cylon_actor_id") in self.runtime.actors:
-            cylon = self.runtime.actors[state["cylon_actor_id"]]
-            confiscated = cylon.inventory.get(state.get("confiscated_key_instance_id"))
-            key_owner_id = confiscated.owner_id if confiscated else None
+        key_instance_id = state.get("confiscated_key_instance_id")
+        if key_instance_id:
+            located = locate_item_container(self.runtime.actors, key_instance_id)
+            if located is not None:
+                container, key = located
+                if key.template_id != GOLDEN_KEY_ID:
+                    raise RuntimeError("Stachion confiscated golden-key instance ID points to the wrong item template")
+                if key.owner_id is not None and key.owner_id != container.actor_id:
+                    raise RuntimeError("Stachion golden key owner_id disagrees with its authoritative inventory container")
+                key_owner_id = key.owner_id
+            else:
+                key_owner_id = None
         ground_items: list[dict] = []
         cache_id = state.get("ground_cache_actor_id")
         if cache_id in self.runtime.actors:
             cache = self.runtime.actors[cache_id]
             for item in cache.inventory.values():
                 ground_items.append({"instance_id": item.instance_id, "template_id": item.template_id, "owner_id": item.owner_id})
-                if item.instance_id == state.get("confiscated_key_instance_id"):
-                    key_owner_id = item.owner_id
         paralysed = any(status.status_type is StatusType.PARALYSIS and status.remaining_ms > 0 for status in actor.statuses)
         ambushers_neutralized = False
         if state.get("transport_encounter_id") in self.runtime.encounters and self._ambusher_ids(state):
