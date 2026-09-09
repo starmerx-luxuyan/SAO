@@ -6,6 +6,7 @@ from sao_mcp.corpus.floor2 import apply_floor2_martial_arts_corpus
 from sao_mcp.corpus.floor3 import apply_floor3_spider_corpus
 from sao_mcp.corpus.floor4 import apply_floor4_shipwright_corpus
 from sao_mcp.corpus.floor4_fieldboss import apply_floor4_fieldboss_corpus
+from sao_mcp.corpus.floor4_nocturne import apply_floor4_nocturne_corpus
 from sao_mcp.corpus.floor5 import apply_floor5_karluin_corpus
 from sao_mcp.corpus.floor5_flag import apply_floor5_flag_corpus
 from sao_mcp.corpus.floor5_shortcut import apply_floor5_shortcut_boss_corpus
@@ -69,6 +70,7 @@ def apply_canon_seed(catalog: Catalog) -> Catalog:
     apply_floor3_spider_corpus(catalog)
     apply_floor4_shipwright_corpus(catalog)
     apply_floor4_fieldboss_corpus(catalog)
+    apply_floor4_nocturne_corpus(catalog)
     apply_floor5_karluin_corpus(catalog)
     apply_floor5_flag_corpus(catalog)
     apply_floor5_shortcut_boss_corpus(catalog)

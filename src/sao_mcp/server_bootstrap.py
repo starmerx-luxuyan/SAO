@@ -9,6 +9,7 @@ from sao_mcp.scenarios.floor2_martial_arts import install_floor2_martial_arts_sc
 from sao_mcp.scenarios.floor2_taurus_raid import install_floor2_taurus_raid_scenario
 from sao_mcp.scenarios.floor3_spiders import install_floor3_spider_scenario
 from sao_mcp.scenarios.floor4_biceps import install_floor4_biceps_scenario
+from sao_mcp.scenarios.floor4_nocturne import install_floor4_nocturne_scenario
 from sao_mcp.scenarios.floor4_shipwright import install_floor4_shipwright_scenario
 from sao_mcp.scenarios.floor5_fuscus import install_floor5_fuscus_scenario
 from sao_mcp.scenarios.floor5_karluin import install_floor5_karluin_scenario
@@ -34,6 +35,7 @@ from sao_mcp.server_family import register_family_tools
 from sao_mcp.server_floor2 import register_floor2_tools
 from sao_mcp.server_floor3 import register_floor3_tools
 from sao_mcp.server_floor4 import register_floor4_tools
+from sao_mcp.server_floor4_nocturne import register_floor4_nocturne_tools
 from sao_mcp.server_floor5 import register_floor5_tools
 from sao_mcp.server_floor6 import register_floor6_tools
 from sao_mcp.server_floor6_buxum import register_floor6_buxum_tools
@@ -76,6 +78,7 @@ floor7_intrigue = install_floor7_casino_intrigue_scenario(runtime, floor7_volupt
 floor7_elfwar = install_floor7_elfwar_scenario(runtime)
 floor7_pursuit = install_floor7_pursuit_scenario(runtime)
 floor7_campaign = install_floor7_campaign_scenario(runtime, floor7_pursuit, floor7_aghyellr)
+floor4_nocturne = install_floor4_nocturne_scenario(runtime, floor7_campaign)
 floor22_witch = install_floor22_witch_scenario(runtime)
 
 if not hasattr(runtime, "economy"):
@@ -96,6 +99,7 @@ register_housing_tools(mcp, runtime)
 register_floor2_tools(mcp, floor2_taurus_raid, floor2_martial_arts)
 register_floor3_tools(mcp, floor3_spiders)
 register_floor4_tools(mcp, floor4_shipwright, floor4_biceps)
+register_floor4_nocturne_tools(mcp, floor4_nocturne)
 register_floor5_tools(mcp, floor5_karluin, floor5_fuscus, floor5_shortcut)
 register_floor6_tools(mcp, floor6_irrational_cube, floor6_stachion, floor6_trials, floor6_south)
 register_floor6_buxum_tools(mcp, floor6_buxum, floor6_irrational_cube)
@@ -119,6 +123,7 @@ __all__ = [
     "floor3_spiders",
     "floor4_biceps",
     "floor4_shipwright",
+    "floor4_nocturne",
     "floor5_fuscus",
     "floor5_karluin",
     "floor5_shortcut",

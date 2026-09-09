@@ -108,6 +108,10 @@ _CANON_MAIN_SETTLEMENTS: dict[int, tuple[str, str, Provenance]] = {
 
 def build_world_map_catalog() -> WorldMapCatalog:
     # Imported here to keep content modules data-only while they reuse the world dataclasses.
+    from sao_mcp.corpus.floor4_nocturne import (
+        floor4_nocturne_connections,
+        floor4_nocturne_locations,
+    )
     from sao_mcp.corpus.floor7_world import (
         FLOOR7_MAIN_SETTLEMENT,
         floor7_connections,
@@ -221,9 +225,11 @@ def build_world_map_catalog() -> WorldMapCatalog:
             )
         )
 
-    # Canonical Progressive landmarks on Floors 2-5 and 7 are additive to the generic field/labyrinth backbone.
+    # Canonical Progressive landmarks are additive to the generic field/labyrinth backbone.
     locations.update(low_floor_locations())
     connections.extend(low_floor_connections())
+    locations.update(floor4_nocturne_locations())
+    connections.extend(floor4_nocturne_connections())
     locations.update(floor7_locations())
     connections.extend(floor7_connections())
 
