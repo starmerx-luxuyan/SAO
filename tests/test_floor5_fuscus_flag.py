@@ -1,5 +1,6 @@
 from sao_mcp.rules.combat import _guild_party_bonus
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor5_fuscus import install_floor5_fuscus_scenario
 
 
@@ -55,6 +56,13 @@ def test_fuscus_flag_drop_is_personal_and_deployed_aura_buffs_nearby_guildmates(
     assert outsider.actor_id not in deployment["affected_actor_ids"]
     assert _guild_party_bonus(mate) == deployment["stat_bonus"]
     assert _guild_party_bonus(outsider) == 0.0
+    assert "flag_deployment" not in fuscus._instance(state["instance_id"])
+    assert fuscus.status(state["instance_id"])["flag_deployment"] == deployment
+
+    restored = import_runtime(export_runtime(runtime))
+    restored_fuscus = install_floor5_fuscus_scenario(restored)
+    assert restored_fuscus.status(state["instance_id"])["flag_deployment"] == deployment
 
     fuscus.withdraw_flag(recipient.actor_id, aura_encounter.encounter_id)
     assert _guild_party_bonus(mate) == 0.0
+    assert fuscus.status(state["instance_id"])["flag_deployment"] is None
