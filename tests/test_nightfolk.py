@@ -8,6 +8,7 @@ from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.nightfolk import become_civis_nocte
 from sao_mcp.rules.progression import experience_to_reach_level
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.runtime.persistence import export_runtime, import_runtime
 
 
 def _give_doleful(runtime, actor, instance_id):
@@ -164,3 +165,51 @@ def test_civis_feeding_restores_hp_without_transforming_donor():
     assert civis.hp == civis_before + 70
     assert donor.hp == donor_before - 100
     assert donor.metadata.get("night_rank") is None
+
+
+def test_civis_and_doleful_mechanics_survive_save_load():
+    runtime = HousingAincradRuntime(seed=19)
+    master = runtime.create_character("NightMasterFixture", level=20)
+    actor = runtime.create_character("PersistentCivis", level=20)
+    actor.location_id = "floor_1_west_field"
+    master.location_id = "floor_1_west_field"
+    floor_xp = experience_to_reach_level(actor.level)
+    actor.metadata["experience"] = floor_xp + 1000
+    sword = _give_doleful(runtime, actor, "persistent_doleful")
+    sword.metadata.update({"true_identity_revealed": True, "true_name": "Doleful Nocturne"})
+    become_civis_nocte(actor, master_actor_id=master.actor_id, now_ms=runtime.world.now_ms)
+    actor.hp -= 500
+
+    restored = import_runtime(export_runtime(runtime))
+    restored_actor = restored.actors[actor.actor_id]
+    restored_sword = restored_actor.inventory[sword.instance_id]
+    night_state = restored.nightfolk_state(actor.actor_id)
+
+    assert night_state["night_rank"] == "civis_nocte"
+    assert night_state["night_master_actor_id"] == master.actor_id
+    assert restored_sword.metadata["true_identity_revealed"] is True
+    assert restored_sword.metadata["true_name"] == "Doleful Nocturne"
+    assert restored_actor.equipment["weapon"] == sword.instance_id
+    assert restored_actor.metadata["equipment_hp_regeneration_instance_id"] == sword.instance_id
+
+    hp_before = restored_actor.hp
+    monster = restored.create_training_monster(level=1)
+    encounter = restored.start_encounter(
+        [restored_actor.actor_id, monster.actor_id],
+        zone_id="floor_1_west_field",
+    )
+    restored.advance_encounter(encounter.encounter_id, 1000)
+    assert restored_actor.hp > hp_before
+
+    xp_before = restored_actor.metadata["experience"]
+    result, _ = restored.attack_authoritative(
+        encounter.encounter_id,
+        restored_actor.actor_id,
+        monster.actor_id,
+        defense=DefenseMode.NONE,
+        seed=1,
+    )
+    assert result.legal
+    assert restored_actor.metadata["experience"] == xp_before
+    soul_events = [event for event in encounter.events if event.event_type == "weapon_soul_cost"]
+    assert soul_events[-1].payload["exempt_by_night_rank"] is True

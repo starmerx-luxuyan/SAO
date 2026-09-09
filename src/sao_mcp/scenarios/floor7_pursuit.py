@@ -10,7 +10,6 @@ from sao_mcp.corpus.floor7_pursuit import (
     LABYRINTH,
     MAP_OF_SCYIA_ID,
     RUBY_KEY_ID,
-    install_floor7_pursuit_route,
 )
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.duels import DuelMode
@@ -20,6 +19,9 @@ from sao_mcp.rules.inventory import add_item, transfer_item
 
 CASINO = "floor_7_volupta_grand_casino"
 VOLUPTA = "floor_7_volupta"
+WATCH_HILL = "floor_7_field_of_bones_watch_hill"
+DRAGON_BONE = "floor_7_dragon_bone"
+PLATEAU = "floor_7_ant_tunnel_plateau"
 BOSS_ROOM = "floor_7_boss_room"
 
 MAP_RESPONSE_MS = 3 * 60_000
@@ -34,7 +36,6 @@ class Floor7PursuitScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        install_floor7_pursuit_route(runtime.world_map)
 
     def _harin_states(self) -> dict:
         try:
@@ -73,10 +74,7 @@ class Floor7PursuitScenario:
             if actor.metadata.get("npc_definition_id") != KYSARAH_ID:
                 continue
             for item in actor.inventory.values():
-                if (
-                    item.template_id == SACRED_KEY_BAG_ID
-                    and item.metadata.get("stolen_by_kysarah") is True
-                ):
+                if item.template_id == SACRED_KEY_BAG_ID and item.metadata.get("stolen_by_kysarah") is True:
                     matches.append((actor, item))
         if not matches:
             raise ValueError(
@@ -88,11 +86,7 @@ class Floor7PursuitScenario:
         return matches[0]
 
     def _map_owner(self, map_instance_id: str) -> CombatantState:
-        owners = [
-            actor
-            for actor in self.runtime.actors.values()
-            if map_instance_id in actor.inventory
-        ]
+        owners = [actor for actor in self.runtime.actors.values() if map_instance_id in actor.inventory]
         if len(owners) != 1:
             raise RuntimeError("the Map of Scyia must have exactly one inventory owner")
         return owners[0]
@@ -210,7 +204,7 @@ class Floor7PursuitScenario:
                 armor=118,
                 evasion=15,
                 cursor=CursorColor.YELLOW,
-                location_id=FIELD_OF_BONES,
+                location_id=DRAGON_BONE,
                 metadata={
                     "fallen_elf": True,
                     "unnamed_canon_scout": True,
@@ -360,11 +354,13 @@ class Floor7PursuitScenario:
             raise ValueError("every Harin player and Kizmel must be assembled in Volupta before departure")
 
         self.runtime.advance_world(RENDEZVOUS_PREPARATION_MS)
-        resolution = travel_together(self.runtime, travelling_actor_ids, FIELD_OF_BONES)
+        to_field = travel_together(self.runtime, travelling_actor_ids, FIELD_OF_BONES)
+        to_watch = travel_together(self.runtime, travelling_actor_ids, WATCH_HILL)
         pursuit = state["pursuit"]
         pursuit["travelling_actor_ids"] = travelling_actor_ids
-        pursuit["field_of_bones_travel_ms"] = resolution.elapsed_ms
-        pursuit["field_of_bones_arrived_at_ms"] = self.runtime.world.now_ms
+        pursuit["volupta_to_field_ms"] = to_field.elapsed_ms
+        pursuit["field_to_watch_ms"] = to_watch.elapsed_ms
+        pursuit["watch_hill_arrived_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "waiting_at_field_of_bones_rendezvous"
         return self.status(instance_id)
 
@@ -374,10 +370,10 @@ class Floor7PursuitScenario:
             raise ValueError("the party is not waiting at the Field of Bones rendezvous")
         pursuit = state["pursuit"]
         if any(
-            self.runtime.actors[actor_id].location_id != FIELD_OF_BONES
+            self.runtime.actors[actor_id].location_id != WATCH_HILL
             for actor_id in pursuit["travelling_actor_ids"]
         ):
-            raise ValueError("the entire pursuit group must remain at the Field of Bones rendezvous")
+            raise ValueError("the entire pursuit group must remain on the Field of Bones watch hill")
 
         self.runtime.advance_world(FALLEN_RENDEZVOUS_OBSERVE_MS)
         pursuit["fallen_scout_ids"] = self._spawn_fallen_scouts()
@@ -390,14 +386,20 @@ class Floor7PursuitScenario:
         if state["stage"] != "fallen_departed_begin_tail":
             raise ValueError("the two Fallen Elves have not begun leaving the rendezvous")
         pursuit = state["pursuit"]
-        resolution = travel_together(
+        to_dragon = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            DRAGON_BONE,
+        )
+        to_ant = travel_together(
             self.runtime,
             pursuit["travelling_actor_ids"],
             ANT_TUNNEL_VALLEY,
         )
         for scout_id in pursuit["fallen_scout_ids"]:
             self.runtime.actors[scout_id].location_id = ANT_TUNNEL_VALLEY
-        pursuit["field_to_ant_travel_ms"] = resolution.elapsed_ms
+        pursuit["watch_to_dragon_ms"] = to_dragon.elapsed_ms
+        pursuit["dragon_to_ant_ms"] = to_ant.elapsed_ms
         state["stage"] = "tracking_through_ant_tunnel_valley"
         return self.status(instance_id)
 
@@ -406,7 +408,14 @@ class Floor7PursuitScenario:
         if state["stage"] != "tracking_through_ant_tunnel_valley":
             raise ValueError("the Fallen Elf trail has not reached Ant Tunnel Valley")
         pursuit = state["pursuit"]
-        resolution = travel_together(
+        to_plateau = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            PLATEAU,
+        )
+        for scout_id in pursuit["fallen_scout_ids"]:
+            self.runtime.actors[scout_id].location_id = PLATEAU
+        to_labyrinth = travel_together(
             self.runtime,
             pursuit["travelling_actor_ids"],
             LABYRINTH,
@@ -418,7 +427,8 @@ class Floor7PursuitScenario:
 
         self._resolve_ruby_key_loss(state)
         encounter, blockers = self._spawn_labyrinth_blockers(pursuit["travelling_actor_ids"])
-        pursuit["ant_to_labyrinth_travel_ms"] = resolution.elapsed_ms
+        pursuit["ant_to_plateau_ms"] = to_plateau.elapsed_ms
+        pursuit["plateau_to_labyrinth_ms"] = to_labyrinth.elapsed_ms
         pursuit["blocker_actor_ids"] = [monster.actor_id for monster in blockers]
         pursuit["blocker_encounter_id"] = encounter.encounter_id
         pursuit["blocker_encounter_started_at_ms"] = encounter.time_ms
@@ -552,13 +562,13 @@ class Floor7PursuitScenario:
             "ready_for_aghyellr": state["stage"] == "boss_room_reached",
             "pursuit": dict(pursuit),
             "next_stage": (
-                "assemble the Harin party with Kizmel in Volupta and depart for the Field of Bones"
+                "assemble the Harin party with Kizmel in Volupta and reach the Field of Bones watch hill"
                 if state["stage"] == "scyia_counteroffer_accepted"
-                else "observe the Fallen Elf pair at the Field of Bones rendezvous"
+                else "observe the Fallen Elf pair at Dragon Bone from the watch hill"
                 if state["stage"] == "waiting_at_field_of_bones_rendezvous"
-                else "tail the Fallen Elves into Ant Tunnel Valley"
+                else "tail the Fallen Elves through Dragon Bone into Ant Tunnel Valley"
                 if state["stage"] == "fallen_departed_begin_tail"
-                else "follow the Fallen Elves into the Floor 7 Labyrinth"
+                else "follow the Fallen Elves over the plateau into the Floor 7 Labyrinth"
                 if state["stage"] == "tracking_through_ant_tunnel_valley"
                 else "defeat the Labyrinth blockers through ordinary encounter combat"
                 if state["stage"] == "labyrinth_blocker_battle"

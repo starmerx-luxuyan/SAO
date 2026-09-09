@@ -4,13 +4,18 @@ from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemI
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor7_elfwar import PALACE, VOLUPTA, install_floor7_elfwar_scenario
 from sao_mcp.scenarios.floor7_pursuit import (
+    ANT_TUNNEL_VALLEY,
     BOSS_ROOM,
     CASINO,
+    DRAGON_BONE,
     FIELD_OF_BONES,
     LABYRINTH,
+    PLATEAU,
     TRAIL_MARGIN_MS,
+    WATCH_HILL,
     install_floor7_pursuit_scenario,
 )
 
@@ -91,13 +96,24 @@ def _reach_blocker_encounter(seed=83):
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag = _setup(seed)
     before_depart = runtime.world.now_ms
     state = pursuit.rest_and_reach_dragon_bone_watch(instance_id)
-    expected = state["pursuit"]["field_of_bones_travel_ms"] + 30 * 60_000
+    expected = (
+        30 * 60_000
+        + state["pursuit"]["volupta_to_field_ms"]
+        + state["pursuit"]["field_to_watch_ms"]
+    )
     assert runtime.world.now_ms - before_depart == expected
-    assert {a.location_id, b.location_id, kizmel.location_id} == {FIELD_OF_BONES}
+    assert {a.location_id, b.location_id, kizmel.location_id} == {WATCH_HILL}
 
-    pursuit.observe_fallen_departure(instance_id)
-    pursuit.pursue_to_ant_tunnel_valley(instance_id)
+    state = pursuit.observe_fallen_departure(instance_id)
+    assert set(state["fallen_scout_locations"].values()) == {DRAGON_BONE}
+    state = pursuit.pursue_to_ant_tunnel_valley(instance_id)
+    assert state["pursuit"]["watch_to_dragon_ms"] == 10 * 60_000
+    assert state["pursuit"]["dragon_to_ant_ms"] == 75 * 60_000
+    assert {a.location_id, b.location_id, kizmel.location_id} == {ANT_TUNNEL_VALLEY}
+
     state = pursuit.follow_through_valley_into_labyrinth(instance_id)
+    assert state["pursuit"]["ant_to_plateau_ms"] == 35 * 60_000
+    assert state["pursuit"]["plateau_to_labyrinth_ms"] == 25 * 60_000
     assert {a.location_id, b.location_id, kizmel.location_id} == {LABYRINTH}
     assert len(state["blockers"]) == 2
     assert state["ruby_key_status"] == "fallen_control"
@@ -120,8 +136,17 @@ def _defeat_blockers(runtime, pursuit, instance_id, encounter_id, elapsed_ms):
     return pursuit.resolve_labyrinth_pursuit(instance_id)
 
 
-def test_floor7_pursuit_uses_real_four_key_bag_ruby_key_and_shared_travel_time():
+def test_floor7_pursuit_uses_corpus_route_real_keys_and_shared_travel_time():
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter()
+    assert not any(
+        edge.from_location_id == FIELD_OF_BONES and edge.to_location_id == ANT_TUNNEL_VALLEY
+        for edge in runtime.world_map.connections
+    )
+    assert not any(
+        edge.from_location_id == ANT_TUNNEL_VALLEY and edge.to_location_id == LABYRINTH
+        for edge in runtime.world_map.connections
+    )
+
     before_resolution = runtime.world.now_ms
     state = _defeat_blockers(runtime, pursuit, instance_id, encounter_id, TRAIL_MARGIN_MS - 1)
 
@@ -151,6 +176,38 @@ def test_floor7_pursuit_can_lose_fallen_trail_from_actual_combat_delay_without_r
     assert bag.instance_id in kysarah.inventory
     assert state["fallen_sacred_key_count"] == 5
     assert state["ruby_key_status"] == "fallen_control"
+
+
+def test_floor7_pursuit_survives_save_load_without_scenario_seeded_map_edges():
+    runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag = _setup(seed=103)
+    pursuit.rest_and_reach_dragon_bone_watch(instance_id)
+    before_save = pursuit.observe_fallen_departure(instance_id)
+    scout_ids = list(before_save["pursuit"]["fallen_scout_ids"])
+    actor_ids = [a.actor_id, b.actor_id, kizmel.actor_id]
+
+    restored = import_runtime(export_runtime(runtime))
+    restored_pursuit = install_floor7_pursuit_scenario(restored)
+    restored_state = restored_pursuit.status(instance_id)
+
+    assert restored_state["stage"] == "fallen_departed_begin_tail"
+    assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {WATCH_HILL}
+    assert {restored.actors[scout_id].location_id for scout_id in scout_ids} == {DRAGON_BONE}
+    assert restored.actors[kysarah.actor_id].inventory[bag.instance_id].template_id == SACRED_KEY_BAG_ID
+    assert not any(
+        edge.from_location_id == FIELD_OF_BONES and edge.to_location_id == ANT_TUNNEL_VALLEY
+        for edge in restored.world_map.connections
+    )
+
+    restored_state = restored_pursuit.pursue_to_ant_tunnel_valley(instance_id)
+    assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {ANT_TUNNEL_VALLEY}
+    assert restored_state["pursuit"]["watch_to_dragon_ms"] == 10 * 60_000
+    assert restored_state["pursuit"]["dragon_to_ant_ms"] == 75 * 60_000
+
+    restored_state = restored_pursuit.follow_through_valley_into_labyrinth(instance_id)
+    assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {LABYRINTH}
+    assert restored_state["ruby_key_status"] == "fallen_control"
+    assert restored_state["fallen_sacred_key_count"] == 5
+    assert restored_state["ruby_key_owner_is_fallen"] is True
 
 
 def test_group_travel_advances_one_edge_for_a_colocated_party():
