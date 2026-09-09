@@ -84,6 +84,7 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     runtime, nocturne, emergency, standoff, instance_id, responder = _make_live_standoff()
     state = emergency._state(instance_id)
     representative_ids = list(state["incident"]["frontline_actor_ids"])
+    forest_ids = list(state["incident"]["forest_elf_actor_ids"])
     forest_leader_id = runtime.world.parties[state["incident"]["forest_elf_party_id"]].leader_id
     forest_leader = runtime.actors[forest_leader_id]
     responder.col = 5_000
@@ -115,20 +116,15 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     assert accepted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     withdrawal = accepted["accepted_restitution"]["withdrawal_route"]
     assert len(withdrawal) == 1
+    assert withdrawal[0]["actor_ids"] == forest_ids
     assert withdrawal[0]["from_location_id"] == FOREST_ELF_ESCAPE_CAVE_MOUTH
     assert withdrawal[0]["to_location_id"] == FOREST_ELF_SACRED_WOODS
     assert withdrawal[0]["elapsed_ms"] == 6 * 60_000
     assert withdrawal[0]["traversal_tags"] == list(ARBOREAL_ROUTE_TAGS)
     assert responder.col == 3_500
     assert forest_leader.col == leader_before + 1_500
-    assert all(
-        runtime.actors[actor_id].location_id == FOREST_ELF_SACRED_WOODS
-        for actor_id in state["incident"]["forest_elf_actor_ids"]
-    )
-    assert all(
-        runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE
-        for actor_id in representative_ids
-    )
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_SACRED_WOODS for actor_id in forest_ids)
+    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE for actor_id in representative_ids)
     assert all(
         runtime.actors[actor_id].metadata["floor8_local_standoff_resolution"] == "restitution"
         for actor_id in representative_ids
@@ -172,6 +168,9 @@ def test_cave_standoff_can_transfer_only_local_representatives_to_sluva_custody(
         (FOREST_ELF_ESCAPE_CAVE_MOUTH, FOREST_ELF_SACRED_WOODS, 6 * 60_000),
         (FOREST_ELF_SACRED_WOODS, SLUVA, 16 * 60_000),
     ]
+    assert route[0]["actor_ids"] == representative_ids
+    assert route[1]["actor_ids"] == representative_ids + forest_ids
+    assert route[2]["actor_ids"] == representative_ids + forest_ids
     assert route[0]["traversal_tags"] == ["cave_entry"]
     assert route[1]["traversal_tags"] == list(ARBOREAL_ROUTE_TAGS)
     assert route[2]["traversal_tags"] == list(ARBOREAL_ROUTE_TAGS + ("managed_inner_forest",))
@@ -194,6 +193,7 @@ def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_local_
     approach = combat["cave_combat_approach_route"]
     assert approach == [
         {
+            "actor_ids": [responder.actor_id],
             "from_location_id": FOREST_ELF_ESCAPE_CAVE,
             "to_location_id": FOREST_ELF_ESCAPE_CAVE_MOUTH,
             "elapsed_ms": 2 * 60_000,

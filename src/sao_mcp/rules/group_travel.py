@@ -19,6 +19,7 @@ class GroupTravelResolution:
 
 def group_travel_record(resolution: GroupTravelResolution) -> dict:
     return {
+        "actor_ids": list(resolution.actor_ids),
         "from_location_id": resolution.from_location_id,
         "to_location_id": resolution.to_location_id,
         "elapsed_ms": resolution.elapsed_ms,
