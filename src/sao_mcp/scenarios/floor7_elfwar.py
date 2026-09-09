@@ -12,6 +12,7 @@ from sao_mcp.corpus.floor7_elfwar import (
 )
 from sao_mcp.corpus.floor7_intrigue import NARSOS_FRUIT_ID, NARSOS_REQUIRED
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.inventory import add_item, recompute_equipment_stats
 from sao_mcp.rules.quests import QuestObjectiveKind
 
@@ -29,13 +30,10 @@ VOLUPTA = "floor_7_volupta"
 
 ARREST_PROCESSING_MS = 33 * 60_000
 CELL_LOCK_BURN_MS = 2 * 60_000
-WEAPON_RECOVERY_MS = 8 * 60_000
-LAVIK_SEARCH_MS = 8 * 60_000
-ASCENT_AND_GUARD_SUBDUAL_MS = 25 * 60_000
+LAVIK_CELL_SEARCH_MS = 5 * 60_000
+GUARD_SUBDUAL_MS = 1 * 60_000
 KIZMEL_CONVINCE_MS = 5 * 60_000
-BLACKOUT_AND_DESCENT_MS = 35 * 60_000
 POST_ESCAPE_NARSOS_GATHER_MS = 90 * 60_000
-RETURN_TO_VOLUPTA_MS = 90 * 60_000
 
 
 class Floor7ElfWarScenario:
@@ -163,15 +161,22 @@ class Floor7ElfWarScenario:
             "storage_actor_id": cache.actor_id,
             "confiscated_slots": confiscated,
             "cell_lock_burns": 0,
+            "weapon_recovery_route": [],
+            "lavik_search_route": [],
+            "seventh_prison_route": [],
+            "escape_route": [],
+            "return_to_volupta_route": [],
             "lavik_actor_id": None,
             "kizmel_actor_id": preexisting_kizmel_id,
             "kizmel_preexisting_actor_id": preexisting_kizmel_id,
             "kizmel_confiscated_item_ids": kizmel_confiscated_ids,
             "guards_subdued_nonlethally": 0,
+            "guards_subdued_at_ms": None,
             "palace_blackout": False,
             "escaped_at_ms": None,
             "narsos_gathered": 0,
             "lavik_departed": False,
+            "lavik_departed_at_ms": None,
             "returned_to_volupta_at_ms": None,
         }
         self._states()[instance_id] = state
@@ -199,10 +204,11 @@ class Floor7ElfWarScenario:
         if state["stage"] != "cell_escaped_recover_weapons":
             raise ValueError("the B2 cell must be escaped before searching the weapon store")
         cache = self.runtime.actors[state["storage_actor_id"]]
-        self.runtime.advance_world(WEAPON_RECOVERY_MS)
+        to_guard = travel_together(self.runtime, state["player_ids"], GUARD_STATION)
+        to_store = travel_together(self.runtime, state["player_ids"], WEAPON_STORE)
+        state["weapon_recovery_route"] = [group_travel_record(to_guard), group_travel_record(to_store)]
         for actor_id in state["player_ids"]:
             actor = self.runtime.actors[actor_id]
-            actor.location_id = WEAPON_STORE
             for slot, item_id in state["confiscated_slots"].get(actor_id, {}).items():
                 item = cache.inventory.pop(item_id)
                 item.owner_id = actor_id
@@ -223,9 +229,10 @@ class Floor7ElfWarScenario:
         state = self._state(instance_id)
         if state["stage"] != "search_basement_cells":
             raise ValueError("the party is not searching the Harin basement cells")
-        self.runtime.advance_world(LAVIK_SEARCH_MS)
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = LAVIK_CELL
+        self.runtime.advance_world(LAVIK_CELL_SEARCH_MS)
+        to_guard = travel_together(self.runtime, state["player_ids"], GUARD_STATION)
+        to_lavik = travel_together(self.runtime, state["player_ids"], LAVIK_CELL)
+        state["lavik_search_route"] = [group_travel_record(to_guard), group_travel_record(to_lavik)]
 
         lavik = self._active_actor_for_npc(LAVIK_ID)
         if lavik is None:
@@ -276,12 +283,13 @@ class Floor7ElfWarScenario:
         state = self._state(instance_id)
         if state["stage"] != "lavik_joined_reach_seventh_prison":
             raise ValueError("Lavik has not joined the escape party")
-        self.runtime.advance_world(ASCENT_AND_GUARD_SUBDUAL_MS)
+        travelling = list(state["player_ids"]) + [state["lavik_actor_id"]]
+        to_guard = travel_together(self.runtime, travelling, GUARD_STATION)
+        self.runtime.advance_world(GUARD_SUBDUAL_MS)
         state["guards_subdued_nonlethally"] = 2
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = SEVENTH_PRISON
-        lavik = self.runtime.actors[state["lavik_actor_id"]]
-        lavik.location_id = SEVENTH_PRISON
+        state["guards_subdued_at_ms"] = self.runtime.world.now_ms
+        to_seventh = travel_together(self.runtime, travelling, SEVENTH_PRISON)
+        state["seventh_prison_route"] = [group_travel_record(to_guard), group_travel_record(to_seventh)]
         state["stage"] = "seventh_prison_rejoin_kizmel"
         return self.status(instance_id)
 
@@ -376,25 +384,24 @@ class Floor7ElfWarScenario:
         if state["stage"] != "create_palace_blackout":
             raise ValueError("the escape party is not ready to leave the seventh story")
         state["palace_blackout"] = True
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = ESCAPE_WINDOW
-        self.runtime.actors[state["lavik_actor_id"]].location_id = ESCAPE_WINDOW
-        self.runtime.actors[state["kizmel_actor_id"]].location_id = ESCAPE_WINDOW
+        travelling = list(state["player_ids"]) + [state["lavik_actor_id"], state["kizmel_actor_id"]]
+        to_window = travel_together(self.runtime, travelling, ESCAPE_WINDOW)
+        to_trunk = travel_together(self.runtime, travelling, OUTER_TRUNK)
+        to_forest = travel_together(self.runtime, travelling, LOOSEROCK_FOREST)
+        state["escape_route"] = [
+            group_travel_record(to_window),
+            group_travel_record(to_trunk),
+            group_travel_record(to_forest),
+        ]
 
-        self.runtime.advance_world(BLACKOUT_AND_DESCENT_MS)
         for actor_id in state["player_ids"]:
             actor = self.runtime.actors[actor_id]
-            actor.location_id = LOOSEROCK_FOREST
             actor.metadata.pop("harin_prisoner", None)
             self.runtime.quests.record_event(
                 actor_id,
                 kind=QuestObjectiveKind.DISCOVER,
                 target_id="harin_tree_palace_escaped",
             )
-        lavik = self.runtime.actors[state["lavik_actor_id"]]
-        kizmel = self.runtime.actors[state["kizmel_actor_id"]]
-        lavik.location_id = LOOSEROCK_FOREST
-        kizmel.location_id = LOOSEROCK_FOREST
 
         for actor_id in state["player_ids"]:
             if self.runtime.quests.ready_to_claim(self.runtime.actors[actor_id], QUEST_ID):
@@ -435,6 +442,7 @@ class Floor7ElfWarScenario:
         lavik.metadata["destination_unknown"] = True
         lavik.location_id = "floor_7_field"
         state["lavik_departed"] = True
+        state["lavik_departed_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "return_to_volupta_with_kizmel"
         return self.status(instance_id)
 
@@ -442,13 +450,11 @@ class Floor7ElfWarScenario:
         state = self._state(instance_id)
         if state["stage"] != "return_to_volupta_with_kizmel":
             raise ValueError("the Harin escape party is not ready to return to Volupta")
-        if any(self.runtime.actors[actor_id].location_id != LOOSEROCK_FOREST for actor_id in state["player_ids"]):
-            raise ValueError("all players must depart from Looserock Forest together")
-        self.runtime.advance_world(RETURN_TO_VOLUPTA_MS)
-        for actor_id in state["player_ids"]:
-            self.runtime.actors[actor_id].location_id = VOLUPTA
-        kizmel = self.runtime.actors[state["kizmel_actor_id"]]
-        kizmel.location_id = VOLUPTA
+        travelling = list(state["player_ids"]) + [state["kizmel_actor_id"]]
+        if any(self.runtime.actors[actor_id].location_id != LOOSEROCK_FOREST for actor_id in travelling):
+            raise ValueError("all players and Kizmel must depart from Looserock Forest together")
+        resolution = travel_together(self.runtime, travelling, VOLUPTA)
+        state["return_to_volupta_route"] = [group_travel_record(resolution)]
         state["stage"] = "returned_to_volupta_with_kizmel"
         state["returned_to_volupta_at_ms"] = self.runtime.world.now_ms
         return self.status(instance_id)

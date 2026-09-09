@@ -184,6 +184,14 @@ def floor7_connections() -> tuple[TravelConnection, ...]:
         ),
         TravelConnection("floor_7_looserock_forest", "floor_7_harin_tree_palace", 22 * 60_000, provenance=p),
         TravelConnection("floor_7_harin_tree_palace", "floor_7_harin_b2_guard_station", 7 * 60_000, provenance=p),
+        TravelConnection(
+            "floor_7_harin_b2_cell",
+            "floor_7_harin_b2_guard_station",
+            7 * 60_000,
+            provenance=_sim(
+                "The B2 cell lies on the west side of the second basement prison level. Seven minutes is simulation calibration chosen so the cell-to-guard-station plus adjacent weapon-store route preserves the previous eight-minute recovery segment without maintaining a second elapsed-time field."
+            ),
+        ),
         TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_weapon_store", 1 * 60_000, provenance=p),
         TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_lavik_cell", 2 * 60_000, provenance=p),
         TravelConnection("floor_7_harin_b2_guard_station", "floor_7_harin_seventh_prison", 22 * 60_000, provenance=p),
