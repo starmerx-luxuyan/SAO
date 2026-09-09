@@ -132,6 +132,29 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         )
 
     @mcp.tool()
+    def begin_progressive9_sluva_imprisonment_enforcement(
+        instance_id: str,
+        arbiter_actor_id: str,
+        imprisonment_duration_ms: int,
+    ) -> str:
+        """Begin enforcement of the imprisonment orders already present in a strict or commuted local Sluva disposition. The caller must provide the campaign's explicit simulation duration; the runtime stores the release timestamp but does not auto-advance world time or execute any death sentence."""
+        return _json(
+            sluva.begin_imprisonment_enforcement(
+                instance_id,
+                arbiter_actor_id,
+                imprisonment_duration_ms,
+            )
+        )
+
+    @mcp.tool()
+    def complete_progressive9_sluva_imprisonment_enforcement(
+        instance_id: str,
+        arbiter_actor_id: str,
+    ) -> str:
+        """Complete the active local Sluva imprisonment term only after the shared world clock reaches its recorded release time. Imprisoned actors are released from custody; any strict execution order remains pending and is not auto-resolved."""
+        return _json(sluva.complete_imprisonment_enforcement(instance_id, arbiter_actor_id))
+
+    @mcp.tool()
     def start_progressive9_cave_mouth_combat(instance_id: str, player_combatant_ids: list[str]) -> str:
         """Escalate the local unresolved standoff: selected live responders or materialized representative players walk out to the cave mouth and enter an ordinary encounter with the real Forest Elf pursuers."""
         return _json(standoff.start_cave_mouth_combat(instance_id, player_combatant_ids))
@@ -148,5 +171,5 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def get_progressive9_sluva_justice_state(instance_id: str) -> str:
-        """Inspect the local Sluva docket together with the unchanged wider guild-crisis report, explicit principal finding if one exists, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
+        """Inspect the local Sluva docket together with the unchanged wider guild-crisis report, explicit principal finding, disposition, sentence-enforcement timing, real custody locations, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
         return _json(sluva.status(instance_id))

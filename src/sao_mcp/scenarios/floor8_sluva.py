@@ -55,6 +55,16 @@ class Floor8SluvaJusticeScenario:
         if wrong:
             raise ValueError(f"actors are not all at {location_id}: {', '.join(wrong)}")
 
+    def _require_custody(self, actor_ids: list[str]) -> None:
+        wrong = [
+            actor_id
+            for actor_id in actor_ids
+            if self.runtime.actors[actor_id].metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY)
+            != FOREST_ELF_CUSTODY_RESTRICTION
+        ]
+        if wrong:
+            raise RuntimeError(f"actors are no longer in authoritative Forest Elf custody: {', '.join(wrong)}")
+
     def _arbiter(self) -> CombatantState:
         matches = [actor for actor in self.runtime.actors.values() if actor.metadata.get("floor8_sluva_arbiter") is True]
         if len(matches) > 1:
@@ -112,12 +122,17 @@ class Floor8SluvaJusticeScenario:
                 raise RuntimeError(f"Sluva custody actors are absent from guild storage membership {guild_id}")
         return guild_ids
 
+    def _release_actor_custody(self, actor_id: str, *, resolution: str) -> None:
+        actor = self.runtime.actors[actor_id]
+        if actor.metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY) != FOREST_ELF_CUSTODY_RESTRICTION:
+            raise RuntimeError(f"actor {actor_id} is not in authoritative Forest Elf custody")
+        actor.metadata["forest_elf_custody_ended_at_ms"] = self.runtime.world.now_ms
+        actor.metadata["forest_elf_custody_resolution"] = resolution
+        del actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY]
+
     def _release_custody(self, state: dict, *, resolution: str) -> None:
         for actor_id in self._custody_ids(state):
-            actor = self.runtime.actors[actor_id]
-            actor.metadata["forest_elf_custody_ended_at_ms"] = self.runtime.world.now_ms
-            actor.metadata["forest_elf_custody_resolution"] = resolution
-            del actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY]
+            self._release_actor_custody(actor_id, resolution=resolution)
 
     def open_hearing(self, instance_id: str, advocate_actor_id: str) -> dict:
         state = self._state(instance_id)
@@ -128,6 +143,7 @@ class Floor8SluvaJusticeScenario:
         custody_ids = self._custody_ids(state)
         forest_ids = self._forest_ids(state)
         self._require_ids_at(custody_ids, SLUVA)
+        self._require_custody(custody_ids)
         self._require_ids_at(forest_ids, SLUVA)
         advocate = self.runtime.actors[advocate_actor_id]
         eligible = set(state["floor8_actor_ids"]) | set(custody_ids)
@@ -185,6 +201,7 @@ class Floor8SluvaJusticeScenario:
             "principal_finding": None,
             "mitigation": [],
             "disposition": None,
+            "sentence_enforcement": None,
             "resolved_at_ms": None,
         }
         state["stage"] = "sluva_hearing_open"
@@ -200,7 +217,9 @@ class Floor8SluvaJusticeScenario:
         arbiter = self.runtime.actors[arbiter_actor_id]
         if not arbiter.alive or arbiter.location_id != SLUVA:
             raise ValueError("the Sluva arbiter must remain alive and present")
-        self._require_ids_at(self._custody_ids(state), SLUVA)
+        custody_ids = self._custody_ids(state)
+        self._require_ids_at(custody_ids, SLUVA)
+        self._require_custody(custody_ids)
 
         self.runtime.advance_world(JUDGMENT_TIME_MS)
         docket["judgment"] = {
@@ -234,6 +253,7 @@ class Floor8SluvaJusticeScenario:
         if principal_actor_id not in custody_ids:
             raise ValueError("the adjudicated principal must be one of the materialized detainees")
         self._require_ids_at(custody_ids, SLUVA)
+        self._require_custody(custody_ids)
 
         docket["principal_finding"] = {
             "actor_id": principal_actor_id,
@@ -303,6 +323,7 @@ class Floor8SluvaJusticeScenario:
         custody_ids = self._custody_ids(state)
         forest_ids = self._forest_ids(state)
         self._require_ids_at(custody_ids, SLUVA)
+        self._require_custody(custody_ids)
         self._require_ids_at(forest_ids, SLUVA)
 
         outward = travel_together(self.runtime, custody_ids + forest_ids, FOREST_ELF_SACRED_WOODS)
@@ -351,6 +372,7 @@ class Floor8SluvaJusticeScenario:
             raise ValueError("the Sluva arbiter must remain alive and present")
         custody_ids = self._custody_ids(state)
         self._require_ids_at(custody_ids, SLUVA)
+        self._require_custody(custody_ids)
         principal_actor_id = docket["principal_finding"]["actor_id"]
         if disposition not in {"strict", "commuted", "pardon"}:
             raise ValueError("disposition must be strict, commuted, or pardon")
@@ -382,6 +404,86 @@ class Floor8SluvaJusticeScenario:
         docket["resolved_at_ms"] = self.runtime.world.now_ms
         return self.status(instance_id)
 
+    def begin_imprisonment_enforcement(
+        self,
+        instance_id: str,
+        arbiter_actor_id: str,
+        imprisonment_duration_ms: int,
+    ) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] not in {"sluva_disposition_strict", "sluva_disposition_commuted"}:
+            raise ValueError("imprisonment enforcement requires a strict or commuted Sluva disposition")
+        if imprisonment_duration_ms < 1:
+            raise ValueError("imprisonment_duration_ms must be positive")
+        docket = state["sluva_justice"]
+        if docket["sentence_enforcement"] is not None:
+            raise ValueError("sentence enforcement has already started for this Sluva docket")
+        if arbiter_actor_id != docket["arbiter_actor_id"]:
+            raise ValueError("only the authoritative Sluva arbiter can begin sentence enforcement")
+        arbiter = self.runtime.actors[arbiter_actor_id]
+        if not arbiter.alive or arbiter.location_id != SLUVA:
+            raise ValueError("the Sluva arbiter must remain alive and present")
+        sentences = docket["disposition"]["sentences"]
+        imprisonment_actor_ids = [
+            actor_id for actor_id, sentence in sentences.items() if sentence == "imprisonment_ordered"
+        ]
+        execution_order_actor_ids = [
+            actor_id for actor_id, sentence in sentences.items() if sentence == "execution_ordered"
+        ]
+        if not imprisonment_actor_ids:
+            raise ValueError("this disposition contains no imprisonment order to enforce")
+        self._require_ids_at(imprisonment_actor_ids + execution_order_actor_ids, SLUVA)
+        self._require_custody(imprisonment_actor_ids + execution_order_actor_ids)
+
+        started_at_ms = self.runtime.world.now_ms
+        docket["sentence_enforcement"] = {
+            "status": "imprisonment_active",
+            "imprisonment_actor_ids": imprisonment_actor_ids,
+            "imprisonment_started_at_ms": started_at_ms,
+            "imprisonment_duration_ms": imprisonment_duration_ms,
+            "imprisonment_release_at_ms": started_at_ms + imprisonment_duration_ms,
+            "imprisonment_completed_at_ms": None,
+            "execution_order_actor_ids": execution_order_actor_ids,
+            "execution_status": "pending_unexecuted" if execution_order_actor_ids else None,
+            "provenance": (
+                "simulation imprisonment duration supplied explicitly by the campaign; "
+                "execution orders remain pending because the runtime has no generic non-combat execution mechanic"
+            ),
+        }
+        docket["status"] = "sentence_enforcement_active"
+        state["stage"] = "sluva_sentence_enforcement_active"
+        return self.status(instance_id)
+
+    def complete_imprisonment_enforcement(self, instance_id: str, arbiter_actor_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "sluva_sentence_enforcement_active":
+            raise ValueError("there is no active Sluva imprisonment term to complete")
+        docket = state["sluva_justice"]
+        if arbiter_actor_id != docket["arbiter_actor_id"]:
+            raise ValueError("only the authoritative Sluva arbiter can complete sentence enforcement")
+        arbiter = self.runtime.actors[arbiter_actor_id]
+        if not arbiter.alive or arbiter.location_id != SLUVA:
+            raise ValueError("the Sluva arbiter must remain alive and present")
+        enforcement = docket["sentence_enforcement"]
+        release_at_ms = enforcement["imprisonment_release_at_ms"]
+        if self.runtime.world.now_ms < release_at_ms:
+            raise ValueError("the active imprisonment term has not reached its release time")
+        imprisonment_actor_ids = list(enforcement["imprisonment_actor_ids"])
+        self._require_ids_at(imprisonment_actor_ids, SLUVA)
+        self._require_custody(imprisonment_actor_ids)
+        for actor_id in imprisonment_actor_ids:
+            self._release_actor_custody(actor_id, resolution="sluva_imprisonment_completed")
+
+        enforcement["status"] = "imprisonment_completed"
+        enforcement["imprisonment_completed_at_ms"] = self.runtime.world.now_ms
+        if enforcement["execution_order_actor_ids"]:
+            docket["status"] = "imprisonment_completed_execution_pending"
+            state["stage"] = "sluva_imprisonment_completed_execution_pending"
+        else:
+            docket["status"] = "sentence_enforcement_completed"
+            state["stage"] = "sluva_sentence_enforcement_completed"
+        return self.status(instance_id)
+
     def status(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         payload = self.emergency.status(instance_id)
@@ -400,6 +502,12 @@ class Floor8SluvaJusticeScenario:
             dict(disposition["sentences"])
             if disposition is not None
             else {actor_id: None for actor_id in docket["custody_actor_ids"]}
+        )
+        enforcement = docket["sentence_enforcement"]
+        remaining_ms = (
+            max(0, enforcement["imprisonment_release_at_ms"] - self.runtime.world.now_ms)
+            if enforcement is not None and enforcement["status"] == "imprisonment_active"
+            else None
         )
         payload.update(
             {
@@ -422,6 +530,7 @@ class Floor8SluvaJusticeScenario:
                     for actor_id in docket["custody_actor_ids"]
                 },
                 "sentences": sentences,
+                "sentence_enforcement_remaining_ms": remaining_ms,
                 "arbiter_location_id": self.runtime.actors[docket["arbiter_actor_id"]].location_id,
             }
         )

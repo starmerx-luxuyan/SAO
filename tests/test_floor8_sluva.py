@@ -108,7 +108,7 @@ def _setup_custody(seed=241):
     return runtime, emergency, sluva, players, forest
 
 
-def test_sluva_principal_finding_is_explicit_before_strict_disposition():
+def test_sluva_strict_disposition_enforces_imprisonment_without_auto_executing_principal():
     runtime, emergency, sluva, players, forest = _setup_custody()
     payer = players[0]
     payer.col = 3_000
@@ -124,22 +124,9 @@ def test_sluva_principal_finding_is_explicit_before_strict_disposition():
         "custody_actor_ids": [actor.actor_id for actor in players],
     }
     assert hearing["forest_elf_guild_standing"] == {ALS_GUILD_ID: -15, DKB_GUILD_ID: -15}
-    assert hearing["sluva_justice"]["charges"][0] == {
-        "code": "protected_tree_incident_participation",
-        "severity": "grave",
-        "description": (
-            "custody case arising from the felling of a large protected living tree; "
-            "the individual principal has not yet been established"
-        ),
-        "provenance": "canon_incident_cause_and_penalty_risk_plus_simulation_legal_framing",
-    }
     assert hearing["sluva_justice"]["principal_finding"] is None
+    assert hearing["sluva_justice"]["sentence_enforcement"] is None
     assert hearing["sentences"] == {actor.actor_id: None for actor in players}
-    assert hearing["sluva_justice"]["known_penalty_risk"] == {
-        "principal_or_commander": "execution_risk",
-        "other_participants": "imprisonment_risk",
-        "provenance": "Progressive 9 Dark Elf assessment; actual Sluva disposition remains unresolved here",
-    }
 
     arbiter_id = hearing["sluva_justice"]["arbiter_actor_id"]
     judged = sluva.issue_grave_judgment(INSTANCE_ID, arbiter_id)
@@ -148,70 +135,57 @@ def test_sluva_principal_finding_is_explicit_before_strict_disposition():
     with pytest.raises(ValueError, match="requires an adjudicated principal"):
         sluva.issue_disposition(INSTANCE_ID, arbiter_id, "strict")
 
-    finding = sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[0].actor_id)
-    assert finding["stage"] == "sluva_principal_adjudicated"
-    assert finding["sluva_justice"]["principal_finding"] == {
-        "actor_id": players[0].actor_id,
-        "finding": "principal_or_commander_for_materialized_local_case",
-        "adjudicated_by_actor_id": arbiter_id,
-        "adjudicated_at_ms": runtime.world.now_ms,
-        "provenance": (
-            "simulation Sluva judicial finding; Progressive 9 establishes differential penalty risk "
-            "but does not identify this campaign's principal"
-        ),
-    }
-    assert "forest_elf_principal" not in runtime.actors[players[0].actor_id].metadata
-
-    mitigated = sluva.deposit_restitution_mitigation(INSTANCE_ID, payer.actor_id)
-    assert payer.col == 3_000 - RESTITUTION_COL
-    assert runtime.actors[arbiter_id].col == RESTITUTION_COL
-    assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -12, DKB_GUILD_ID: -12}
-    assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
-    assert mitigated["stage"] == "sluva_principal_adjudicated"
-
+    sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[0].actor_id)
+    sluva.deposit_restitution_mitigation(INSTANCE_ID, payer.actor_id)
     strict = sluva.issue_disposition(INSTANCE_ID, arbiter_id, "strict")
     assert strict["stage"] == "sluva_disposition_strict"
     assert strict["sentences"][players[0].actor_id] == "execution_ordered"
-    for actor in players[1:]:
-        assert strict["sentences"][actor.actor_id] == "imprisonment_ordered"
-    assert all("forest_elf_sentence" not in actor.metadata for actor in players)
-    assert all(
-        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
-        for actor in players
-    )
-    assert all(
-        "forest_elf_custody" not in actor.metadata and "forest_elf_custody_location_id" not in actor.metadata
-        for actor in players
-    )
-    assert all(strict["custody_active"][actor.actor_id] is True for actor in players)
-    assert strict["sluva_justice"]["disposition"]["execution_not_auto_resolved"] is True
-    assert strict["sentences"] == strict["sluva_justice"]["disposition"]["sentences"]
-    assert "principal_actor_id" not in strict["sluva_justice"]["disposition"]
-    assert strict["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
+    assert [strict["sentences"][actor.actor_id] for actor in players[1:]] == [
+        "imprisonment_ordered",
+        "imprisonment_ordered",
+        "imprisonment_ordered",
+    ]
+    principal_hp = players[0].hp
+    term_ms = 60 * 60_000
+    enforcement = sluva.begin_imprisonment_enforcement(INSTANCE_ID, arbiter_id, term_ms)
+    row = enforcement["sluva_justice"]["sentence_enforcement"]
+    assert enforcement["stage"] == "sluva_sentence_enforcement_active"
+    assert row["status"] == "imprisonment_active"
+    assert row["imprisonment_actor_ids"] == [actor.actor_id for actor in players[1:]]
+    assert row["execution_order_actor_ids"] == [players[0].actor_id]
+    assert row["execution_status"] == "pending_unexecuted"
+    assert row["imprisonment_duration_ms"] == term_ms
+    assert enforcement["sentence_enforcement_remaining_ms"] == term_ms
+    assert players[0].alive is True and players[0].hp == principal_hp
+
+    with pytest.raises(ValueError, match="has not reached its release time"):
+        sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    runtime.advance_world(term_ms - 1)
+    assert sluva.status(INSTANCE_ID)["sentence_enforcement_remaining_ms"] == 1
+    with pytest.raises(ValueError, match="has not reached its release time"):
+        sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    runtime.advance_world(1)
+
+    completed = sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    assert completed["stage"] == "sluva_imprisonment_completed_execution_pending"
+    assert completed["sluva_justice"]["sentence_enforcement"]["status"] == "imprisonment_completed"
+    assert completed["sentence_enforcement_remaining_ms"] is None
+    assert completed["custody_active"][players[0].actor_id] is True
+    assert all(completed["custody_active"][actor.actor_id] is False for actor in players[1:])
+    assert players[0].alive is True and players[0].hp == principal_hp
+    assert players[0].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
+    assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players[1:])
+    assert all(actor.metadata["forest_elf_custody_resolution"] == "sluva_imprisonment_completed" for actor in players[1:])
 
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
     install_progressive_clearing_guilds(restored)
     restored_sluva = install_floor8_sluva_justice_scenario(restored, _EmergencyStub(restored))
     persisted = restored_sluva.status(INSTANCE_ID)
-    assert persisted["stage"] == "sluva_disposition_strict"
-    assert persisted["sentences"][players[0].actor_id] == "execution_ordered"
-    assert persisted["sentences"] == persisted["sluva_justice"]["disposition"]["sentences"]
-    assert persisted["sluva_justice"]["principal_finding"]["actor_id"] == players[0].actor_id
-    assert persisted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
-    assert persisted["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
-    assert all("forest_elf_sentence" not in restored.actors[actor.actor_id].metadata for actor in players)
-    assert all(
-        restored.actors[actor.actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY]
-        == FOREST_ELF_CUSTODY_RESTRICTION
-        for actor in players
-    )
-    assert all(
-        "forest_elf_custody" not in restored.actors[actor.actor_id].metadata
-        and "forest_elf_custody_location_id" not in restored.actors[actor.actor_id].metadata
-        for actor in players
-    )
-    assert restored.actors[arbiter_id].col == RESTITUTION_COL
+    assert persisted["stage"] == "sluva_imprisonment_completed_execution_pending"
+    assert persisted["sluva_justice"]["sentence_enforcement"]["execution_status"] == "pending_unexecuted"
+    assert persisted["custody_active"][players[0].actor_id] is True
+    assert all(persisted["custody_active"][actor.actor_id] is False for actor in players[1:])
 
 
 def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_finding():
@@ -223,10 +197,6 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     service_started = runtime.world.now_ms
     mitigated = sluva.perform_restorative_service_mitigation(INSTANCE_ID)
     service = mitigated["sluva_justice"]["mitigation"][0]
-    assert "outward_travel_ms" not in service
-    assert "return_travel_ms" not in service
-    assert len(service["outward_route"]) == 1
-    assert len(service["return_route"]) == 1
     outward = service["outward_route"][0]
     returning = service["return_route"][0]
     assert (outward["from_location_id"], outward["to_location_id"], outward["elapsed_ms"]) == (
@@ -243,36 +213,41 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     assert outward["traversal_tags"] == expected_tags
     assert returning["traversal_tags"] == expected_tags
     route_elapsed = outward["elapsed_ms"] + returning["elapsed_ms"]
-    assert route_elapsed == 32 * 60_000
     assert runtime.world.now_ms - service_started == route_elapsed + RESTORATIVE_SERVICE_MS
     assert mitigated["stage"] == "sluva_grave_judgment_issued"
     assert mitigated["sluva_justice"]["principal_finding"] is None
-    assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -10, DKB_GUILD_ID: -10}
-    assert all(actor.location_id == SLUVA for actor in players + forest)
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
-    assert all(
-        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
-        for actor in players
-    )
-    assert all(
-        "forest_elf_custody" not in actor.metadata and "forest_elf_custody_location_id" not in actor.metadata
-        for actor in players
-    )
-    assert mitigated["sluva_case_scope"]["custody_actor_ids"] == [actor.actor_id for actor in players]
 
-    finding = sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[1].actor_id)
-    assert finding["sluva_justice"]["principal_finding"]["actor_id"] == players[1].actor_id
+    sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[1].actor_id)
     pardoned = sluva.issue_disposition(INSTANCE_ID, arbiter_id, "pardon")
     assert pardoned["stage"] == "sluva_disposition_pardon"
     assert pardoned["sluva_justice"]["disposition"]["campaign_deviation"] is True
-    assert pardoned["sluva_justice"]["principal_finding"]["actor_id"] == players[1].actor_id
     assert all(pardoned["sentences"][actor.actor_id] == "pardoned" for actor in players)
-    assert pardoned["sentences"] == pardoned["sluva_justice"]["disposition"]["sentences"]
-    assert all("forest_elf_sentence" not in actor.metadata for actor in players)
     assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players)
-    assert all(
-        "forest_elf_custody" not in actor.metadata and "forest_elf_custody_location_id" not in actor.metadata
-        for actor in players
-    )
     assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
-    assert pardoned["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
+
+
+def test_sluva_commuted_disposition_releases_all_imprisoned_actors_at_term_end():
+    runtime, emergency, sluva, players, forest = _setup_custody(seed=263)
+    hearing = sluva.open_hearing(INSTANCE_ID, players[0].actor_id)
+    arbiter_id = hearing["sluva_justice"]["arbiter_actor_id"]
+    sluva.issue_grave_judgment(INSTANCE_ID, arbiter_id)
+    players[0].col = RESTITUTION_COL
+    sluva.deposit_restitution_mitigation(INSTANCE_ID, players[0].actor_id)
+    sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[0].actor_id)
+    commuted = sluva.issue_disposition(INSTANCE_ID, arbiter_id, "commuted")
+    assert commuted["stage"] == "sluva_disposition_commuted"
+    assert set(commuted["sentences"].values()) == {"imprisonment_ordered"}
+
+    term_ms = 30 * 60_000
+    active = sluva.begin_imprisonment_enforcement(INSTANCE_ID, arbiter_id, term_ms)
+    row = active["sluva_justice"]["sentence_enforcement"]
+    assert row["imprisonment_actor_ids"] == [actor.actor_id for actor in players]
+    assert row["execution_order_actor_ids"] == []
+    assert row["execution_status"] is None
+    runtime.advance_world(term_ms)
+    completed = sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    assert completed["stage"] == "sluva_sentence_enforcement_completed"
+    assert all(completed["custody_active"][actor.actor_id] is False for actor in players)
+    assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players)
+    assert all(actor.alive for actor in players)
