@@ -4,13 +4,13 @@ import uuid
 from dataclasses import asdict
 
 from sao_mcp.corpus.floor8_world import FOREST_ELF_SACRED_WOODS, SLUVA
+from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.runtime.canonical_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 
 
-FOREST_ELF_FACTION_ID = "forest_elves"
 FORMAL_CHARGE_STANDING_DELTA = -15
 RESTITUTION_STANDING_RECOVERY = 3
 SERVICE_STANDING_RECOVERY = 5
@@ -79,7 +79,7 @@ class Floor8SluvaJusticeScenario:
             cursor=CursorColor.YELLOW,
             location_id=SLUVA,
             metadata={
-                "forest_elf": True,
+                "faction_ids": (FOREST_ELVES,),
                 "floor8_sluva_arbiter": True,
                 "personal_identity_provenance": "simulation",
                 "legal_role_provenance": "simulation_from_progressive9_sluva_context",
@@ -140,7 +140,7 @@ class Floor8SluvaJusticeScenario:
                 adjust_faction_standing(
                     self.runtime.world,
                     guild_id,
-                    FOREST_ELF_FACTION_ID,
+                    FOREST_ELVES,
                     FORMAL_CHARGE_STANDING_DELTA,
                     reason="formal Sluva grave charge for the protected-tree incident",
                 )
@@ -234,7 +234,7 @@ class Floor8SluvaJusticeScenario:
                 adjust_faction_standing(
                     self.runtime.world,
                     guild_id,
-                    FOREST_ELF_FACTION_ID,
+                    FOREST_ELVES,
                     RESTITUTION_STANDING_RECOVERY,
                     reason="restitution deposited as mitigation while Sluva custody continues",
                 )
@@ -273,7 +273,7 @@ class Floor8SluvaJusticeScenario:
                 adjust_faction_standing(
                     self.runtime.world,
                     guild_id,
-                    FOREST_ELF_FACTION_ID,
+                    FOREST_ELVES,
                     SERVICE_STANDING_RECOVERY,
                     reason="restorative forest service completed as mitigation while custody continues",
                 )
@@ -363,7 +363,7 @@ class Floor8SluvaJusticeScenario:
                 "sluva_justice": None,
             }
         standing = {
-            guild_id: faction_standing(self.runtime.world, guild_id, FOREST_ELF_FACTION_ID)
+            guild_id: faction_standing(self.runtime.world, guild_id, FOREST_ELVES)
             for guild_id in docket["guild_ids"]
         }
         return {
