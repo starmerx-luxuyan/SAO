@@ -44,10 +44,12 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
         living_outsiders = [
             actor_id
             for actor_id, participant in encounter.participants.items()
-            if actor_id not in member_ids and participant.alive
+            if actor_id not in member_ids
+            and participant.alive
+            and participant.location_id == origin
         ]
         if living_outsiders:
-            raise ValueError("group travel is unavailable while a live encounter has surviving outsiders")
+            raise ValueError("group travel is unavailable while a live encounter has surviving colocated outsiders")
 
     if destination_id not in runtime.world_map.locations:
         raise KeyError(destination_id)
