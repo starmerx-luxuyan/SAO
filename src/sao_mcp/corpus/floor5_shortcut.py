@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, AINCRAD_MONSTER_LOOT_TABLES, MonsterDefinition
+from sao_mcp.corpus.world import TravelConnection
 from sao_mcp.domain.models import DamageType, ItemKind, Provenance, ProvenanceKind, WeaponClass, WeaponTemplate
 from sao_mcp.rules.loot import LootTable
 
@@ -12,6 +13,34 @@ AREA_BOSS_ID = "karluin_catacombs_area_boss"
 AREA_BOSS_WEAPON_ID = "karluin_catacombs_area_boss_natural_attack"
 AREA_BOSS_LOOT_ID = "aincrad_karluin_catacombs_area_boss"
 AREA_BOSS_ROOM = "floor_5_karluin_shortcut_boss_room"
+SHORTCUT_TUNNEL = "floor_5_karluin_mananarena_shortcut"
+MANANARENA = "floor_5_mananarena"
+KARLUIN_SHORTCUT_CONNECTION_ID = "floor5_karluin_mananarena_shortcut_unlocked"
+
+_SHORTCUT_PROVENANCE = Provenance(
+    ProvenanceKind.SIMULATION,
+    sources=(PROGRESSIVE_4, ARGO_REFERENCE),
+    notes=(
+        "Canon establishes that defeating the Karluin catacomb area boss opens a shortcut toward Mananarena. "
+        "The two runtime edges model that unlocked passage bidirectionally; exact travel durations are simulation calibration."
+    ),
+)
+KARLUIN_SHORTCUT_CONNECTIONS = (
+    TravelConnection(
+        AREA_BOSS_ROOM,
+        SHORTCUT_TUNNEL,
+        4 * 60_000,
+        provenance=_SHORTCUT_PROVENANCE,
+        traversal_tags=("unlocked_area_boss_passage", "karluin_catacombs_shortcut"),
+    ),
+    TravelConnection(
+        SHORTCUT_TUNNEL,
+        MANANARENA,
+        8 * 60_000,
+        provenance=_SHORTCUT_PROVENANCE,
+        traversal_tags=("underground_shortcut_tunnel", "karluin_mananarena_route"),
+    ),
+)
 
 
 def apply_floor5_shortcut_boss_corpus(catalog: Catalog) -> Catalog:
