@@ -248,6 +248,16 @@ class Floor8ForestEmergencyScenario:
             }
         return result
 
+    @staticmethod
+    def _travel_record(resolution) -> dict:
+        return {
+            "from_location_id": resolution.from_location_id,
+            "to_location_id": resolution.to_location_id,
+            "elapsed_ms": resolution.elapsed_ms,
+            "newly_discovered": resolution.newly_discovered,
+            "traversal_tags": list(resolution.traversal_tags),
+        }
+
     def trigger_from_nocturne(self, nocturne_instance_id: str, recipient_actor_id: str) -> dict:
         if any(state["nocturne_instance_id"] == nocturne_instance_id for state in self._states().values()):
             raise ValueError("this Nocturne instance already has a Floor 8 forest emergency")
@@ -296,7 +306,9 @@ class Floor8ForestEmergencyScenario:
                 "actors_materialized_at_ms": None,
                 "argo_briefing_confirmed_at_ms": None,
                 "sacred_woods_inspected_at_ms": None,
+                "sacred_woods_to_cave_mouth_route": [],
                 "cave_mouth_reached_at_ms": None,
+                "cave_mouth_to_cave_route": [],
                 "responders_entered_cave_at_ms": None,
             },
             "floor8_actor_ids": [],
@@ -304,8 +316,8 @@ class Floor8ForestEmergencyScenario:
             "response_split_assigned_at_ms": None,
             "responders_arrived_frieben_at_ms": None,
             "acorn_shop_rendezvous_at_ms": None,
-            "frieben_to_acorn_shop_ms": None,
-            "acorn_shop_to_sacred_woods_ms": None,
+            "frieben_to_acorn_shop_route": [],
+            "acorn_shop_to_sacred_woods_route": [],
             "stage": "argo_message_sent",
             "triggered_at_ms": self.runtime.world.now_ms,
         }
@@ -357,9 +369,8 @@ class Floor8ForestEmergencyScenario:
         klein = self.runtime.actors[state["klein_actor_id"]]
         if argo.location_id != ACORN_SHOP or klein.location_id != ACORN_SHOP:
             raise RuntimeError("Argo and Klein are not both waiting at the Acorn Shop rendezvous")
-        started = self.runtime.world.now_ms
-        travel_together(self.runtime, state["floor8_actor_ids"], ACORN_SHOP)
-        state["frieben_to_acorn_shop_ms"] = self.runtime.world.now_ms - started
+        resolution = travel_together(self.runtime, state["floor8_actor_ids"], ACORN_SHOP)
+        state["frieben_to_acorn_shop_route"] = [self._travel_record(resolution)]
         state["acorn_shop_rendezvous_at_ms"] = self.runtime.world.now_ms
         state["incident"]["argo_briefing_confirmed_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "responders_briefed_at_acorn_shop"
@@ -371,11 +382,14 @@ class Floor8ForestEmergencyScenario:
             raise ValueError("responders have not completed the Acorn Shop rendezvous")
         responders = state["floor8_actor_ids"]
         self._require_responders_at(state, ACORN_SHOP)
-        started = self.runtime.world.now_ms
-        travel_together(self.runtime, responders, FRIEBEN)
-        travel_together(self.runtime, responders, MANAGED_FOREST_OUTER)
-        travel_together(self.runtime, responders, FOREST_ELF_SACRED_WOODS)
-        state["acorn_shop_to_sacred_woods_ms"] = self.runtime.world.now_ms - started
+        segments = [
+            travel_together(self.runtime, responders, FRIEBEN),
+            travel_together(self.runtime, responders, MANAGED_FOREST_OUTER),
+            travel_together(self.runtime, responders, FOREST_ELF_SACRED_WOODS),
+        ]
+        state["acorn_shop_to_sacred_woods_route"] = [
+            self._travel_record(resolution) for resolution in segments
+        ]
         state["stage"] = "responders_at_sacred_woods"
         return self.status(instance_id)
 
@@ -403,7 +417,8 @@ class Floor8ForestEmergencyScenario:
         forest_ids = list(state["incident"]["forest_elf_actor_ids"])
         self._require_actor_ids_at(forest_ids, FOREST_ELF_SACRED_WOODS)
         moving = list(state["floor8_actor_ids"]) + forest_ids
-        travel_together(self.runtime, moving, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        resolution = travel_together(self.runtime, moving, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        state["incident"]["sacred_woods_to_cave_mouth_route"] = [self._travel_record(resolution)]
         state["incident"]["cave_mouth_reached_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "cave_mouth_standoff"
         return self.status(instance_id)
@@ -415,7 +430,8 @@ class Floor8ForestEmergencyScenario:
         self._require_responders_at(state, FOREST_ELF_ESCAPE_CAVE_MOUTH)
         forest_ids = list(state["incident"]["forest_elf_actor_ids"])
         self._require_actor_ids_at(forest_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
-        travel_together(self.runtime, state["floor8_actor_ids"], FOREST_ELF_ESCAPE_CAVE)
+        resolution = travel_together(self.runtime, state["floor8_actor_ids"], FOREST_ELF_ESCAPE_CAVE)
+        state["incident"]["cave_mouth_to_cave_route"] = [self._travel_record(resolution)]
         frontline_ids = list(state["incident"]["frontline_actor_ids"])
         self._require_actor_ids_at(frontline_ids, FOREST_ELF_ESCAPE_CAVE)
         state["incident"]["responders_entered_cave_at_ms"] = self.runtime.world.now_ms
@@ -468,6 +484,12 @@ class Floor8ForestEmergencyScenario:
         }
         return {
             **state,
+            "frieben_to_acorn_shop_ms": sum(
+                segment["elapsed_ms"] for segment in state["frieben_to_acorn_shop_route"]
+            ),
+            "acorn_shop_to_sacred_woods_ms": sum(
+                segment["elapsed_ms"] for segment in state["acorn_shop_to_sacred_woods_route"]
+            ),
             "message": {
                 "message_id": message.message_id,
                 "sender_id": message.sender_id,
