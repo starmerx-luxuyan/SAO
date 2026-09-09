@@ -104,6 +104,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     else:
         runtime = into
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
+
+    from sao_mcp.rules.world import restore_dynamic_world_connections
+
+    restore_dynamic_world_connections(runtime.world, runtime.world_map)
     runtime.actors = ACTORS_ADAPTER.validate_python(payload["actors"])
     runtime.encounters = {}
     for encounter_id, value in payload.get("encounters", {}).items():
