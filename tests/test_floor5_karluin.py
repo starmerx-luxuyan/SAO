@@ -114,13 +114,20 @@ def test_karluin_relic_catacomb_and_shortcut_progression_use_base_world_state():
     boss.alive = False
     boss_encounter = runtime.encounters[state["encounter_id"]]
     runtime._resolve_defeat(boss_encounter, boss, player.actor_id)
+
+    # Defeat is an event transition, not a side effect of reading status.
+    raw = shortcut._instance(state["instance_id"])
+    assert raw["stage"] == "cleared"
+    assert raw["cleared_at_ms"] == runtime.world.now_ms
+    assert runtime.world.global_flags["floor5_karluin_shortcut_area_boss_defeated"] is True
+    assert runtime.world.global_flags["dynamic_world_connection_ids"] == [KARLUIN_SHORTCUT_CONNECTION_ID]
+    assert _has_connection(runtime, AREA_BOSS_ROOM, SHORTCUT_TUNNEL)
+    assert _has_connection(runtime, SHORTCUT_TUNNEL, MANANARENA)
+
     cleared = shortcut.status(state["instance_id"])
     assert cleared["stage"] == "cleared"
     assert cleared["shortcut_unlocked"] is True
     assert cleared["shortcut_connection_id"] == KARLUIN_SHORTCUT_CONNECTION_ID
-    assert runtime.world.global_flags["dynamic_world_connection_ids"] == [KARLUIN_SHORTCUT_CONNECTION_ID]
-    assert _has_connection(runtime, AREA_BOSS_ROOM, SHORTCUT_TUNNEL)
-    assert _has_connection(runtime, SHORTCUT_TUNNEL, MANANARENA)
 
     first_leg = shortcut.traverse_shortcut(player.actor_id, SHORTCUT_TUNNEL)
     assert first_leg["to_location_id"] == SHORTCUT_TUNNEL
