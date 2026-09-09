@@ -94,9 +94,9 @@ def register_floor5_tools(mcp, karluin, fuscus, shortcut) -> None:
         return _json(shortcut.status(instance_id))
 
     @mcp.tool()
-    def traverse_floor5_karluin_mananarena_shortcut(actor_id: str) -> str:
-        """Use the cleared Karluin-Mananarena shortcut tunnel from either side."""
-        return _json(shortcut.traverse_shortcut(actor_id))
+    def traverse_floor5_karluin_mananarena_shortcut(actor_id: str, destination_id: str) -> str:
+        """Travel one unlocked Karluin-Mananarena shortcut edge toward the explicit destination."""
+        return _json(shortcut.traverse_shortcut(actor_id, destination_id))
 
     @mcp.tool()
     def start_floor5_fuscus_raid(player_ids: list[str]) -> str:
