@@ -116,7 +116,6 @@ class Floor7ElfWarScenario:
         kizmel.location_id = SEVENTH_PRISON
         kizmel.metadata["harin_prisoner"] = True
         kizmel.metadata["accused_of_fallen_elf_treachery"] = True
-        self.runtime.npcs.states[KIZMEL_ID].location_id = SEVENTH_PRISON
         if not confiscated_ids:
             saber = self._put_generated_weapon_in_cache(cache, KIZMEL_SABER_ID)
             saber.metadata["standalone_kizmel_weapon_seed"] = True
@@ -227,10 +226,6 @@ class Floor7ElfWarScenario:
         self.runtime.advance_world(LAVIK_SEARCH_MS)
         for actor_id in state["player_ids"]:
             self.runtime.actors[actor_id].location_id = LAVIK_CELL
-        self.runtime.npcs.states[LAVIK_ID].location_id = LAVIK_CELL
-        self.runtime.interact_npc(state["player_ids"][0], LAVIK_ID)
-        for actor_id in state["player_ids"][1:]:
-            self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.TALK, target_id=LAVIK_ID)
 
         lavik = self._active_actor_for_npc(LAVIK_ID)
         if lavik is None:
@@ -255,6 +250,13 @@ class Floor7ElfWarScenario:
                 },
             )
             self.runtime.actors[lavik.actor_id] = lavik
+        else:
+            lavik.location_id = LAVIK_CELL
+
+        self.runtime.interact_npc(state["player_ids"][0], LAVIK_ID)
+        for actor_id in state["player_ids"][1:]:
+            self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.TALK, target_id=LAVIK_ID)
+
         cache = self.runtime.actors[state["storage_actor_id"]]
         lavik_saber = next(
             (item for item in cache.inventory.values() if item.template_id == LAVIK_SABER_ID),
@@ -287,10 +289,6 @@ class Floor7ElfWarScenario:
         state = self._state(instance_id)
         if state["stage"] != "seventh_prison_rejoin_kizmel":
             raise ValueError("the party has not reached the seventh-story prison")
-        self.runtime.npcs.states[KIZMEL_ID].location_id = SEVENTH_PRISON
-        self.runtime.interact_npc(state["player_ids"][0], KIZMEL_ID)
-        for actor_id in state["player_ids"][1:]:
-            self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.TALK, target_id=KIZMEL_ID)
 
         kizmel = None
         preexisting_id = state.get("kizmel_preexisting_actor_id")
@@ -320,7 +318,12 @@ class Floor7ElfWarScenario:
                 },
             )
             self.runtime.actors[kizmel.actor_id] = kizmel
-        kizmel.location_id = SEVENTH_PRISON
+        else:
+            kizmel.location_id = SEVENTH_PRISON
+
+        self.runtime.interact_npc(state["player_ids"][0], KIZMEL_ID)
+        for actor_id in state["player_ids"][1:]:
+            self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.TALK, target_id=KIZMEL_ID)
 
         cache = self.runtime.actors[state["storage_actor_id"]]
         restored = False
@@ -392,7 +395,6 @@ class Floor7ElfWarScenario:
         kizmel = self.runtime.actors[state["kizmel_actor_id"]]
         lavik.location_id = LOOSEROCK_FOREST
         kizmel.location_id = LOOSEROCK_FOREST
-        self.runtime.npcs.states[KIZMEL_ID].location_id = LOOSEROCK_FOREST
 
         for actor_id in state["player_ids"]:
             if self.runtime.quests.ready_to_claim(self.runtime.actors[actor_id], QUEST_ID):
@@ -447,7 +449,6 @@ class Floor7ElfWarScenario:
             self.runtime.actors[actor_id].location_id = VOLUPTA
         kizmel = self.runtime.actors[state["kizmel_actor_id"]]
         kizmel.location_id = VOLUPTA
-        self.runtime.npcs.states[KIZMEL_ID].location_id = VOLUPTA
         state["stage"] = "returned_to_volupta_with_kizmel"
         state["returned_to_volupta_at_ms"] = self.runtime.world.now_ms
         return self.status(instance_id)
