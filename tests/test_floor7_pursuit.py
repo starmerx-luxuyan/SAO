@@ -1,8 +1,9 @@
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
+from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.group_travel import travel_together
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, transfer_item
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor7_elfwar import PALACE, VOLUPTA, install_floor7_elfwar_scenario
@@ -80,6 +81,7 @@ def _setup(seed=83):
 
     travel_together(runtime, [a.actor_id, b.actor_id], CASINO)
     state = pursuit.negotiate_scyia_counteroffer(a.actor_id, b.actor_id)
+    raw_pursuit = pursuit._state(instance_id)["pursuit"]
 
     assert state["instance_id"] == instance_id
     assert elfwar._state(instance_id)["stage"] == "scyia_counteroffer_accepted"
@@ -89,6 +91,9 @@ def _setup(seed=83):
     assert bag.instance_id in kysarah.inventory
     assert state["ruby_key_status"] == "dark_elf_retrieval_team"
     assert state["fallen_sacred_key_count"] == 4
+    assert "target_key_bag_holder_id" not in raw_pursuit
+    assert "ruby_key_fallen_holder_id" not in raw_pursuit
+    assert raw_pursuit["ruby_key_ambusher_actor_id"] is None
     return runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag
 
 
@@ -119,6 +124,10 @@ def _reach_blocker_encounter(seed=83):
     assert state["ruby_key_status"] == "fallen_control"
     assert state["fallen_sacred_key_count"] == 5
     assert state["ruby_key_owner_is_fallen"] is True
+    raw_pursuit = pursuit._state(instance_id)["pursuit"]
+    assert "target_key_bag_holder_id" not in raw_pursuit
+    assert "ruby_key_fallen_holder_id" not in raw_pursuit
+    assert raw_pursuit["ruby_key_ambusher_actor_id"] == state["ruby_key_owner_id"]
     ruby_holder = runtime.actors[state["ruby_key_owner_id"]]
     assert ruby_holder.inventory[state["ruby_key_instance_id"]].template_id == RUBY_KEY_ID
     assert bag.instance_id in kysarah.inventory
@@ -167,6 +176,40 @@ def test_floor7_pursuit_uses_corpus_route_real_keys_and_shared_travel_time():
     assert {a.location_id, b.location_id, kizmel.location_id} == {BOSS_ROOM}
 
 
+def test_floor7_pursuit_keeps_ruby_ambusher_as_history_while_inventory_owner_changes():
+    runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter(seed=89)
+    before = pursuit.status(instance_id)
+    ambusher_id = before["pursuit"]["ruby_key_ambusher_actor_id"]
+    ambusher = runtime.actors[ambusher_id]
+    new_holder = CombatantState(
+        actor_id="fallen7_ruby_handoff_fixture",
+        name="Fallen Elf Ruby Key Handoff",
+        kind=EntityKind.NPC,
+        level=24,
+        max_hp=6200,
+        hp=6200,
+        strength=58,
+        agility=66,
+        cursor=CursorColor.YELLOW,
+        location_id=LABYRINTH,
+        metadata={"faction_ids": (FALLEN_ELVES,)},
+    )
+    runtime.actors[new_holder.actor_id] = new_holder
+    transfer_item(
+        ambusher,
+        new_holder,
+        before["ruby_key_instance_id"],
+        runtime.catalog,
+        allow_destination_overweight=True,
+    )
+
+    updated = pursuit.status(instance_id)
+    assert updated["ruby_key_owner_id"] == new_holder.actor_id
+    assert updated["ruby_key_owner_is_fallen"] is True
+    assert updated["pursuit"]["ruby_key_ambusher_actor_id"] == ambusher_id
+    assert "ruby_key_fallen_holder_id" not in updated["pursuit"]
+
+
 def test_floor7_pursuit_can_lose_fallen_trail_from_actual_combat_delay_without_reversing_key_state():
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter(seed=97)
     state = _defeat_blockers(runtime, pursuit, instance_id, encounter_id, TRAIL_MARGIN_MS + 1)
@@ -193,6 +236,8 @@ def test_floor7_pursuit_survives_save_load_without_scenario_seeded_map_edges():
     assert {restored.actors[actor_id].location_id for actor_id in actor_ids} == {WATCH_HILL}
     assert {restored.actors[scout_id].location_id for scout_id in scout_ids} == {DRAGON_BONE}
     assert restored.actors[kysarah.actor_id].inventory[bag.instance_id].template_id == SACRED_KEY_BAG_ID
+    assert "target_key_bag_holder_id" not in restored_state["pursuit"]
+    assert "ruby_key_fallen_holder_id" not in restored_state["pursuit"]
     assert not any(
         edge.from_location_id == FIELD_OF_BONES and edge.to_location_id == ANT_TUNNEL_VALLEY
         for edge in restored.world_map.connections
@@ -208,6 +253,7 @@ def test_floor7_pursuit_survives_save_load_without_scenario_seeded_map_edges():
     assert restored_state["ruby_key_status"] == "fallen_control"
     assert restored_state["fallen_sacred_key_count"] == 5
     assert restored_state["ruby_key_owner_is_fallen"] is True
+    assert restored_state["pursuit"]["ruby_key_ambusher_actor_id"] == restored_state["ruby_key_owner_id"]
 
 
 def test_group_travel_advances_one_edge_for_a_colocated_party():

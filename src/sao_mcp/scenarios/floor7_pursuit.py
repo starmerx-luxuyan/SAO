@@ -186,7 +186,7 @@ class Floor7PursuitScenario:
         courier.metadata["ambushed_during_ruby_key_retrieval"] = True
         courier.metadata["ruby_key_lost"] = True
         pursuit["ruby_key_status"] = "fallen_control"
-        pursuit["ruby_key_fallen_holder_id"] = raider.actor_id
+        pursuit["ruby_key_ambusher_actor_id"] = raider.actor_id
         pursuit["ruby_key_stolen_at_ms"] = self.runtime.world.now_ms
         pursuit["fallen_sacred_key_count"] = 5
 
@@ -326,11 +326,10 @@ class Floor7PursuitScenario:
             "duel_encounter_id": encounter.encounter_id,
             "map_instance_id": map_item.instance_id,
             "target_key_bag_instance_id": key_bag.instance_id,
-            "target_key_bag_holder_id": kysarah.actor_id,
             "ruby_key_instance_id": ruby_key.instance_id,
             "ruby_key_courier_actor_id": ruby_courier.actor_id,
             "ruby_key_status": "dark_elf_retrieval_team",
-            "ruby_key_fallen_holder_id": None,
+            "ruby_key_ambusher_actor_id": None,
             "ruby_key_stolen_at_ms": None,
             "fallen_sacred_key_count": 4,
             "travelling_actor_ids": [],
