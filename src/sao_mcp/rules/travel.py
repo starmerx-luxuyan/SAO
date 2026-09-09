@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sao_mcp.corpus.world import LocationDefinition, WorldMapCatalog
-from sao_mcp.domain.models import CombatantState, WorldState
+from sao_mcp.domain.models import CombatantState, EncounterState, WorldState
 from sao_mcp.rules.access import require_location_access
 
 
@@ -34,14 +34,33 @@ def require_autonomous_travel(actor: CombatantState) -> None:
         raise ValueError(f"autonomous travel is restricted by {restriction}")
 
 
+def has_surviving_colocated_outsider(
+    encounter: EncounterState,
+    member_ids: set[str] | frozenset[str],
+    origin_location_id: str,
+) -> bool:
+    return any(
+        actor_id not in member_ids
+        and participant.alive
+        and participant.location_id == origin_location_id
+        for actor_id, participant in encounter.participants.items()
+    )
+
+
+def require_living_world_traveller(actor: CombatantState) -> None:
+    if not actor.alive:
+        raise ValueError("dead actor cannot use world travel")
+    if actor.location_id is None:
+        raise ValueError("actor has no current location")
+
+
 def travel(
     world: WorldState,
     actor: CombatantState,
     destination_id: str,
     catalog: WorldMapCatalog,
 ) -> TravelResolution:
-    if actor.location_id is None:
-        raise ValueError("actor has no current location")
+    require_living_world_traveller(actor)
     require_autonomous_travel(actor)
     if destination_id not in catalog.locations:
         raise KeyError(destination_id)
@@ -76,8 +95,7 @@ def require_active_teleport_gate(
     destination_id: str,
     catalog: WorldMapCatalog,
 ) -> LocationDefinition:
-    if actor.location_id is None:
-        raise ValueError("actor has no current location")
+    require_living_world_traveller(actor)
     require_autonomous_travel(actor)
     destination = catalog.locations[destination_id]
     if not destination.teleport_gate:
