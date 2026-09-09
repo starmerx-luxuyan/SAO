@@ -55,6 +55,21 @@ def add_item(actor: CombatantState, item: ItemInstance, catalog: Catalog, *, all
     actor.inventory[item.instance_id] = item
 
 
+def locate_item_container(
+    actors: dict[str, CombatantState],
+    instance_id: str,
+) -> tuple[CombatantState, ItemInstance] | None:
+    matches = [
+        (actor, actor.inventory[instance_id])
+        for actor in actors.values()
+        if instance_id in actor.inventory
+    ]
+    if len(matches) > 1:
+        actor_ids = sorted(actor.actor_id for actor, _ in matches)
+        raise RuntimeError(f"item instance {instance_id} exists in multiple inventories: {actor_ids}")
+    return matches[0] if matches else None
+
+
 def _sync_equipment_passives(actor: CombatantState, catalog: Catalog) -> None:
     actor.metadata.pop("equipment_hp_regeneration_instance_id", None)
     actor.metadata.pop("equipment_poison_nullification_instance_id", None)
