@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sao_mcp.corpus.progressive_guilds import (
+    ALS_GUILD_ID,
+    DKB_GUILD_ID,
+    KIBAOU_ACTOR_ID,
+    LIND_ACTOR_ID,
+    PROGRESSIVE_2,
+)
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.progression import default_max_hp, experience_to_reach_level
 from sao_mcp.rules.relationships import GuildState, SharedStorage
-
-
-PROGRESSIVE_2 = "Sword Art Online Progressive Volume 2: Concerto of Black and White"
-DKB_GUILD_ID = "dragon_knights_brigade"
-ALS_GUILD_ID = "aincrad_liberation_squad"
-LIND_ACTOR_ID = "pc_lind"
-KIBAOU_ACTOR_ID = "pc_kibaou"
 
 
 @dataclass(slots=True, frozen=True)

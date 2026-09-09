@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from sao_mcp.corpus.floor7_pursuit import ARGO_ID
-from sao_mcp.corpus.floor8_progressive import KLEIN_ID
+from sao_mcp.corpus.floor8_progressive import FLOOR8_GUILD_CRISIS_REPORT, KLEIN_ID
 from sao_mcp.corpus.floor8_world import (
     ACORN_SHOP,
     FOREST_ELF_ESCAPE_CAVE,
@@ -13,16 +13,15 @@ from sao_mcp.corpus.floor8_world import (
     MANAGED_FOREST_OUTER,
 )
 from sao_mcp.corpus.location_access import FOREST_ELVES
+from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
 from sao_mcp.rules.group_travel import travel_together
-from sao_mcp.runtime.canonical_guilds import (
-    ALS_GUILD_ID,
-    DKB_GUILD_ID,
-    install_progressive_clearing_guilds,
-)
+from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 
 
 EMERGENCY_TEXT = "Floor 8 emergency: DKB/ALS are trapped in a Forest Elf dispute. Meet me at the Acorn Shop."
+LOCAL_REPRESENTATION_SCOPE = "simulation_subset_of_reported_guild_majority"
+LOCAL_RESOLUTION_SCOPE = "materialized_local_standoff_only"
 
 
 class Floor8ForestEmergencyScenario:
@@ -143,7 +142,7 @@ class Floor8ForestEmergencyScenario:
             {
                 "floor8_protected_tree_incident": True,
                 "frontline_incident_group_member": True,
-                "incident_representation_scope": "simulation_subset_of_reported_guild_majority",
+                "incident_representation_scope": LOCAL_REPRESENTATION_SCOPE,
                 "personal_identity_provenance": "simulation",
                 "guild_affiliation_provenance": "canon",
                 "sheltering_in_escape_cave": True,
@@ -235,9 +234,9 @@ class Floor8ForestEmergencyScenario:
         incident["forest_elf_actor_ids"] = [actor.actor_id for actor in forest_elves]
         incident["actors_materialized_at_ms"] = self.runtime.world.now_ms
 
-    def _guild_decision_authority(self, incident: dict) -> dict[str, dict]:
+    def _guild_decision_authority(self) -> dict[str, dict]:
         result: dict[str, dict] = {}
-        for guild_id in incident["affected_guild_ids"]:
+        for guild_id in FLOOR8_GUILD_CRISIS_REPORT.affected_guild_ids:
             guild = self.runtime.relationships.guilds[guild_id]
             leader = self.runtime.actors[guild.leader_id]
             result[guild_id] = {
@@ -256,6 +255,24 @@ class Floor8ForestEmergencyScenario:
             "elapsed_ms": resolution.elapsed_ms,
             "newly_discovered": resolution.newly_discovered,
             "traversal_tags": list(resolution.traversal_tags),
+        }
+
+    @staticmethod
+    def _guild_crisis_report() -> dict:
+        report = FLOOR8_GUILD_CRISIS_REPORT
+        return {
+            "affected_guild_ids": list(report.affected_guild_ids),
+            "affected_member_scope": report.affected_member_scope,
+            "trigger": {
+                "kind": report.trigger_kind,
+                "location_scope": report.trigger_location_scope,
+            },
+            "escalation_depends_on_guild_leaders": report.escalation_depends_on_guild_leaders,
+            "provenance": {
+                "kind": report.provenance.kind.value,
+                "sources": list(report.provenance.sources),
+                "notes": report.provenance.notes,
+            },
         }
 
     def trigger_from_nocturne(self, nocturne_instance_id: str, recipient_actor_id: str) -> dict:
@@ -286,15 +303,6 @@ class Floor8ForestEmergencyScenario:
             "rendezvous_location_id": ACORN_SHOP,
             "incident": {
                 "location_id": FOREST_ELF_ESCAPE_CAVE,
-                "affected_guild_ids": [DKB_GUILD_ID, ALS_GUILD_ID],
-                "reported_affected_member_scope": "majority_of_each_guild",
-                "reported_trigger": {
-                    "kind": "felled_large_living_tree",
-                    "location_scope": "forest_elf_capital_area",
-                },
-                "report_provenance": "canon_inferred_progressive9_late_book_argo_report",
-                "frontline_representation_scope": "simulation_subset_of_reported_guild_majority",
-                "simulation_resolution_scope": "materialized_local_standoff_only",
                 "protected_trees_cut": True,
                 "forest_elf_pursuit_triggered": True,
                 "frontline_group_sheltering_in_cave": True,
@@ -473,14 +481,15 @@ class Floor8ForestEmergencyScenario:
             }
             for actor_id in incident["forest_elf_actor_ids"]
         }
+        report = FLOOR8_GUILD_CRISIS_REPORT
         guilds = {
             guild_id: {
                 "name": self.runtime.relationships.guilds[guild_id].name,
                 "leader_id": self.runtime.relationships.guilds[guild_id].leader_id,
                 "runtime_materialized_member_ids": list(self.runtime.relationships.guilds[guild_id].member_ids),
-                "reported_affected_member_scope": incident["reported_affected_member_scope"],
+                "reported_affected_member_scope": report.affected_member_scope,
             }
-            for guild_id in incident["affected_guild_ids"]
+            for guild_id in report.affected_guild_ids
         }
         return {
             **state,
@@ -490,6 +499,11 @@ class Floor8ForestEmergencyScenario:
             "acorn_shop_to_sacred_woods_ms": sum(
                 segment["elapsed_ms"] for segment in state["acorn_shop_to_sacred_woods_route"]
             ),
+            "guild_crisis_report": self._guild_crisis_report(),
+            "local_materialization": {
+                "representation_scope": LOCAL_REPRESENTATION_SCOPE,
+                "resolution_scope": LOCAL_RESOLUTION_SCOPE,
+            },
             "message": {
                 "message_id": message.message_id,
                 "sender_id": message.sender_id,
@@ -512,7 +526,7 @@ class Floor8ForestEmergencyScenario:
             "frontline_actors": frontline_actors,
             "forest_elf_actors": forest_elf_actors,
             "clearing_guilds": guilds,
-            "guild_decision_authority": self._guild_decision_authority(incident),
+            "guild_decision_authority": self._guild_decision_authority(),
             "frontline_parties": {
                 party_id: {
                     "leader_id": self.runtime.world.parties[party_id].leader_id,
