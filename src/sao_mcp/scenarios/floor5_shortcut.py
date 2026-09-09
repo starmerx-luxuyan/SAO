@@ -34,6 +34,7 @@ class Floor5ShortcutScenario:
         CORE_LOOT_TABLES[definition.loot_table_id] = AINCRAD_MONSTER_LOOT_TABLES[
             definition.loot_table_id
         ]
+        runtime.register_defeat_hook(self._on_defeat)
 
     def _instances(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor5_shortcut_boss_instances", {})
@@ -43,6 +44,19 @@ class Floor5ShortcutScenario:
             return self._instances()[instance_id]
         except KeyError as exc:
             raise KeyError(f"unknown Karluin shortcut boss instance: {instance_id}") from exc
+
+    def _on_defeat(self, encounter, target, killer_id: str | None) -> None:
+        for state in self._instances().values():
+            if state["boss_id"] != target.actor_id or state["stage"] != "battle":
+                continue
+            state["stage"] = "cleared"
+            state["cleared_at_ms"] = self.runtime.world.now_ms
+            self.runtime.world.global_flags[CLEAR_FLAG] = True
+            unlock_dynamic_world_connection(
+                self.runtime.world,
+                self.runtime.world_map,
+                KARLUIN_SHORTCUT_CONNECTION_ID,
+            )
 
     def puzzle_state(self) -> dict:
         progress = float(
@@ -151,20 +165,6 @@ class Floor5ShortcutScenario:
         self._instances()[instance_id] = state
         return self.status(instance_id)
 
-    def _sync_clear(self, state: dict) -> None:
-        boss = self.runtime.actors[state["boss_id"]]
-        if boss.alive:
-            return
-        if state["stage"] != "cleared":
-            state["stage"] = "cleared"
-            state["cleared_at_ms"] = self.runtime.world.now_ms
-            self.runtime.world.global_flags[CLEAR_FLAG] = True
-        unlock_dynamic_world_connection(
-            self.runtime.world,
-            self.runtime.world_map,
-            KARLUIN_SHORTCUT_CONNECTION_ID,
-        )
-
     def traverse_shortcut(self, actor_id: str, destination_id: str) -> dict:
         if not self.runtime.world.global_flags.get(CLEAR_FLAG):
             raise ValueError("the Karluin-Mananarena shortcut is still blocked by the area boss")
@@ -183,7 +183,6 @@ class Floor5ShortcutScenario:
 
     def status(self, instance_id: str) -> dict:
         state = self._instance(instance_id)
-        self._sync_clear(state)
         boss = self.runtime.actors[state["boss_id"]]
         return {
             **state,
