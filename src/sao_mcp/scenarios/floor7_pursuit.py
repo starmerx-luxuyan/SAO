@@ -336,7 +336,7 @@ class Floor7PursuitScenario:
             "blocker_actor_ids": [],
             "blocker_encounter_id": None,
             "blocker_encounter_started_at_ms": None,
-            "blocker_world_synced_ms": None,
+            "blocker_combat_elapsed_ms": None,
             "trail_outcome": None,
             "boss_room_reached_at_ms": None,
         }
@@ -452,15 +452,11 @@ class Floor7PursuitScenario:
             for actor_id in pursuit["travelling_actor_ids"]
         ):
             raise ValueError("the pursuit group cannot continue with a defeated traveller")
-        if pursuit["blocker_world_synced_ms"] is not None:
-            raise RuntimeError("the Labyrinth blocker encounter has already been synchronized to world time")
 
         combat_elapsed_ms = encounter.time_ms - pursuit["blocker_encounter_started_at_ms"]
         if combat_elapsed_ms < 0:
             raise RuntimeError("Labyrinth encounter time moved backwards")
-        if combat_elapsed_ms:
-            self.runtime.advance_world(combat_elapsed_ms)
-        pursuit["blocker_world_synced_ms"] = combat_elapsed_ms
+        pursuit["blocker_combat_elapsed_ms"] = combat_elapsed_ms
         pursuit["trail_margin_ms"] = TRAIL_MARGIN_MS
         pursuit["trail_outcome"] = "maintained" if combat_elapsed_ms <= TRAIL_MARGIN_MS else "lost"
 
