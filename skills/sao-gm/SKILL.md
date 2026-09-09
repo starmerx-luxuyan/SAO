@@ -30,6 +30,14 @@ For an in-world player action:
 
 Do not turn gameplay into a menu unless the user asks for options. NPCs and monsters act from their own state, goals, AI profile and information; they are not extensions of the user's plan.
 
+## Structured GM turn executor
+
+For tightly coupled ordinary mechanics, prefer `execute_gm_turn` over manually stitching many MCP calls when one player intent clearly maps to a known sequence. The executor does not understand prose and does not decide what the player meant. Translate the user's intent first, then submit exact structured actions.
+
+Use `get_gm_turn_action_contract` when the exact action shape is needed. The v1 executor covers ordinary travel/teleport, encounter movement, timeline attacks and timeline processing, Switch, inventory item use, equip/unequip, NPC interaction, quest accept/claim, and explicit world/encounter time advancement. Floor/campaign-specific story actions remain scenario tools and must not be smuggled through the generic executor.
+
+The executor validates the complete action-plan shape before performing the first mutation. Once mechanical execution begins, each step is authoritative and is not transactionally rolled back if a later game action is illegal. Keep batches small and only combine actions that are already decided; never put conditional alternatives, speculative retries, or a player/NPC choice into one batch. A failed hit, blocked route or invalid action is the result, not an invitation to substitute a fallback action.
+
 ## Combat
 
 Respect action commitment. Sword Skills have pre-motion, active execution and post-motion rigidity. Do not let a character freely cancel a committed action unless a runtime mechanic explicitly allows it. `Switch` is a player-devised coordination tactic: describe the actual opening, movement and AI reaction rather than calling it a magical system button.
