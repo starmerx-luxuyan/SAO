@@ -11,9 +11,9 @@ from sao_mcp.runtime.canonical_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 
 
 FOREST_ELF_FACTION_ID = "forest_elves"
-FORMAL_CHARGE_STANDING_DELTA = -8
-RESTITUTION_STANDING_RECOVERY = 4
-SERVICE_STANDING_RECOVERY = 6
+FORMAL_CHARGE_STANDING_DELTA = -15
+RESTITUTION_STANDING_RECOVERY = 3
+SERVICE_STANDING_RECOVERY = 5
 HEARING_TIME_MS = 15 * 60_000
 JUDGMENT_TIME_MS = 10 * 60_000
 RESTITUTION_COL = 1_800
@@ -21,11 +21,12 @@ RESTORATIVE_SERVICE_MS = 2 * 60 * 60_000
 
 
 class Floor8SluvaJusticeScenario:
-    """Simulation legal layer for custody outcomes at the canon-backed Forest Elf capital Sluva.
+    """Sluva custody/hearing layer grounded in Progressive 9's severe Forest Elf taboo.
 
-    Progressive 9 establishes the protected-woods conflict and Sluva as the Forest Elf capital.
-    The hearing procedure, Col amounts, service duration, and standing numbers below are explicit
-    simulation rules so the incident can remain playable without inventing an unpublished canon result.
+    Progressive 9 establishes the protected-tree incident, Sluva, and a Dark Elf assessment
+    that capture exposes the responsible commander to execution and the remaining offenders to
+    imprisonment. Exact court procedure, money, service duration and any commutation/pardon are
+    simulation so the campaign can diverge without pretending an unpublished resolution is canon.
     """
 
     def __init__(self, runtime, emergency) -> None:
@@ -52,21 +53,15 @@ class Floor8SluvaJusticeScenario:
             raise ValueError(f"actors are not all at {location_id}: {', '.join(wrong)}")
 
     def _arbiter(self) -> CombatantState:
-        matches = [
-            actor
-            for actor in self.runtime.actors.values()
-            if actor.metadata.get("floor8_sluva_arbiter") is True
-        ]
+        matches = [actor for actor in self.runtime.actors.values() if actor.metadata.get("floor8_sluva_arbiter") is True]
         if len(matches) > 1:
             raise RuntimeError("multiple authoritative Sluva arbiters exist")
         if matches:
             arbiter = matches[0]
             if arbiter.kind is not EntityKind.NPC:
                 raise RuntimeError("the authoritative Sluva arbiter is not an NPC actor")
-            if not arbiter.alive:
-                raise ValueError("the Sluva arbiter is not alive")
-            if arbiter.location_id != SLUVA:
-                raise ValueError("the Sluva arbiter is not currently at Sluva")
+            if not arbiter.alive or arbiter.location_id != SLUVA:
+                raise ValueError("the Sluva arbiter must be alive and present in Sluva")
             return arbiter
 
         actor_id = f"forestelf8_arbiter_{uuid.uuid4().hex[:10]}"
@@ -87,7 +82,7 @@ class Floor8SluvaJusticeScenario:
                 "forest_elf": True,
                 "floor8_sluva_arbiter": True,
                 "personal_identity_provenance": "simulation",
-                "legal_role_provenance": "simulation_from_progressive9_sluva_and_protected_woods_context",
+                "legal_role_provenance": "simulation_from_progressive9_sluva_context",
             },
         )
         self.runtime.actors[actor_id] = arbiter
@@ -106,9 +101,7 @@ class Floor8SluvaJusticeScenario:
                 raise RuntimeError(f"authoritative GuildState {guild_id} has no shared storage")
             storage = self.runtime.relationships.storages[guild.storage_id]
             expected_members = {
-                actor_id
-                for actor_id in custody_ids
-                if self.runtime.actors[actor_id].guild_id == guild_id
+                actor_id for actor_id in custody_ids if self.runtime.actors[actor_id].guild_id == guild_id
             }
             if not expected_members.issubset(set(guild.member_ids)):
                 raise RuntimeError(f"Sluva custody actors are absent from GuildState {guild_id}")
@@ -141,20 +134,19 @@ class Floor8SluvaJusticeScenario:
             raise ValueError("Sluva advocate must be alive and physically present in Sluva")
 
         arbiter = self._arbiter()
-        guild_changes = []
         guild_ids = self._guild_ids(state)
-        for guild_id in guild_ids:
-            guild_changes.append(
-                asdict(
-                    adjust_faction_standing(
-                        self.runtime.world,
-                        guild_id,
-                        FOREST_ELF_FACTION_ID,
-                        FORMAL_CHARGE_STANDING_DELTA,
-                        reason="formal Sluva charge for the Floor 8 protected-woods incident",
-                    )
+        guild_changes = [
+            asdict(
+                adjust_faction_standing(
+                    self.runtime.world,
+                    guild_id,
+                    FOREST_ELF_FACTION_ID,
+                    FORMAL_CHARGE_STANDING_DELTA,
+                    reason="formal Sluva grave charge for the protected-tree incident",
                 )
             )
+            for guild_id in guild_ids
+        ]
         self.runtime.advance_world(HEARING_TIME_MS)
         state["sluva_justice"] = {
             "status": "hearing_open",
@@ -164,27 +156,34 @@ class Floor8SluvaJusticeScenario:
             "guild_ids": guild_ids,
             "charges": [
                 {
-                    "code": "protected_woods_damage",
-                    "description": "unauthorized felling of protected Forest Elf trees",
-                    "provenance": "simulation_legal_code_for_canon_progressive9_incident",
+                    "code": "living_tree_felling",
+                    "severity": "grave",
+                    "description": "unauthorized felling of a living protected Forest Elf tree",
+                    "provenance": "canon_incident_and_taboo_plus_simulation_legal_code",
                 },
                 {
-                    "code": "flight_from_warden",
+                    "code": "flight_from_wardens",
+                    "severity": "aggravating",
                     "description": "flight from Forest Elf wardens into the escape cave",
-                    "provenance": "simulation_legal_code_for_canon_progressive9_incident",
+                    "provenance": "canon_incident_plus_simulation_legal_code",
                 },
             ],
+            "known_penalty_risk": {
+                "principal_or_commander": "execution_risk",
+                "other_participants": "imprisonment_risk",
+                "provenance": "Progressive 9 Dark Elf assessment; actual Sluva disposition remains unresolved here",
+            },
             "hearing_opened_at_ms": self.runtime.world.now_ms,
             "formal_charge_standing_changes": guild_changes,
             "judgment": None,
-            "refused_at_ms": None,
+            "mitigation": [],
+            "disposition": None,
             "resolved_at_ms": None,
-            "resolution": None,
         }
         state["stage"] = "sluva_hearing_open"
         return self.status(instance_id)
 
-    def issue_restorative_judgment(self, instance_id: str, arbiter_actor_id: str) -> dict:
+    def issue_grave_judgment(self, instance_id: str, arbiter_actor_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "sluva_hearing_open":
             raise ValueError("Sluva hearing is not open for judgment")
@@ -199,114 +198,158 @@ class Floor8SluvaJusticeScenario:
         self.runtime.advance_world(JUDGMENT_TIME_MS)
         docket["judgment"] = {
             "issued_at_ms": self.runtime.world.now_ms,
-            "restitution_col": RESTITUTION_COL,
-            "restorative_service_ms": RESTORATIVE_SERVICE_MS,
-            "choices": ["pay_restitution", "perform_restorative_service", "refuse"],
-            "provenance": "simulation_values; Progressive 9 does not publish a Sluva judgment for this incident",
+            "baseline": "grave_penalties_pending_principal_finding",
+            "principal_risk": "execution_order",
+            "other_participant_risk": "imprisonment",
+            "mitigation_options": ["restitution_deposit", "restorative_service"],
+            "provenance": "canon severity basis plus simulation procedure; no unpublished final outcome is asserted",
         }
-        docket["status"] = "judgment_issued"
-        state["stage"] = "sluva_judgment_issued"
+        docket["status"] = "grave_judgment_issued"
+        state["stage"] = "sluva_grave_judgment_issued"
         return self.status(instance_id)
 
-    def satisfy_with_restitution(self, instance_id: str, payer_actor_id: str) -> dict:
+    def deposit_restitution_mitigation(self, instance_id: str, payer_actor_id: str) -> dict:
         state = self._state(instance_id)
-        if state["stage"] not in {"sluva_judgment_issued", "sluva_judgment_refused"}:
-            raise ValueError("there is no unresolved Sluva judgment available for restitution")
+        if state["stage"] != "sluva_grave_judgment_issued":
+            raise ValueError("restitution mitigation requires an unresolved grave Sluva judgment")
         docket = state["sluva_justice"]
+        if any(row["kind"] == "restitution_deposit" for row in docket["mitigation"]):
+            raise ValueError("this Sluva docket already has a restitution deposit")
         payer = self.runtime.actors[payer_actor_id]
         eligible = set(state["floor8_actor_ids"]) | set(self._custody_ids(state))
         if payer_actor_id not in eligible or payer.kind is not EntityKind.PLAYER:
             raise ValueError("Sluva restitution payer must be a linked player")
         if not payer.alive or payer.location_id != SLUVA:
             raise ValueError("Sluva restitution payer must be alive and present in Sluva")
-        amount = int(docket["judgment"]["restitution_col"])
-        if payer.col < amount:
-            raise ValueError("payer does not hold enough Col to satisfy the Sluva judgment")
+        if payer.col < RESTITUTION_COL:
+            raise ValueError("payer does not hold enough Col for the Sluva restitution deposit")
         arbiter = self.runtime.actors[docket["arbiter_actor_id"]]
-        if arbiter.location_id != SLUVA or not arbiter.alive:
+        if not arbiter.alive or arbiter.location_id != SLUVA:
             raise ValueError("the authoritative Sluva arbiter is unavailable to receive restitution")
 
-        payer.col -= amount
-        arbiter.col += amount
-        standing_changes = []
-        for guild_id in docket["guild_ids"]:
-            standing_changes.append(
-                asdict(
-                    adjust_faction_standing(
-                        self.runtime.world,
-                        guild_id,
-                        FOREST_ELF_FACTION_ID,
-                        RESTITUTION_STANDING_RECOVERY,
-                        reason="Sluva judgment satisfied by restitution",
-                    )
+        payer.col -= RESTITUTION_COL
+        arbiter.col += RESTITUTION_COL
+        standing_changes = [
+            asdict(
+                adjust_faction_standing(
+                    self.runtime.world,
+                    guild_id,
+                    FOREST_ELF_FACTION_ID,
+                    RESTITUTION_STANDING_RECOVERY,
+                    reason="restitution deposited as mitigation while Sluva custody continues",
                 )
             )
-        self._release_custody(state, resolution="sluva_restitution")
-        docket["status"] = "resolved"
-        docket["resolution"] = {
-            "kind": "restitution",
-            "payer_actor_id": payer_actor_id,
-            "col_paid": amount,
-            "standing_changes": standing_changes,
-        }
-        docket["resolved_at_ms"] = self.runtime.world.now_ms
-        state["stage"] = "sluva_justice_resolved_restitution"
+            for guild_id in docket["guild_ids"]
+        ]
+        docket["mitigation"].append(
+            {
+                "kind": "restitution_deposit",
+                "payer_actor_id": payer_actor_id,
+                "col": RESTITUTION_COL,
+                "at_ms": self.runtime.world.now_ms,
+                "standing_changes": standing_changes,
+            }
+        )
         return self.status(instance_id)
 
-    def satisfy_with_restorative_service(self, instance_id: str) -> dict:
+    def perform_restorative_service_mitigation(self, instance_id: str) -> dict:
         state = self._state(instance_id)
-        if state["stage"] not in {"sluva_judgment_issued", "sluva_judgment_refused"}:
-            raise ValueError("there is no unresolved Sluva judgment available for restorative service")
+        if state["stage"] != "sluva_grave_judgment_issued":
+            raise ValueError("restorative-service mitigation requires an unresolved grave Sluva judgment")
         docket = state["sluva_justice"]
+        if any(row["kind"] == "restorative_service" for row in docket["mitigation"]):
+            raise ValueError("this Sluva docket already completed restorative service")
         custody_ids = self._custody_ids(state)
         forest_ids = self._forest_ids(state)
         self._require_ids_at(custody_ids, SLUVA)
         self._require_ids_at(forest_ids, SLUVA)
 
-        travel_together(self.runtime, custody_ids + forest_ids, FOREST_ELF_SACRED_WOODS)
+        outward = travel_together(self.runtime, custody_ids + forest_ids, FOREST_ELF_SACRED_WOODS)
         service_started = self.runtime.world.now_ms
         self.runtime.advance_world(RESTORATIVE_SERVICE_MS)
-        standing_changes = []
-        for guild_id in docket["guild_ids"]:
-            standing_changes.append(
-                asdict(
-                    adjust_faction_standing(
-                        self.runtime.world,
-                        guild_id,
-                        FOREST_ELF_FACTION_ID,
-                        SERVICE_STANDING_RECOVERY,
-                        reason="Sluva judgment satisfied by restorative forest service",
-                    )
+        returning = travel_together(self.runtime, custody_ids + forest_ids, SLUVA)
+        standing_changes = [
+            asdict(
+                adjust_faction_standing(
+                    self.runtime.world,
+                    guild_id,
+                    FOREST_ELF_FACTION_ID,
+                    SERVICE_STANDING_RECOVERY,
+                    reason="restorative forest service completed as mitigation while custody continues",
                 )
             )
-        self._release_custody(state, resolution="sluva_restorative_service")
-        docket["status"] = "resolved"
-        docket["resolution"] = {
-            "kind": "restorative_service",
-            "service_started_at_ms": service_started,
-            "service_completed_at_ms": self.runtime.world.now_ms,
-            "service_ms": RESTORATIVE_SERVICE_MS,
-            "release_location_id": FOREST_ELF_SACRED_WOODS,
-            "standing_changes": standing_changes,
-        }
-        docket["resolved_at_ms"] = self.runtime.world.now_ms
-        state["stage"] = "sluva_justice_resolved_service"
+            for guild_id in docket["guild_ids"]
+        ]
+        docket["mitigation"].append(
+            {
+                "kind": "restorative_service",
+                "service_started_at_ms": service_started,
+                "service_completed_at_ms": self.runtime.world.now_ms - returning.elapsed_ms,
+                "service_ms": RESTORATIVE_SERVICE_MS,
+                "outward_travel_ms": outward.elapsed_ms,
+                "return_travel_ms": returning.elapsed_ms,
+                "standing_changes": standing_changes,
+            }
+        )
         return self.status(instance_id)
 
-    def refuse_judgment(self, instance_id: str, actor_id: str) -> dict:
+    def issue_disposition(
+        self,
+        instance_id: str,
+        arbiter_actor_id: str,
+        principal_actor_id: str,
+        disposition: str,
+    ) -> dict:
         state = self._state(instance_id)
-        if state["stage"] != "sluva_judgment_issued":
-            raise ValueError("there is no newly issued Sluva judgment to refuse")
+        if state["stage"] != "sluva_grave_judgment_issued":
+            raise ValueError("Sluva disposition requires an unresolved grave judgment")
         docket = state["sluva_justice"]
-        if actor_id not in docket["custody_actor_ids"]:
-            raise ValueError("only a player currently held on this docket can refuse the judgment")
-        actor = self.runtime.actors[actor_id]
-        if not actor.alive or actor.location_id != SLUVA or actor.metadata.get("forest_elf_custody") is not True:
-            raise ValueError("the refusing player must still be alive and in Sluva custody")
-        docket["status"] = "judgment_refused"
-        docket["refused_at_ms"] = self.runtime.world.now_ms
-        docket["refused_by_actor_id"] = actor_id
-        state["stage"] = "sluva_judgment_refused"
+        if arbiter_actor_id != docket["arbiter_actor_id"]:
+            raise ValueError("only the authoritative Sluva arbiter can issue the disposition")
+        arbiter = self.runtime.actors[arbiter_actor_id]
+        if not arbiter.alive or arbiter.location_id != SLUVA:
+            raise ValueError("the Sluva arbiter must remain alive and present")
+        custody_ids = self._custody_ids(state)
+        if principal_actor_id not in custody_ids:
+            raise ValueError("the found principal must be one of the actual detained incident players")
+        self._require_ids_at(custody_ids, SLUVA)
+        if disposition not in {"strict", "commuted", "pardon"}:
+            raise ValueError("disposition must be strict, commuted, or pardon")
+        if disposition in {"commuted", "pardon"} and not docket["mitigation"]:
+            raise ValueError("commutation or pardon requires an actual mitigation action on this docket")
+
+        sentences = {}
+        if disposition == "strict":
+            for actor_id in custody_ids:
+                sentence = "execution_ordered" if actor_id == principal_actor_id else "imprisonment_ordered"
+                actor = self.runtime.actors[actor_id]
+                actor.metadata["forest_elf_sentence"] = sentence
+                sentences[actor_id] = sentence
+            state["stage"] = "sluva_disposition_strict"
+        elif disposition == "commuted":
+            for actor_id in custody_ids:
+                actor = self.runtime.actors[actor_id]
+                actor.metadata["forest_elf_sentence"] = "imprisonment_ordered"
+                sentences[actor_id] = "imprisonment_ordered"
+            state["stage"] = "sluva_disposition_commuted"
+        else:
+            self._release_custody(state, resolution="sluva_explicit_pardon")
+            for actor_id in custody_ids:
+                actor = self.runtime.actors[actor_id]
+                actor.metadata["forest_elf_sentence"] = "pardoned"
+                sentences[actor_id] = "pardoned"
+            state["stage"] = "sluva_disposition_pardon"
+
+        docket["status"] = "disposed"
+        docket["disposition"] = {
+            "kind": disposition,
+            "principal_actor_id": principal_actor_id,
+            "sentences": sentences,
+            "issued_at_ms": self.runtime.world.now_ms,
+            "campaign_deviation": disposition == "pardon",
+            "execution_not_auto_resolved": disposition == "strict",
+        }
+        docket["resolved_at_ms"] = self.runtime.world.now_ms
         return self.status(instance_id)
 
     def status(self, instance_id: str) -> dict:
@@ -330,11 +373,14 @@ class Floor8SluvaJusticeScenario:
             "sluva_justice": docket,
             "forest_elf_guild_standing": standing,
             "custody_locations": {
-                actor_id: self.runtime.actors[actor_id].location_id
-                for actor_id in docket["custody_actor_ids"]
+                actor_id: self.runtime.actors[actor_id].location_id for actor_id in docket["custody_actor_ids"]
             },
             "custody_active": {
                 actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_custody") is True
+                for actor_id in docket["custody_actor_ids"]
+            },
+            "sentences": {
+                actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_sentence")
                 for actor_id in docket["custody_actor_ids"]
             },
             "arbiter_location_id": self.runtime.actors[docket["arbiter_actor_id"]].location_id,

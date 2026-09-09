@@ -1,4 +1,4 @@
-from sao_mcp.corpus.floor8_world import FOREST_ELF_SACRED_WOODS, SLUVA
+from sao_mcp.corpus.floor8_world import SLUVA
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
 from sao_mcp.runtime.canonical_guilds import (
     ALS_GUILD_ID,
@@ -90,7 +90,7 @@ def _setup_custody(seed=241):
     return runtime, emergency, sluva, players, forest
 
 
-def test_sluva_restitution_moves_real_col_changes_guild_standing_and_persists():
+def test_sluva_restitution_is_mitigation_not_release_and_strict_disposition_preserves_real_sentences():
     runtime, emergency, sluva, players, forest = _setup_custody()
     payer = players[0]
     payer.col = 3_000
@@ -99,54 +99,57 @@ def test_sluva_restitution_moves_real_col_changes_guild_standing_and_persists():
     hearing = sluva.open_hearing(INSTANCE_ID, payer.actor_id)
     assert hearing["stage"] == "sluva_hearing_open"
     assert runtime.world.now_ms - started == HEARING_TIME_MS
-    assert hearing["forest_elf_guild_standing"] == {
-        ALS_GUILD_ID: -8,
-        DKB_GUILD_ID: -8,
+    assert hearing["forest_elf_guild_standing"] == {ALS_GUILD_ID: -15, DKB_GUILD_ID: -15}
+    assert hearing["sluva_justice"]["known_penalty_risk"] == {
+        "principal_or_commander": "execution_risk",
+        "other_participants": "imprisonment_risk",
+        "provenance": "Progressive 9 Dark Elf assessment; actual Sluva disposition remains unresolved here",
     }
 
     arbiter_id = hearing["sluva_justice"]["arbiter_actor_id"]
-    judged = sluva.issue_restorative_judgment(INSTANCE_ID, arbiter_id)
-    assert judged["stage"] == "sluva_judgment_issued"
+    judged = sluva.issue_grave_judgment(INSTANCE_ID, arbiter_id)
+    assert judged["stage"] == "sluva_grave_judgment_issued"
     assert runtime.world.now_ms - started == HEARING_TIME_MS + JUDGMENT_TIME_MS
-    assert judged["sluva_justice"]["judgment"]["restitution_col"] == RESTITUTION_COL
 
-    resolved = sluva.satisfy_with_restitution(INSTANCE_ID, payer.actor_id)
-    assert resolved["stage"] == "sluva_justice_resolved_restitution"
+    mitigated = sluva.deposit_restitution_mitigation(INSTANCE_ID, payer.actor_id)
     assert payer.col == 3_000 - RESTITUTION_COL
     assert runtime.actors[arbiter_id].col == RESTITUTION_COL
-    assert resolved["forest_elf_guild_standing"] == {
-        ALS_GUILD_ID: -4,
-        DKB_GUILD_ID: -4,
-    }
-    assert all(resolved["custody_active"][actor.actor_id] is False for actor in players)
+    assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -12, DKB_GUILD_ID: -12}
+    assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
+
+    strict = sluva.issue_disposition(INSTANCE_ID, arbiter_id, players[0].actor_id, "strict")
+    assert strict["stage"] == "sluva_disposition_strict"
+    assert strict["sentences"][players[0].actor_id] == "execution_ordered"
+    for actor in players[1:]:
+        assert strict["sentences"][actor.actor_id] == "imprisonment_ordered"
+    assert all(strict["custody_active"][actor.actor_id] is True for actor in players)
+    assert strict["sluva_justice"]["disposition"]["execution_not_auto_resolved"] is True
 
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
     install_progressive_clearing_guilds(restored)
     restored_sluva = install_floor8_sluva_justice_scenario(restored, _EmergencyStub(restored))
     persisted = restored_sluva.status(INSTANCE_ID)
-    assert persisted["stage"] == "sluva_justice_resolved_restitution"
-    assert persisted["forest_elf_guild_standing"] == {ALS_GUILD_ID: -4, DKB_GUILD_ID: -4}
+    assert persisted["stage"] == "sluva_disposition_strict"
+    assert persisted["sentences"][players[0].actor_id] == "execution_ordered"
     assert restored.actors[arbiter_id].col == RESTITUTION_COL
 
 
-def test_sluva_refusal_keeps_custody_then_service_releases_through_real_world_time():
+def test_sluva_service_mitigation_returns_detainees_to_custody_and_pardon_requires_explicit_deviation():
     runtime, emergency, sluva, players, forest = _setup_custody(seed=251)
-    advocate = players[0]
-    hearing = sluva.open_hearing(INSTANCE_ID, advocate.actor_id)
+    hearing = sluva.open_hearing(INSTANCE_ID, players[0].actor_id)
     arbiter_id = hearing["sluva_justice"]["arbiter_actor_id"]
-    sluva.issue_restorative_judgment(INSTANCE_ID, arbiter_id)
-
-    refused = sluva.refuse_judgment(INSTANCE_ID, players[1].actor_id)
-    assert refused["stage"] == "sluva_judgment_refused"
-    assert refused["forest_elf_guild_standing"] == {ALS_GUILD_ID: -8, DKB_GUILD_ID: -8}
-    assert all(refused["custody_active"][actor.actor_id] is True for actor in players)
-    assert all(actor.location_id == SLUVA for actor in players)
+    sluva.issue_grave_judgment(INSTANCE_ID, arbiter_id)
 
     service_started = runtime.world.now_ms
-    resolved = sluva.satisfy_with_restorative_service(INSTANCE_ID)
-    assert resolved["stage"] == "sluva_justice_resolved_service"
-    assert runtime.world.now_ms - service_started == 16 * 60_000 + RESTORATIVE_SERVICE_MS
-    assert resolved["forest_elf_guild_standing"] == {ALS_GUILD_ID: -2, DKB_GUILD_ID: -2}
-    assert all(actor.location_id == FOREST_ELF_SACRED_WOODS for actor in players + forest)
-    assert all(resolved["custody_active"][actor.actor_id] is False for actor in players)
+    mitigated = sluva.perform_restorative_service_mitigation(INSTANCE_ID)
+    assert runtime.world.now_ms - service_started == 32 * 60_000 + RESTORATIVE_SERVICE_MS
+    assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -10, DKB_GUILD_ID: -10}
+    assert all(actor.location_id == SLUVA for actor in players + forest)
+    assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
+
+    pardoned = sluva.issue_disposition(INSTANCE_ID, arbiter_id, players[0].actor_id, "pardon")
+    assert pardoned["stage"] == "sluva_disposition_pardon"
+    assert pardoned["sluva_justice"]["disposition"]["campaign_deviation"] is True
+    assert all(pardoned["sentences"][actor.actor_id] == "pardoned" for actor in players)
+    assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
