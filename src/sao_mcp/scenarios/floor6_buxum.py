@@ -6,7 +6,7 @@ from sao_mcp.corpus.floor6_buxum import BUXUM_ID, BUXUM_LONGSWORD_ID
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, MEDITATION_SKILL_ID
 from sao_mcp.corpus.floor6_finale import COMBINED_IRON_KEY_ID, GOLDEN_CUBE_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, StatusType
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, locate_item_container
 
 
 BOSS_ROOM = "floor_6_boss_room"
@@ -30,17 +30,27 @@ class Floor6BuxumScenario:
         except KeyError as exc:
             raise ValueError("Buxum's Floor 6 betrayal has not been triggered for this boss instance") from exc
 
-    def _take_kysarah_combined_key(self) -> tuple[CombatantState, ItemInstance]:
+    def _combined_key_location(self) -> tuple[CombatantState, ItemInstance] | None:
         key_id = self.runtime.world.global_flags.get("floor6_combined_iron_key_instance_id")
-        holder_id = self.runtime.world.global_flags.get("floor6_combined_iron_key_holder_id")
-        if not key_id or not holder_id or holder_id not in self.runtime.actors:
+        if not key_id:
+            return None
+        located = locate_item_container(self.runtime.actors, key_id)
+        if located is None:
+            return None
+        container, key = located
+        if key.template_id != COMBINED_IRON_KEY_ID:
+            raise RuntimeError("Floor 6 combined-key instance ID points to the wrong item template")
+        if key.owner_id is not None and key.owner_id != container.actor_id:
+            raise RuntimeError("Floor 6 combined key owner_id disagrees with its authoritative inventory container")
+        return container, key
+
+    def _take_kysarah_combined_key(self) -> tuple[CombatantState, ItemInstance]:
+        located = self._combined_key_location()
+        if located is None:
             raise ValueError("Kysarah's stolen combined iron key has not reached the Floor 6 finale route")
-        holder = self.runtime.actors[holder_id]
-        if holder.metadata.get("npc_definition_id") != KYSARAH_ID:
+        holder, key = located
+        if key.owner_id != holder.actor_id or holder.metadata.get("npc_definition_id") != KYSARAH_ID:
             raise ValueError("the canonical Buxum betrayal requires the combined key previously stolen by Kysarah")
-        key = holder.inventory.get(key_id)
-        if key is None or key.template_id != COMBINED_IRON_KEY_ID:
-            raise ValueError("Kysarah no longer holds the combined iron key instance")
         holder.inventory.pop(key.instance_id)
         return holder, key
 
@@ -114,7 +124,6 @@ class Floor6BuxumScenario:
 
         # The existing guardian scenario owns the keyhole, cube-ejection and crime-aware Bind mechanics.
         self.cube.eject_golden_cube(cube_instance_id, buxum.actor_id, combined_key.instance_id)
-        self.runtime.world.global_flags["floor6_combined_iron_key_holder_id"] = boss.actor_id
         bind_result = self.cube.use_golden_cube_bind(cube_instance_id, buxum.actor_id)
 
         state = {
@@ -264,6 +273,8 @@ class Floor6BuxumScenario:
         ]
         if state["stage"] == "golden_cube_recovered" and cube_state["stage"] == "cleared":
             state["stage"] = "floor_cleared"
+        located = self._combined_key_location()
+        combined_key_holder_id = located[1].owner_id if located is not None else None
         return {
             **state,
             "buxum_alive": buxum.alive,
@@ -273,7 +284,7 @@ class Floor6BuxumScenario:
             "buxum_in_encounter": buxum.actor_id in encounter.participants,
             "bound_actor_ids": bound_actor_ids,
             "cube_state": cube_state,
-            "combined_key_holder_id": self.runtime.world.global_flags.get("floor6_combined_iron_key_holder_id"),
+            "combined_key_holder_id": combined_key_holder_id,
             "next_stage": (
                 "an Awakening-capable player must break Bind or Buxum remains in control" if state["stage"] == "bind_active"
                 else "ordinary PvP can now overpower Buxum" if state["stage"] == "awakening_counterattack"
