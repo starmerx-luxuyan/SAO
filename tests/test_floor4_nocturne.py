@@ -2,6 +2,8 @@ import pytest
 
 from sao_mcp.corpus.floor4 import YOFILIS_ID
 from sao_mcp.corpus.floor4_nocturne import (
+    BEAR_FOREST,
+    CALDERA_LAKE,
     CETRANN_ID,
     FALLEN_HIDEOUT,
     KELPIE_ID,
@@ -9,6 +11,7 @@ from sao_mcp.corpus.floor4_nocturne import (
     LAKE_YOFEL_FOG_BOUNDARY,
     LAKE_YOFEL_NORTH_BEACH,
     LAKE_YOFEL_WEST_SHORE,
+    RIVER_ULL,
     YOFEL_CASTLE,
 )
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
@@ -150,6 +153,9 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     assert opened["stage"] == "five_key_trail_points_to_floor4"
     assert opened["five_key_count"] == 5
     assert opened["five_key_assets_intact"] is True
+    assert "castle_to_lake_ms" not in opened
+    assert "lake_to_hideout_ms" not in opened
+    assert "river_route_segments_ms" not in opened
     assert runtime.actors[lavik.actor_id].location_id == LAKE_YOFEL_WEST_SHORE
     assert runtime.npcs.states[LAVIK_ID].location_id == LAKE_YOFEL_WEST_SHORE
     assert runtime.npcs.states[YOFILIS_ID].location_id == YOFEL_CASTLE
@@ -177,6 +183,14 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     assert not a.equipment and not b.equipment
     assert {a.location_id, b.location_id} == {LAKE_YOFEL_FOG_BOUNDARY}
     assert kizmel.location_id == YOFEL_CASTLE
+    assert [
+        (row["from_location_id"], row["to_location_id"], row["elapsed_ms"])
+        for row in prepared["kelpie_search_route"]
+    ] == [
+        (YOFEL_CASTLE, LAKE_YOFEL, 4 * 60_000),
+        (LAKE_YOFEL, LAKE_YOFEL_FOG_BOUNDARY, 10 * 60_000),
+    ]
+    assert all(row["actor_ids"] == [a.actor_id, b.actor_id] for row in prepared["kelpie_search_route"])
 
     present = nocturne.call_kelpie_from_fog(instance_id)
     kelpie_id = present["kelpie"]["actor_id"]
@@ -228,6 +242,7 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     restored_nocturne = install_floor4_nocturne_scenario(restored, restored_campaign)
     restored_state = restored_nocturne.status(instance_id)
     assert restored_state["stage"] == "five_key_hideout_recon_ready"
+    assert restored_state["kelpie_search_route"] == prepared["kelpie_search_route"]
     assert restored_state["kelpie"]["actor_id"] == kelpie_id
     assert restored_state["kelpie"]["night_tamed_by_actor_id"] == a.actor_id
     assert restored_state["kelpie"]["nickname"] == "Moo"
@@ -238,13 +253,33 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
 
     lake = restored_nocturne.embark_five_key_hideout_recon(instance_id)
     assert lake["stage"] == "five_key_hideout_recon_on_lake"
-    assert lake["castle_to_lake_ms"] == 4 * 60_000
+    assert lake["five_key_recon_castle_to_lake_route"] == [
+        {
+            "actor_ids": group_ids,
+            "from_location_id": YOFEL_CASTLE,
+            "to_location_id": LAKE_YOFEL,
+            "elapsed_ms": 4 * 60_000,
+            "newly_discovered": False,
+            "traversal_tags": [],
+        }
+    ]
     assert set(lake["group_locations"].values()) == {LAKE_YOFEL}
 
     started = restored.world.now_ms
     final = restored_nocturne.follow_river_ull_to_fallen_hideout(instance_id)
     assert final["stage"] == "floor4_fallen_hideout_reached"
-    assert final["lake_to_hideout_ms"] == 60 * 60_000
+    route = final["five_key_hideout_route"]
+    assert [
+        (row["from_location_id"], row["to_location_id"], row["elapsed_ms"])
+        for row in route
+    ] == [
+        (LAKE_YOFEL, RIVER_ULL, 10 * 60_000),
+        (RIVER_ULL, CALDERA_LAKE, 10 * 60_000),
+        (CALDERA_LAKE, BEAR_FOREST, 18 * 60_000),
+        (BEAR_FOREST, FALLEN_HIDEOUT, 22 * 60_000),
+    ]
+    assert all(row["actor_ids"] == group_ids for row in route)
+    assert sum(row["elapsed_ms"] for row in route) == 60 * 60_000
     assert restored.world.now_ms - started == 60 * 60_000
     assert set(final["group_locations"].values()) == {FALLEN_HIDEOUT}
     assert final["five_key_assets_intact"] is True

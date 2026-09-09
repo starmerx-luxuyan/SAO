@@ -28,7 +28,7 @@ from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
 from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.access import actor_faction_ids
-from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.inventory import transfer_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, night_rank, tame_lower_level_monster
 
@@ -225,6 +225,7 @@ class Floor4NocturneScenario:
             "yofilis_meeting_agreed_at_ms": None,
             "search_actor_ids": [],
             "search_equipment_by_actor": {},
+            "kelpie_search_route": [],
             "kelpie_actor_id": None,
             "kelpie_tamed_by_actor_id": None,
             "kelpie_nickname": None,
@@ -234,9 +235,8 @@ class Floor4NocturneScenario:
             "lavik_yofilis_duel_promised": False,
             "yofilis_past_opened": False,
             "yofilis_past_facts": [],
-            "castle_to_lake_ms": None,
-            "lake_to_hideout_ms": None,
-            "river_route_segments_ms": {},
+            "five_key_recon_castle_to_lake_route": [],
+            "five_key_hideout_route": [],
             "fallen_hideout_reached_at_ms": None,
             "floor8_emergency_instance_id": None,
             "floor8_emergency_message_id": None,
@@ -337,8 +337,9 @@ class Floor4NocturneScenario:
             if actor.equipment:
                 raise RuntimeError("Kelpie searcher still has visible equipment after stowing all gear")
 
-        travel_together(self.runtime, searchers, LAKE_YOFEL)
-        travel_together(self.runtime, searchers, LAKE_YOFEL_FOG_BOUNDARY)
+        to_lake = travel_together(self.runtime, searchers, LAKE_YOFEL)
+        to_fog = travel_together(self.runtime, searchers, LAKE_YOFEL_FOG_BOUNDARY)
+        state["kelpie_search_route"] = [group_travel_record(to_lake), group_travel_record(to_fog)]
         state["search_actor_ids"] = searchers
         state["search_equipment_by_actor"] = equipment_by_actor
         state["kelpie_search_prepared_at_ms"] = self.runtime.world.now_ms
@@ -510,7 +511,7 @@ class Floor4NocturneScenario:
         self._validate_inherited_keys(state)
         self._require_group_at(state, YOFEL_CASTLE)
         resolution = travel_together(self.runtime, self._group_actor_ids(state), LAKE_YOFEL)
-        state["castle_to_lake_ms"] = resolution.elapsed_ms
+        state["five_key_recon_castle_to_lake_route"] = [group_travel_record(resolution)]
         state["stage"] = "five_key_hideout_recon_on_lake"
         return self.status(instance_id)
 
@@ -566,21 +567,17 @@ class Floor4NocturneScenario:
         self._validate_inherited_keys(state)
         self._require_actor_ids_at(group, LAKE_YOFEL)
 
-        river = travel_together(self.runtime, group, RIVER_ULL)
-        caldera = travel_together(self.runtime, group, CALDERA_LAKE)
-        forest = travel_together(self.runtime, group, BEAR_FOREST)
-        hideout = travel_together(self.runtime, group, FALLEN_HIDEOUT)
-        segments = {
-            "lake_yofel_to_river_ull": river.elapsed_ms,
-            "river_ull_to_caldera_lake": caldera.elapsed_ms,
-            "caldera_lake_to_bear_forest": forest.elapsed_ms,
-            "bear_forest_to_fallen_hideout": hideout.elapsed_ms,
-        }
-        total = sum(segments.values())
+        resolutions = [
+            travel_together(self.runtime, group, RIVER_ULL),
+            travel_together(self.runtime, group, CALDERA_LAKE),
+            travel_together(self.runtime, group, BEAR_FOREST),
+            travel_together(self.runtime, group, FALLEN_HIDEOUT),
+        ]
+        route = [group_travel_record(resolution) for resolution in resolutions]
+        total = sum(segment["elapsed_ms"] for segment in route)
         if total != 60 * 60_000:
             raise RuntimeError("Floor 4 Nocturne water-route corpus no longer preserves the one-hour route")
-        state["river_route_segments_ms"] = segments
-        state["lake_to_hideout_ms"] = total
+        state["five_key_hideout_route"] = route
         state["fallen_hideout_reached_at_ms"] = self.runtime.world.now_ms
         if branch_mode:
             state["hideout_branch_stage"] = "floor4_fallen_hideout_reached"
