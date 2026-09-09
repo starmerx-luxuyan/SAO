@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-from sao_mcp.corpus.floor6 import apply_floor6_world_seed
 from sao_mcp.corpus.floor6_ambush import IRON_KEY_ID
 from sao_mcp.corpus.floor6_elfwar import (
     AGATE_KEY_ID,
@@ -17,19 +16,15 @@ from sao_mcp.corpus.floor6_elfwar import (
 )
 from sao_mcp.corpus.floor6_finale import COMBINED_IRON_KEY_ID
 from sao_mcp.corpus.floor6_trials import MYIA_ID, THEANO_IRON_KEY_ID
-from sao_mcp.corpus.world import LocationDefinition, TravelConnection
 from sao_mcp.domain.models import (
     CombatantState,
     CursorColor,
     EntityKind,
     ItemInstance,
-    Provenance,
-    ProvenanceKind,
     StatusEffectState,
     StatusType,
-    ZoneKind,
 )
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, locate_item_container
 
 
 CASTLE_GALEY = "floor_6_castle_galey"
@@ -48,92 +43,6 @@ class Floor6ElfWarScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
-        apply_floor6_world_seed(runtime.world_map)
-        self._seed_world()
-
-    def _seed_world(self) -> None:
-        source = "Sword Art Online Progressive Volume 6: Canon of the Golden Rule (Finish)"
-        locations = {
-            AGATE_SHRINE: LocationDefinition(
-                AGATE_SHRINE,
-                6,
-                "Agate Key Shrine",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Southern shrine holding the Agate Key; the entrance has an unusually difficult puzzle. Exact room geometry is abstracted.",
-                ),
-            ),
-            STORYTELLER_SUMMIT: LocationDefinition(
-                STORYTELLER_SUMMIT,
-                6,
-                "Bouhroum's Storyteller Summit",
-                ZoneKind.FIELD,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Hidden stairway and summit above Castle Galey where Bouhroum offers the three-hour Meditation trial.",
-                ),
-            ),
-            CASTLE_SPRING: LocationDefinition(
-                CASTLE_SPRING,
-                6,
-                "Castle Galey Spirit-Tree Spring",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON,
-                    sources=(source,),
-                    notes="Underground hot spring nourishing Castle Galey's spirit tree. Gindo poisons it under coercion during the Fallen Elf attack.",
-                ),
-            ),
-            QUSACK_RESCUE_CAVE: LocationDefinition(
-                QUSACK_RESCUE_CAVE,
-                6,
-                "Qusack Hostage Cave",
-                ZoneKind.DUNGEON,
-                provenance=Provenance(
-                    ProvenanceKind.CANON_INFERRED,
-                    sources=(source,),
-                    notes="Cave where the black-poncho PK instigator holds Qusack's members hostage; Kysarah attacks the rescue party here. Exact cave geometry is abstracted.",
-                ),
-            ),
-        }
-        for location_id, location in locations.items():
-            self.runtime.world_map.locations.setdefault(location_id, location)
-        p = Provenance(
-            ProvenanceKind.SIMULATION,
-            sources=(source,),
-            notes="Local travel durations are simulation; the named route relationships are canon-backed.",
-        )
-        self._add_edges(
-            (
-                TravelConnection(CASTLE_GALEY, STORYTELLER_SUMMIT, 14 * 60_000, provenance=p),
-                TravelConnection(CASTLE_GALEY, CASTLE_SPRING, 6 * 60_000, provenance=p),
-                TravelConnection(LAKE_TALPHA, AGATE_SHRINE, 20 * 60_000, provenance=p),
-                TravelConnection(CASTLE_GALEY, QUSACK_RESCUE_CAVE, 24 * 60_000, provenance=p),
-            )
-        )
-
-    def _add_edges(self, edges: tuple[TravelConnection, ...]) -> None:
-        existing = {(edge.from_location_id, edge.to_location_id) for edge in self.runtime.world_map.connections}
-        for edge in edges:
-            if (edge.from_location_id, edge.to_location_id) in existing:
-                continue
-            self.runtime.world_map.connections = tuple(self.runtime.world_map.connections) + (edge,)
-            self.runtime.world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
-            if edge.bidirectional:
-                self.runtime.world_map.adjacency.setdefault(edge.to_location_id, []).append(
-                    TravelConnection(
-                        edge.to_location_id,
-                        edge.from_location_id,
-                        edge.travel_ms,
-                        True,
-                        edge.requires_floor_unlocked,
-                        edge.provenance,
-                    )
-                )
-            existing.add((edge.from_location_id, edge.to_location_id))
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_elfwar_states", {})
@@ -476,17 +385,22 @@ class Floor6ElfWarScenario:
         state["kysarah_theft_at_ms"] = self.runtime.world.now_ms
         self.runtime.world.global_flags["floor6_kysarah_combined_iron_key_created"] = True
         self.runtime.world.global_flags["floor6_combined_iron_key_instance_id"] = combined.instance_id
-        self.runtime.world.global_flags["floor6_combined_iron_key_holder_id"] = kysarah.actor_id
         return self.status(actor_id)
 
     def status(self, actor_id: str) -> dict:
         state = self._state(actor_id)
         actor = self.runtime.actors[actor_id]
-        combined_holder = self.runtime.world.global_flags.get("floor6_combined_iron_key_holder_id")
         combined_id = self.runtime.world.global_flags.get("floor6_combined_iron_key_instance_id")
-        combined_exists = False
-        if combined_holder in self.runtime.actors and combined_id:
-            combined_exists = combined_id in self.runtime.actors[combined_holder].inventory
+        located = locate_item_container(self.runtime.actors, combined_id) if combined_id else None
+        combined_holder = None
+        combined_exists = located is not None
+        if located is not None:
+            container, combined = located
+            if combined.template_id != COMBINED_IRON_KEY_ID:
+                raise RuntimeError("Floor 6 combined-key instance ID points to the wrong item template")
+            if combined.owner_id is not None and combined.owner_id != container.actor_id:
+                raise RuntimeError("Floor 6 combined key owner_id disagrees with its authoritative inventory container")
+            combined_holder = combined.owner_id
         return {
             **state,
             "player_location_id": actor.location_id,
