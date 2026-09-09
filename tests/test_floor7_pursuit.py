@@ -1,4 +1,5 @@
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
+from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.rules.inventory import add_item
@@ -81,6 +82,8 @@ def _setup(seed=83):
     assert b.location_id == VOLUPTA
     assert kizmel.location_id == VOLUPTA
     assert bag.instance_id in kysarah.inventory
+    assert state["ruby_key_status"] == "dark_elf_retrieval_team"
+    assert state["fallen_sacred_key_count"] == 4
     return runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag
 
 
@@ -97,6 +100,12 @@ def _reach_blocker_encounter(seed=83):
     state = pursuit.follow_through_valley_into_labyrinth(instance_id)
     assert {a.location_id, b.location_id, kizmel.location_id} == {LABYRINTH}
     assert len(state["blockers"]) == 2
+    assert state["ruby_key_status"] == "fallen_control"
+    assert state["fallen_sacred_key_count"] == 5
+    assert state["ruby_key_owner_is_fallen"] is True
+    ruby_holder = runtime.actors[state["ruby_key_owner_id"]]
+    assert ruby_holder.inventory[state["ruby_key_instance_id"]].template_id == RUBY_KEY_ID
+    assert bag.instance_id in kysarah.inventory
     return runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, state["blocker_encounter_id"]
 
 
@@ -111,7 +120,7 @@ def _defeat_blockers(runtime, pursuit, instance_id, encounter_id, elapsed_ms):
     return pursuit.resolve_labyrinth_pursuit(instance_id)
 
 
-def test_floor7_pursuit_uses_harin_state_real_key_bag_and_shared_travel_time():
+def test_floor7_pursuit_uses_real_four_key_bag_ruby_key_and_shared_travel_time():
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter()
     before_resolution = runtime.world.now_ms
     state = _defeat_blockers(runtime, pursuit, instance_id, encounter_id, TRAIL_MARGIN_MS - 1)
@@ -126,19 +135,22 @@ def test_floor7_pursuit_uses_harin_state_real_key_bag_and_shared_travel_time():
             "stolen_by_kysarah": True,
         }
     ]
+    assert state["fallen_sacred_key_count"] == 5
 
     state = pursuit.advance_to_boss_room(instance_id)
     assert state["ready_for_aghyellr"] is True
     assert {a.location_id, b.location_id, kizmel.location_id} == {BOSS_ROOM}
 
 
-def test_floor7_pursuit_can_lose_fallen_trail_from_actual_combat_delay():
+def test_floor7_pursuit_can_lose_fallen_trail_from_actual_combat_delay_without_reversing_key_state():
     runtime, pursuit, instance_id, a, b, kizmel, kysarah, bag, encounter_id = _reach_blocker_encounter(seed=97)
     state = _defeat_blockers(runtime, pursuit, instance_id, encounter_id, TRAIL_MARGIN_MS + 1)
 
     assert state["trail_outcome"] == "lost"
     assert state["stage"] == "trail_lost_in_labyrinth"
     assert bag.instance_id in kysarah.inventory
+    assert state["fallen_sacred_key_count"] == 5
+    assert state["ruby_key_status"] == "fallen_control"
 
 
 def test_group_travel_advances_one_edge_for_a_colocated_party():

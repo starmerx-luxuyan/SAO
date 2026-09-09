@@ -12,6 +12,7 @@ from sao_mcp.domain.models import (
     SwordSkillDefinition,
     WeaponTemplate,
 )
+from sao_mcp.rules.nightfolk import night_combat_bonus
 
 
 @dataclass(slots=True, frozen=True)
@@ -161,11 +162,15 @@ def resolve_physical_attack(
         if proficiency < sword_skill.prerequisite_proficiency:
             return AttackResolution(False, reason="Sword Skill proficiency prerequisite is not met")
 
+    attacker_night_bonus = night_combat_bonus(attacker)
+    defender_night_bonus = night_combat_bonus(defender)
     accuracy_plus = _enhancement(weapon_item, EnhancementTrack.ACCURACY)
     hit_chance = tuning.base_hit
     hit_chance += (attacker.agility - defender.agility) * tuning.agility_hit_scale
     hit_chance += proficiency * tuning.proficiency_hit_scale
     hit_chance += accuracy_plus * tuning.accuracy_enhancement_hit
+    hit_chance += attacker_night_bonus * 0.20
+    hit_chance -= defender_night_bonus * 0.15
     if sword_skill:
         hit_chance += sword_skill.accuracy_modifier
     if now_ms < defender.recovery_until_ms:
@@ -179,12 +184,20 @@ def resolve_physical_attack(
 
     if can_react and chosen_defense is DefenseMode.EVADE:
         evasion_bonus = 0.12 + max(-0.06, min(0.18, (defender.agility - attacker.agility) * 0.002))
+        evasion_bonus += defender_night_bonus * 0.08
         hit_chance -= evasion_bonus
     hit_chance = _clamp(hit_chance, tuning.min_hit, tuning.max_hit)
 
     if can_react and chosen_defense is DefenseMode.PARRY:
         parry_prof = max(defender.skill_proficiencies.get("parry", 0.0), defender.skill_proficiencies.get("Parry", 0.0))
-        parry_chance = _clamp(0.12 + parry_prof * 0.00055 + (defender.agility - attacker.agility) * 0.002, 0.05, 0.78)
+        parry_chance = _clamp(
+            0.12
+            + parry_prof * 0.00055
+            + (defender.agility - attacker.agility) * 0.002
+            + defender_night_bonus * 0.08,
+            0.05,
+            0.78,
+        )
         if rng.random() < parry_chance:
             parried = True
 
@@ -229,6 +242,7 @@ def resolve_physical_attack(
     power += proficiency * tuning.proficiency_damage_scale
     power += _enhancement(weapon_item, EnhancementTrack.SHARPNESS) * tuning.sharpness_damage_scale
     power *= 1.0 + _guild_party_bonus(attacker)
+    power *= 1.0 + attacker_night_bonus
     skill_multiplier = sword_skill.total_multiplier if sword_skill else 1.0
     raw = rolled * power * skill_multiplier * weapon_item.quality
 
@@ -239,12 +253,13 @@ def resolve_physical_attack(
     else:
         crit_chance = tuning.base_crit + proficiency * tuning.proficiency_crit_scale
         crit_chance += accuracy_plus * tuning.accuracy_enhancement_crit
+        crit_chance += attacker_night_bonus * 0.10
         crit_chance = _clamp(crit_chance, 0.0, 0.25)
         critical = rng.random() < crit_chance
     if critical:
         raw *= 1.55
 
-    effective_armor = defender.armor * (1.0 + _guild_party_bonus(defender))
+    effective_armor = defender.armor * (1.0 + _guild_party_bonus(defender) + defender_night_bonus)
     armor_mitigation = effective_armor / (effective_armor + tuning.armor_constant) if effective_armor > 0 else 0.0
     damage = raw * (1.0 - armor_mitigation)
 

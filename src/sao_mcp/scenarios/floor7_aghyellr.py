@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 import uuid
 
-from sao_mcp.corpus.floor7 import AGHYELLR_ID, NIRRNIR_ID
+from sao_mcp.corpus.floor7 import AGHYELLR_ID, NIRRNIR_ID, SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_nirrnir import FRESH_AGHYELLR_BLOOD_ID, apply_floor7_nirrnir_corpus
 from sao_mcp.corpus.world import LocationDefinition, TravelConnection
 from sao_mcp.domain.models import (
@@ -17,6 +18,7 @@ from sao_mcp.domain.models import (
     ZoneKind,
 )
 from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.nightfolk import CIVIS_NOCTE, DOMINUS_NOCTE, become_civis_nocte, night_rank, nightfolk_state
 
 
 CASINO = "floor_7_volupta_grand_casino"
@@ -24,13 +26,17 @@ KORLOY_STABLES = "floor_7_korloy_monster_stables"
 BOSS_ROOM = "floor_7_boss_room"
 
 NIRRNIR_STABILIZED_SURVIVAL_MS = 48 * 60 * 60 * 1000
+HUMAN_BLOOD_BRIDGE_MS = 10 * 60 * 1000
+HUMAN_BLOOD_DONOR_MAX_HP_RATIO = 0.65
+HUMAN_BLOOD_BRIDGE_HP_RATIO = 0.30
 GAZE_TELEGRAPH_MS = 1500
 GAZE_STUN_MS = 5000  # Simulation duration; under-Level-20 immediate stun is canon.
 FRESH_DRAGON_BLOOD_WINDOW_MS = 30 * 60 * 1000  # Simulation definition of 'fresh' for the runtime item.
+AGHYELLR_BLOOD_JAR_COUNT = 17
 
 
 class Floor7AghyellrScenario:
-    """Argent Serpent poisoning, time-critical Aghyellr raid, Intimidating Gaze and fresh dragon-blood cure."""
+    """Argent Serpent poisoning, Aghyellr raid, Civis Nocte transformation and dragon-blood cure."""
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
@@ -79,6 +85,11 @@ class Floor7AghyellrScenario:
                 "poisoned_at_ms": None,
                 "stabilized_at_ms": None,
                 "deadline_ms": None,
+                "human_blood_bridge_active": False,
+                "human_blood_bridge_expires_at_ms": None,
+                "human_blood_donor_actor_id": None,
+                "human_blood_donor_cost_hp": None,
+                "civis_actor_id": None,
                 "cured_at_ms": None,
                 "cure_blood_instance_id": None,
             },
@@ -104,7 +115,11 @@ class Floor7AghyellrScenario:
             location_id=KORLOY_STABLES,
             metadata={
                 "npc_definition_id": NIRRNIR_ID,
+                "night_rank": DOMINUS_NOCTE,
                 "dominus_nocte": True,
+                "direct_sunlight_weakness": "lethal",
+                "can_create_night_followers": True,
+                "blood_feeding_restores_hp": True,
                 "argent_serpent_silver_poison": True,
                 "lobelia_stabilised_coma": True,
                 "combat_stats_provenance": "simulation",
@@ -132,7 +147,7 @@ class Floor7AghyellrScenario:
             raise ValueError("Nirrnir's Argent Serpent poisoning occurs during the Korloy stable inspection")
         story = self._story()
         if story["stage"] != "not_started":
-            return self.nirrnir_status()
+            raise ValueError("Nirrnir's Argent Serpent poisoning has already been triggered")
         nirrnir = self._create_nirrnir_actor()
         story.update(
             stage="stabilised_silver_poison",
@@ -145,42 +160,87 @@ class Floor7AghyellrScenario:
 
     def _sync_nirrnir(self) -> None:
         story = self._story()
-        actor_id = story.get("nirrnir_actor_id")
-        if not actor_id or actor_id not in self.runtime.actors:
+        if story["stage"] == "not_started":
             return
+        actor_id = story["nirrnir_actor_id"]
+        if actor_id not in self.runtime.actors:
+            raise RuntimeError("Nirrnir poison story points to a missing actor")
         nirrnir = self.runtime.actors[actor_id]
         if story["stage"] == "cured":
             return
-        deadline = story.get("deadline_ms")
+        deadline = story["deadline_ms"]
         if deadline is None:
-            return
+            raise RuntimeError("active Nirrnir poison story has no deadline")
         remaining = max(0, int(deadline) - self.runtime.world.now_ms)
         for status in nirrnir.statuses:
             if status.stack_key == "argent_serpent_silver_poison":
                 status.remaining_ms = remaining
                 status.until_next_tick_ms = min(status.until_next_tick_ms, max(1, remaining))
+
         if remaining <= 0:
             nirrnir.hp = 0
             nirrnir.alive = False
             story["stage"] = "nirrnir_died_from_silver_poison"
+            story["human_blood_bridge_active"] = False
             story["died_at_ms"] = self.runtime.world.now_ms
+            return
+
+        if story["stage"] != "stabilised_silver_poison":
+            return
+        bridge_active = story["human_blood_bridge_active"]
+        if bridge_active:
+            expiry = story["human_blood_bridge_expires_at_ms"]
+            if expiry is None:
+                raise RuntimeError("active human-blood bridge has no expiry")
+            if self.runtime.world.now_ms >= int(expiry):
+                story["human_blood_bridge_active"] = False
+                nirrnir.metadata["human_blood_bridge_active"] = False
+                bridge_active = False
+
+        if not bridge_active:
+            remaining_ratio = remaining / NIRRNIR_STABILIZED_SURVIVAL_MS
+            poison_cap = max(1, int(round(nirrnir.max_hp * 0.25 * remaining_ratio)))
+            nirrnir.hp = min(nirrnir.hp, poison_cap)
+
+    def _sync_raid_world_time(self, state: dict) -> None:
+        encounter = self.runtime.encounters[state["encounter_id"]]
+        synced_ms = int(state["world_synced_encounter_ms"])
+        if encounter.time_ms < synced_ms:
+            raise RuntimeError("Aghyellr encounter time moved backwards")
+        delta = encounter.time_ms - synced_ms
+        if delta:
+            self.runtime.advance_world(delta)
+            state["world_synced_encounter_ms"] = encounter.time_ms
+        self._sync_nirrnir()
 
     def nirrnir_status(self) -> dict:
         self._sync_nirrnir()
         story = self._story()
-        actor_id = story.get("nirrnir_actor_id")
-        actor = self.runtime.actors.get(actor_id) if actor_id else None
-        deadline = story.get("deadline_ms")
-        remaining = max(0, int(deadline) - self.runtime.world.now_ms) if deadline is not None else None
+        if story["stage"] == "not_started":
+            return {
+                **story,
+                "alive": None,
+                "hp": None,
+                "max_hp": None,
+                "location_id": None,
+                "remaining_ms": None,
+                "ordinary_antidote_effective": None,
+                "required_cure": None,
+                "nightfolk": None,
+            }
+        actor = self.runtime.actors[story["nirrnir_actor_id"]]
+        deadline = story["deadline_ms"]
+        remaining = max(0, int(deadline) - self.runtime.world.now_ms)
         return {
             **story,
-            "alive": actor.alive if actor else None,
-            "hp": actor.hp if actor else None,
-            "max_hp": actor.max_hp if actor else None,
-            "location_id": actor.location_id if actor else None,
+            "alive": actor.alive,
+            "hp": actor.hp,
+            "max_hp": actor.max_hp,
+            "location_id": actor.location_id,
             "remaining_ms": remaining,
-            "ordinary_antidote_effective": False if actor else None,
-            "required_cure": "fresh undiluted unpreserved dragon blood" if actor else None,
+            "ordinary_antidote_effective": False,
+            "required_cure": "fresh undiluted unpreserved dragon blood",
+            "nightfolk": nightfolk_state(actor),
         }
 
     def start_aghyellr_raid(self, player_ids: list[str], *, bring_nirrnir: bool = True) -> dict:
@@ -193,8 +253,10 @@ class Floor7AghyellrScenario:
             boss_definition_id=AGHYELLR_ID,
         )
         story = self._story()
-        nirrnir_id = story.get("nirrnir_actor_id")
-        if bring_nirrnir and nirrnir_id:
+        nirrnir_id = story["nirrnir_actor_id"] if story["stage"] != "not_started" else None
+        if bring_nirrnir:
+            if nirrnir_id is None:
+                raise ValueError("Nirrnir poisoning must exist before she can be carried into the Aghyellr raid")
             nirrnir = self.runtime.actors[nirrnir_id]
             if not nirrnir.alive:
                 raise ValueError("Nirrnir did not survive long enough to reach the Floor 7 Boss Room")
@@ -212,14 +274,125 @@ class Floor7AghyellrScenario:
             "stage": "battle",
             "pending_gaze": None,
             "nirrnir_actor_id": nirrnir_id if bring_nirrnir else None,
-            "blood_instance_id": None,
+            "civis_actor_ids": [],
+            "doleful_nocturne_revealed_instance_ids": [],
+            "blood_jar_instance_ids": [],
+            "blood_jars_total": AGHYELLR_BLOOD_JAR_COUNT,
+            "blood_jars_collected": 0,
             "started_at_ms": self.runtime.world.now_ms,
+            "world_synced_encounter_ms": encounter.time_ms,
         }
         self._raids()[instance_id] = state
         return self.raid_status(instance_id)
 
+    def sustain_nirrnir_with_human_blood(self, instance_id: str, donor_actor_id: str) -> dict:
+        state = self._raids()[instance_id]
+        self._sync_raid_world_time(state)
+        if state["stage"] != "battle":
+            raise ValueError("the human-blood bridge is a last-resort action during the Aghyellr battle")
+        story = self._story()
+        if story["stage"] != "stabilised_silver_poison":
+            raise ValueError("Nirrnir is not in the treatable silver-poison state")
+        if state["nirrnir_actor_id"] != story["nirrnir_actor_id"]:
+            raise RuntimeError("Aghyellr raid is not carrying the poisoned Nirrnir from the active story")
+        encounter = self.runtime.encounters[state["encounter_id"]]
+        if donor_actor_id not in state["player_ids"] or donor_actor_id not in encounter.participants:
+            raise ValueError("blood donor must be a player participant in this Aghyellr raid")
+        donor = self.runtime.actors[donor_actor_id]
+        nirrnir = self.runtime.actors[story["nirrnir_actor_id"]]
+        if not donor.alive or not nirrnir.alive:
+            raise ValueError("both donor and Nirrnir must be alive")
+        if night_rank(donor) is not None:
+            raise ValueError("the human-blood bridge expects a non-Night player donor")
+        critical_hp = max(1, int(round(nirrnir.max_hp * 0.05)))
+        if nirrnir.hp > critical_hp:
+            raise ValueError("Nirrnir has not yet fallen to the critical last-resort HP range")
+
+        donor_cost = int(math.ceil(donor.max_hp * HUMAN_BLOOD_DONOR_MAX_HP_RATIO))
+        if donor.hp <= donor_cost:
+            raise ValueError("the donor lacks enough current HP to survive the required blood loss")
+        donor.hp -= donor_cost
+        nirrnir.hp = max(nirrnir.hp, int(round(nirrnir.max_hp * HUMAN_BLOOD_BRIDGE_HP_RATIO)))
+        story["human_blood_bridge_active"] = True
+        story["human_blood_bridge_expires_at_ms"] = self.runtime.world.now_ms + HUMAN_BLOOD_BRIDGE_MS
+        story["human_blood_donor_actor_id"] = donor_actor_id
+        story["human_blood_donor_cost_hp"] = donor_cost
+        story["civis_actor_id"] = donor_actor_id
+        nirrnir.metadata["human_blood_bridge_active"] = True
+        nirrnir.metadata["human_blood_donor_actor_id"] = donor_actor_id
+
+        transformation = become_civis_nocte(
+            donor,
+            master_actor_id=nirrnir.actor_id,
+            now_ms=self.runtime.world.now_ms,
+        )
+        state["civis_actor_ids"].append(donor_actor_id)
+        self.runtime._append(
+            encounter,
+            "nirrnir_human_blood_bridge",
+            donor_actor_id,
+            nirrnir.actor_id,
+            donor_hp_cost=donor_cost,
+            donor_hp_after=donor.hp,
+            nirrnir_hp_after=nirrnir.hp,
+            bridge_expires_at_ms=story["human_blood_bridge_expires_at_ms"],
+            night_rank=transformation.combat_bonus and CIVIS_NOCTE,
+        )
+        return {
+            "instance_id": instance_id,
+            "donor_actor_id": donor_actor_id,
+            "donor_hp_cost": donor_cost,
+            "donor_hp_after": donor.hp,
+            "transformation": nightfolk_state(donor),
+            "state": self.raid_status(instance_id),
+        }
+
+    def reveal_doleful_nocturne(self, instance_id: str, actor_id: str, sword_instance_id: str) -> dict:
+        state = self._raids()[instance_id]
+        self._sync_raid_world_time(state)
+        if actor_id not in state["player_ids"]:
+            raise ValueError("Doleful Nocturne revealer must be an Aghyellr raid player")
+        actor = self.runtime.actors[actor_id]
+        if night_rank(actor) != CIVIS_NOCTE:
+            raise ValueError("the sealed Sword of Volupta identity is revealed here by a Civis Nocte wielder")
+        sword = actor.inventory[sword_instance_id]
+        if sword.template_id != SWORD_OF_VOLUPTA_ID:
+            raise ValueError("item is not the Sword of Volupta")
+        if actor.equipment.get("weapon") != sword_instance_id:
+            raise ValueError("the Sword of Volupta must be equipped to reveal its combat identity")
+        if sword_instance_id in state["doleful_nocturne_revealed_instance_ids"]:
+            raise ValueError("this Sword of Volupta instance has already revealed its true identity")
+
+        sword.metadata.update(
+            {
+                "true_identity_revealed": True,
+                "true_name": "Doleful Nocturne",
+                "revealed_by_civis_nocte_actor_id": actor_id,
+                "revealed_at_ms": self.runtime.world.now_ms,
+            }
+        )
+        state["doleful_nocturne_revealed_instance_ids"].append(sword_instance_id)
+        self.runtime._append(
+            self.runtime.encounters[state["encounter_id"]],
+            "doleful_nocturne_revealed",
+            actor_id,
+            actor_id,
+            sword_instance_id=sword_instance_id,
+            true_name="Doleful Nocturne",
+        )
+        template = self.runtime.catalog.weapons[SWORD_OF_VOLUPTA_ID]
+        return {
+            "instance_id": instance_id,
+            "actor_id": actor_id,
+            "sword_instance_id": sword_instance_id,
+            "true_name": sword.metadata["true_name"],
+            "effects": sorted(template.tags),
+            "nightfolk": nightfolk_state(actor),
+        }
+
     def telegraph_intimidating_gaze(self, instance_id: str) -> dict:
         state = self._raids()[instance_id]
+        self._sync_raid_world_time(state)
         boss = self.runtime.actors[state["boss_id"]]
         if not boss.alive or state["stage"] != "battle":
             raise ValueError("Aghyellr is not in an active battle state")
@@ -243,7 +416,8 @@ class Floor7AghyellrScenario:
 
     def resolve_intimidating_gaze(self, instance_id: str, *, look_away_actor_ids: list[str] | None = None) -> dict:
         state = self._raids()[instance_id]
-        pending = state.get("pending_gaze")
+        self._sync_raid_world_time(state)
+        pending = state["pending_gaze"]
         if pending is None:
             raise ValueError("Intimidating Gaze has not been telegraphed")
         encounter = self.runtime.encounters[state["encounter_id"]]
@@ -251,6 +425,8 @@ class Floor7AghyellrScenario:
         if remaining:
             self.runtime.advance_encounter(encounter.encounter_id, remaining)
             self.runtime.advance_world(remaining)
+            state["world_synced_encounter_ms"] = encounter.time_ms
+            self._sync_nirrnir()
         looking_away = set(look_away_actor_ids or ())
         stunned: list[str] = []
         unaffected: list[str] = []
@@ -296,50 +472,63 @@ class Floor7AghyellrScenario:
 
     def collect_fresh_dragon_blood(self, instance_id: str, actor_id: str) -> dict:
         state = self._raids()[instance_id]
+        self._sync_raid_world_time(state)
         boss = self.runtime.actors[state["boss_id"]]
         encounter = self.runtime.encounters[state["encounter_id"]]
         if boss.alive:
-            raise ValueError("Aghyellr must be defeated before fresh dragon blood can be collected")
+            raise ValueError("Aghyellr must be defeated before its dragon-blood drop can be collected")
         if actor_id not in encounter.participants or not encounter.participants[actor_id].alive:
             raise ValueError("blood collector must be a living raid participant")
-        if state["blood_instance_id"] is not None:
-            raise ValueError("fresh dragon blood has already been collected from this boss")
+        if state["blood_jars_collected"] != 0:
+            raise ValueError("Aghyellr's dragon-blood drop has already been collected")
         actor = self.runtime.actors[actor_id]
-        item = ItemInstance(
-            instance_id=f"questitem_{uuid.uuid4().hex[:12]}",
-            template_id=FRESH_AGHYELLR_BLOOD_ID,
-            owner_id=actor_id,
-            metadata={
-                "collected_from_boss_id": boss.actor_id,
-                "collected_at_ms": self.runtime.world.now_ms,
-                "fresh_until_ms": self.runtime.world.now_ms + FRESH_DRAGON_BLOOD_WINDOW_MS,
-                "freshness_window_provenance": "simulation",
-                "diluted": False,
-                "preserved": False,
-            },
-        )
-        add_item(actor, item, self.runtime.catalog, allow_overweight=True)
-        state["blood_instance_id"] = item.instance_id
+        ids: list[str] = []
+        for index in range(AGHYELLR_BLOOD_JAR_COUNT):
+            item = ItemInstance(
+                instance_id=f"questitem_{uuid.uuid4().hex[:12]}",
+                template_id=FRESH_AGHYELLR_BLOOD_ID,
+                owner_id=actor_id,
+                metadata={
+                    "collected_from_boss_id": boss.actor_id,
+                    "drop_jar_index": index + 1,
+                    "drop_jar_count": AGHYELLR_BLOOD_JAR_COUNT,
+                    "collected_at_ms": self.runtime.world.now_ms,
+                    "fresh_until_ms": self.runtime.world.now_ms + FRESH_DRAGON_BLOOD_WINDOW_MS,
+                    "freshness_window_provenance": "simulation",
+                    "diluted": False,
+                    "preserved": False,
+                },
+            )
+            add_item(actor, item, self.runtime.catalog, allow_overweight=True)
+            ids.append(item.instance_id)
+        state["blood_jar_instance_ids"] = ids
+        state["blood_jars_collected"] = len(ids)
         state["stage"] = "dragon_blood_collected"
         return {
             "instance_id": instance_id,
-            "blood_instance_id": item.instance_id,
-            "fresh_until_ms": item.metadata["fresh_until_ms"],
+            "blood_instance_ids": list(ids),
+            "blood_jars_collected": len(ids),
+            "fresh_until_ms": self.runtime.actors[actor_id].inventory[ids[0]].metadata["fresh_until_ms"],
             "state": self.raid_status(instance_id),
         }
 
-    def administer_dragon_blood(self, actor_id: str, blood_instance_id: str) -> dict:
-        self._sync_nirrnir()
+    def administer_dragon_blood(self, instance_id: str, actor_id: str, blood_instance_id: str) -> dict:
+        state = self._raids()[instance_id]
+        self._sync_raid_world_time(state)
         story = self._story()
         if story["stage"] != "stabilised_silver_poison":
             raise ValueError("Nirrnir is not in the treatable Argent Serpent poisoning state")
+        if state["nirrnir_actor_id"] != story["nirrnir_actor_id"]:
+            raise RuntimeError("Aghyellr raid and Nirrnir poison story point to different Nirrnir actors")
+        if blood_instance_id not in state["blood_jar_instance_ids"]:
+            raise ValueError("blood instance is not part of this Aghyellr raid's seventeen-jar drop")
         actor = self.runtime.actors[actor_id]
         item = actor.inventory[blood_instance_id]
         if item.template_id != FRESH_AGHYELLR_BLOOD_ID:
-            raise ValueError("item is not fresh Aghyellr dragon blood")
-        if item.metadata.get("diluted") or item.metadata.get("preserved"):
+            raise RuntimeError("recorded Aghyellr blood instance has the wrong item template")
+        if item.metadata["diluted"] or item.metadata["preserved"]:
             raise ValueError("Nirrnir requires fresh, undiluted, unpreserved dragon blood")
-        if self.runtime.world.now_ms > int(item.metadata.get("fresh_until_ms", -1)):
+        if self.runtime.world.now_ms > int(item.metadata["fresh_until_ms"]):
             raise ValueError("the collected dragon blood is no longer fresh enough for this runtime cure")
         nirrnir = self.runtime.actors[story["nirrnir_actor_id"]]
         if actor.location_id != nirrnir.location_id:
@@ -351,16 +540,19 @@ class Floor7AghyellrScenario:
         nirrnir.statuses = [status for status in nirrnir.statuses if status.stack_key != "argent_serpent_silver_poison"]
         nirrnir.metadata["argent_serpent_silver_poison"] = False
         nirrnir.metadata["lobelia_stabilised_coma"] = False
+        nirrnir.metadata["human_blood_bridge_active"] = False
         nirrnir.metadata["cured_by_fresh_dragon_blood"] = True
         nirrnir.hp = nirrnir.max_hp
         nirrnir.alive = True
         story["stage"] = "cured"
+        story["human_blood_bridge_active"] = False
         story["cured_at_ms"] = self.runtime.world.now_ms
         story["cure_blood_instance_id"] = blood_instance_id
         return self.nirrnir_status()
 
     def raid_status(self, instance_id: str) -> dict:
         state = self._raids()[instance_id]
+        self._sync_raid_world_time(state)
         boss = self.runtime.actors[state["boss_id"]]
         if not boss.alive and state["stage"] == "battle":
             state["stage"] = "aghyellr_defeated"
@@ -369,6 +561,15 @@ class Floor7AghyellrScenario:
             "boss": self.runtime.boss_bar_state(boss),
             "boss_alive": boss.alive,
             "nirrnir": self.nirrnir_status(),
+            "civis_states": {
+                actor_id: nightfolk_state(self.runtime.actors[actor_id])
+                for actor_id in state["civis_actor_ids"]
+            },
+            "blood_jars_remaining_in_campaign": sum(
+                1
+                for blood_id in state["blood_jar_instance_ids"]
+                if any(blood_id in actor.inventory for actor in self.runtime.actors.values())
+            ),
         }
 
 

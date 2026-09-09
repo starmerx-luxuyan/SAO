@@ -9,12 +9,13 @@ from sao_mcp.corpus.floor7_pursuit import (
     FIELD_OF_BONES,
     LABYRINTH,
     MAP_OF_SCYIA_ID,
+    RUBY_KEY_ID,
     install_floor7_pursuit_route,
 )
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.duels import DuelMode
 from sao_mcp.rules.group_travel import travel_together
-from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.inventory import add_item, transfer_item
 
 
 CASINO = "floor_7_volupta_grand_casino"
@@ -95,6 +96,103 @@ class Floor7PursuitScenario:
         if len(owners) != 1:
             raise RuntimeError("the Map of Scyia must have exactly one inventory owner")
         return owners[0]
+
+    def _ruby_key_owner(self, instance_id: str) -> CombatantState:
+        owners = [actor for actor in self.runtime.actors.values() if instance_id in actor.inventory]
+        if len(owners) != 1:
+            raise RuntimeError("the Ruby Key must have exactly one inventory owner")
+        return owners[0]
+
+    def _seed_ruby_key_retrieval_team(self) -> tuple[CombatantState, ItemInstance]:
+        existing = [
+            item
+            for actor in self.runtime.actors.values()
+            for item in actor.inventory.values()
+            if item.template_id == RUBY_KEY_ID
+        ]
+        if existing:
+            raise RuntimeError("a Ruby Key instance already exists in the campaign")
+        courier = CombatantState(
+            actor_id=f"darkelf7_ruby_courier_{uuid.uuid4().hex[:10]}",
+            name="Dark Elf Ruby Key Retrieval Team",
+            kind=EntityKind.NPC,
+            level=24,
+            max_hp=6400,
+            hp=6400,
+            strength=58,
+            agility=60,
+            armor=150,
+            evasion=12,
+            cursor=CursorColor.YELLOW,
+            location_id="floor_7_field",
+            metadata={
+                "dark_elf": True,
+                "ruby_key_retrieval_team": True,
+                "combat_stats_provenance": "simulation",
+            },
+        )
+        ruby = ItemInstance(
+            instance_id=f"rubykey_{uuid.uuid4().hex[:12]}",
+            template_id=RUBY_KEY_ID,
+            owner_id=courier.actor_id,
+            metadata={
+                "retrieved_by_dark_elves": True,
+                "fallen_control": False,
+            },
+        )
+        add_item(courier, ruby, self.runtime.catalog, allow_overweight=True)
+        self.runtime.actors[courier.actor_id] = courier
+        return courier, ruby
+
+    def _resolve_ruby_key_loss(self, state: dict) -> None:
+        pursuit = state["pursuit"]
+        if pursuit["ruby_key_status"] != "dark_elf_retrieval_team":
+            raise RuntimeError("Ruby Key loss can only resolve from the Dark Elf retrieval-team state")
+        courier = self.runtime.actors[pursuit["ruby_key_courier_actor_id"]]
+        ruby = courier.inventory[pursuit["ruby_key_instance_id"]]
+        if ruby.template_id != RUBY_KEY_ID:
+            raise RuntimeError("the recorded Ruby Key instance has the wrong template")
+
+        raider = CombatantState(
+            actor_id=f"fallen7_ruby_raider_{uuid.uuid4().hex[:10]}",
+            name="Fallen Elf Ruby Key Raider",
+            kind=EntityKind.NPC,
+            level=25,
+            max_hp=6800,
+            hp=6800,
+            strength=62,
+            agility=70,
+            armor=145,
+            evasion=16,
+            cursor=CursorColor.YELLOW,
+            location_id="floor_7_field",
+            metadata={
+                "fallen_elf": True,
+                "ruby_key_ambush_participant": True,
+                "combat_stats_provenance": "simulation",
+            },
+        )
+        self.runtime.actors[raider.actor_id] = raider
+        moved = transfer_item(
+            courier,
+            raider,
+            ruby.instance_id,
+            self.runtime.catalog,
+            allow_destination_overweight=True,
+        )
+        moved.metadata.update(
+            {
+                "fallen_control": True,
+                "stolen_from_dark_elf_retrieval_team": True,
+                "stolen_at_ms": self.runtime.world.now_ms,
+            }
+        )
+        courier.metadata["ambushed_during_ruby_key_retrieval"] = True
+        courier.metadata["ruby_key_lost"] = True
+        pursuit["ruby_key_status"] = "fallen_control"
+        pursuit["ruby_key_fallen_holder_id"] = raider.actor_id
+        pursuit["ruby_key_stolen_at_ms"] = self.runtime.world.now_ms
+        pursuit["fallen_sacred_key_count"] = 5
 
     def _spawn_fallen_scouts(self) -> list[str]:
         scout_ids: list[str] = []
@@ -193,6 +291,7 @@ class Floor7PursuitScenario:
             },
         )
         add_item(lead, map_item, self.runtime.catalog, allow_overweight=True)
+        ruby_courier, ruby_key = self._seed_ruby_key_retrieval_team()
 
         travel_together(self.runtime, [lead_actor_id, duel_partner_id], VOLUPTA)
         duel = self.runtime.challenge_duel(lead_actor_id, duel_partner_id, DuelMode.FIRST_STRIKE)
@@ -232,6 +331,12 @@ class Floor7PursuitScenario:
             "map_instance_id": map_item.instance_id,
             "target_key_bag_instance_id": key_bag.instance_id,
             "target_key_bag_holder_id": kysarah.actor_id,
+            "ruby_key_instance_id": ruby_key.instance_id,
+            "ruby_key_courier_actor_id": ruby_courier.actor_id,
+            "ruby_key_status": "dark_elf_retrieval_team",
+            "ruby_key_fallen_holder_id": None,
+            "ruby_key_stolen_at_ms": None,
+            "fallen_sacred_key_count": 4,
             "travelling_actor_ids": [],
             "fallen_scout_ids": [],
             "blocker_actor_ids": [],
@@ -311,6 +416,7 @@ class Floor7PursuitScenario:
             scout.location_id = LABYRINTH
             scout.metadata["ahead_of_pursuers"] = True
 
+        self._resolve_ruby_key_loss(state)
         encounter, blockers = self._spawn_labyrinth_blockers(pursuit["travelling_actor_ids"])
         pursuit["ant_to_labyrinth_travel_ms"] = resolution.elapsed_ms
         pursuit["blocker_actor_ids"] = [monster.actor_id for monster in blockers]
@@ -397,6 +503,13 @@ class Floor7PursuitScenario:
                             "stolen_by_kysarah": item.metadata.get("stolen_by_kysarah"),
                         }
                     )
+        if len(key_bag_matches) != 1:
+            raise RuntimeError("the four-key bag no longer has exactly one authoritative owner")
+
+        ruby_owner = self._ruby_key_owner(pursuit["ruby_key_instance_id"])
+        ruby_item = ruby_owner.inventory[pursuit["ruby_key_instance_id"]]
+        if pursuit["ruby_key_status"] == "fallen_control" and not ruby_owner.metadata.get("fallen_elf"):
+            raise RuntimeError("Ruby Key is marked Fallen-controlled but its real holder is not a Fallen Elf")
 
         blocker_state = {}
         encounter_id = pursuit["blocker_encounter_id"]
@@ -420,6 +533,11 @@ class Floor7PursuitScenario:
             "map_metadata": dict(map_item.metadata),
             "target_key_bag_instance_id": pursuit["target_key_bag_instance_id"],
             "target_key_bag_matches": key_bag_matches,
+            "ruby_key_instance_id": ruby_item.instance_id,
+            "ruby_key_owner_id": ruby_owner.actor_id,
+            "ruby_key_owner_is_fallen": bool(ruby_owner.metadata.get("fallen_elf")),
+            "ruby_key_status": pursuit["ruby_key_status"],
+            "fallen_sacred_key_count": pursuit["fallen_sacred_key_count"],
             "travelling_actor_locations": {
                 actor_id: self.runtime.actors[actor_id].location_id
                 for actor_id in pursuit["travelling_actor_ids"]
@@ -452,8 +570,8 @@ class Floor7PursuitScenario:
 
 
 def install_floor7_pursuit_scenario(runtime) -> Floor7PursuitScenario:
-    if MAP_OF_SCYIA_ID not in runtime.catalog.items:
-        raise RuntimeError("Floor 7 Scyia map corpus was not loaded")
+    if MAP_OF_SCYIA_ID not in runtime.catalog.items or RUBY_KEY_ID not in runtime.catalog.items:
+        raise RuntimeError("Floor 7 pursuit item corpus was not loaded")
     if SACRED_KEY_BAG_ID not in runtime.catalog.items:
         raise RuntimeError("Floor 6 sacred-key bag corpus was not loaded")
     return Floor7PursuitScenario(runtime)

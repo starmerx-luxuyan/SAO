@@ -185,7 +185,7 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> 
 
     @mcp.tool()
     def follow_floor7_fallen_into_labyrinth(instance_id: str) -> str:
-        """Follow the Fallen Elves into the Floor 7 Labyrinth and open an ordinary combat encounter against pursuit-blocking monsters."""
+        """Follow the Fallen Elves into the Floor 7 Labyrinth; the parallel Ruby-Key retrieval line also advances in real world state."""
         return _json(pursuit.follow_through_valley_into_labyrinth(instance_id))
 
     @mcp.tool()
@@ -200,23 +200,43 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> 
 
     @mcp.tool()
     def get_floor7_fallen_pursuit_state(instance_id: str) -> str:
-        """Inspect the Harin-linked Scyia map, real Floor-6 key-bag continuity, pursuit positions, blocker encounter and trail outcome."""
+        """Inspect the Harin-linked Scyia map, real four-key bag, Ruby-Key ownership, five-key Fallen state, positions and blocker encounter."""
         return _json(pursuit.status(instance_id))
 
     @mcp.tool()
     def trigger_floor7_nirrnir_poisoning(actor_id: str) -> str:
-        """Trigger the Argent Serpent silver-poison event at the Korloy monster stables and start Nirrnir's 48-hour stabilised survival window."""
+        """Trigger the Argent Serpent silver-poison event at the Korloy monster stables and start Nirrnir's 48-hour survival window."""
         return _json(aghyellr.trigger_nirrnir_poisoning(actor_id))
 
     @mcp.tool()
     def get_floor7_nirrnir_status() -> str:
-        """Inspect Nirrnir's silver-poison state, world-time deadline and required cure."""
+        """Inspect Nirrnir's declining HP, silver-poison deadline, human-blood bridge and required cure."""
         return _json(aghyellr.nirrnir_status())
 
     @mcp.tool()
     def start_floor7_aghyellr_raid(player_ids: list[str], bring_nirrnir: bool = True) -> str:
         """Start Aghyellr the Igneous Wyrm and optionally carry the poisoned Nirrnir into the Floor 7 Boss Room."""
         return _json(aghyellr.start_aghyellr_raid(player_ids, bring_nirrnir=bring_nirrnir))
+
+    @mcp.tool()
+    def bridge_floor7_nirrnir_with_human_blood(instance_id: str, donor_actor_id: str) -> str:
+        """At Nirrnir's critical HP, spend a large real HP cost from one raid player to create a temporary blood bridge and transform that donor into Civis Nocte."""
+        return _json(aghyellr.sustain_nirrnir_with_human_blood(instance_id, donor_actor_id))
+
+    @mcp.tool()
+    def reveal_floor7_doleful_nocturne(instance_id: str, actor_id: str, sword_instance_id: str) -> str:
+        """As a Civis Nocte raid player, reveal an equipped Sword of Volupta instance as Doleful Nocturne without changing the public item template."""
+        return _json(aghyellr.reveal_doleful_nocturne(instance_id, actor_id, sword_instance_id))
+
+    @mcp.tool()
+    def get_floor7_nightfolk_state(actor_id: str) -> str:
+        """Inspect authoritative Civis/Dominus Nocte rank, master relation, combat bonus, sunlight weakness and blood-feeding capability."""
+        return _json(aghyellr.runtime.nightfolk_state(actor_id))
+
+    @mcp.tool()
+    def feed_floor7_civis_nocte(civis_actor_id: str, donor_actor_id: str, donor_hp_cost: int) -> str:
+        """Let a Civis Nocte recover HP by consuming a specified amount of a colocated living donor's HP; ordinary feeding does not transform the donor."""
+        return _json(aghyellr.runtime.feed_civis_nocte(civis_actor_id, donor_actor_id, donor_hp_cost))
 
     @mcp.tool()
     def telegraph_floor7_aghyellr_gaze(instance_id: str) -> str:
@@ -230,15 +250,53 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> 
 
     @mcp.tool()
     def collect_floor7_aghyellr_dragon_blood(instance_id: str, actor_id: str) -> str:
-        """After Aghyellr dies, collect a real fresh, undiluted, unpreserved dragon-blood item from the boss."""
+        """After Aghyellr dies, materialize and collect its seventeen real jars of fresh, undiluted, unpreserved dragon blood."""
         return _json(aghyellr.collect_fresh_dragon_blood(instance_id, actor_id))
 
     @mcp.tool()
-    def administer_floor7_dragon_blood_to_nirrnir(actor_id: str, blood_instance_id: str) -> str:
-        """Give Nirrnir fresh Aghyellr blood before her silver-poison deadline expires."""
-        return _json(aghyellr.administer_dragon_blood(actor_id, blood_instance_id))
+    def administer_floor7_dragon_blood_to_nirrnir(
+        instance_id: str,
+        actor_id: str,
+        blood_instance_id: str,
+    ) -> str:
+        """Consume one jar from this Aghyellr raid's real blood drop to cure Nirrnir before the silver-poison deadline."""
+        return _json(aghyellr.administer_dragon_blood(instance_id, actor_id, blood_instance_id))
 
     @mcp.tool()
     def get_floor7_aghyellr_state(instance_id: str) -> str:
-        """Inspect Aghyellr's segmented Boss state, pending gaze and the linked Nirrnir countdown."""
+        """Inspect Aghyellr bars, synchronized encounter/world time, Civis transformations, blood jars and linked Nirrnir countdown."""
         return _json(aghyellr.raid_status(instance_id))
+
+    @mcp.tool()
+    def get_floor7_campaign_handoff(harin_instance_id: str, aghyellr_instance_id: str) -> str:
+        """Validate the completed Floor 7 handoff: five sacred keys under Fallen control, Nirrnir cured, Civis Nocte created and Aghyellr defeated."""
+        pursuit_state = pursuit.status(harin_instance_id)
+        raid_state = aghyellr.raid_status(aghyellr_instance_id)
+        if pursuit_state["stage"] != "boss_room_reached":
+            raise ValueError("the Harin pursuit has not reached the Floor 7 Boss Room")
+        if pursuit_state["fallen_sacred_key_count"] != 5 or pursuit_state["ruby_key_status"] != "fallen_control":
+            raise ValueError("the five-key Fallen handoff state has not been established")
+        if raid_state["boss_alive"]:
+            raise ValueError("Aghyellr is still alive")
+        if raid_state["nirrnir"]["stage"] != "cured":
+            raise ValueError("Nirrnir has not been cured")
+        if len(raid_state["civis_actor_ids"]) != 1:
+            raise ValueError("the Floor 7 handoff requires exactly one Civis Nocte transformation")
+        if len(raid_state["doleful_nocturne_revealed_instance_ids"]) != 1:
+            raise ValueError("Doleful Nocturne has not been revealed on the Floor 7 route")
+        floor7 = aghyellr.runtime.world.floors[7]
+        if not floor7.floor_boss_defeated:
+            raise RuntimeError("Aghyellr is defeated but Floor 7 is not marked cleared")
+        return _json(
+            {
+                "floor7Cleared": True,
+                "fallenSacredKeyCount": 5,
+                "rubyKeyOwnerId": pursuit_state["ruby_key_owner_id"],
+                "fourKeyBagOwner": pursuit_state["target_key_bag_matches"][0],
+                "nirrnirCured": True,
+                "civisActorId": raid_state["civis_actor_ids"][0],
+                "dolefulNocturneInstanceId": raid_state["doleful_nocturne_revealed_instance_ids"][0],
+                "floor8Unlocked": aghyellr.runtime.world.floors[8].unlocked,
+                "floor8GateScheduledAtMs": floor7.scheduled_gate_activation_at_ms,
+            }
+        )

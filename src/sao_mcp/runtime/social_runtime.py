@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
 from sao_mcp.domain.models import CursorColor, EntityKind
 from sao_mcp.rules.duels import DuelMode, DuelRuntime, DuelStatus
+from sao_mcp.rules.nightfolk import feed_civis_nocte as resolve_civis_feeding
+from sao_mcp.rules.nightfolk import nightfolk_state
+from sao_mcp.rules.special_weapons import apply_equipment_hp_regeneration, apply_weapon_soul_cost
 from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
 
 
@@ -11,7 +16,7 @@ REVIVAL_HP_RATIO = 0.25  # Simulation recovery amount; the ~10 second activation
 
 
 class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
-    """Timeline runtime with authorized duels, criminal-town access and SAO death End Phase."""
+    """Timeline runtime with authorized duels, Night mechanics, criminal-town access and SAO death End Phase."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
@@ -153,6 +158,20 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
             )
             self._close_duel_encounters(evaluation.duel_id)
 
+    def _apply_weapon_soul_cost(self, encounter_id: str, attacker_id: str) -> None:
+        attacker = self.actors[attacker_id]
+        weapon_item, weapon = self._equipped_weapon(attacker)
+        resolution = apply_weapon_soul_cost(attacker, weapon_item, weapon)
+        if resolution is None:
+            return
+        self._append(
+            self.encounters[encounter_id],
+            "weapon_soul_cost",
+            attacker_id,
+            attacker_id,
+            **asdict(resolution),
+        )
+
     def attack(self, encounter_id: str, attacker_id: str, target_id: str, **kwargs):
         encounter = self.encounters[encounter_id]
         duel = self.duels.active_between(attacker_id, target_id)
@@ -166,6 +185,8 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 encounter.safe_zone = True
         else:
             result = super().attack(encounter_id, attacker_id, target_id, **kwargs)
+        if result.legal:
+            self._apply_weapon_soul_cost(encounter_id, attacker_id)
         self._evaluate_duel_after_attack(encounter_id, attacker_id, target_id, result)
         return result
 
@@ -178,6 +199,8 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
     def _resolve_queued_attack(self, action):
         result = super()._resolve_queued_attack(action)
         resolution = result.get("resolution")
+        if resolution and resolution.get("legal"):
+            self._apply_weapon_soul_cost(action.encounter_id, action.attacker_id)
         if resolution and action.attacker_id in self.actors and action.target_id in self.actors:
             class ResultView:
                 pass
@@ -222,7 +245,22 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 )
 
     def _advance_encounter_to(self, encounter, new_time_ms: int) -> None:
+        before = encounter.time_ms
         super()._advance_encounter_to(encounter, new_time_ms)
+        elapsed_ms = encounter.time_ms - before
+        if elapsed_ms > 0:
+            for actor in encounter.participants.values():
+                restored = apply_equipment_hp_regeneration(actor, elapsed_ms)
+                if restored:
+                    self._append(
+                        encounter,
+                        "equipment_hp_regeneration",
+                        actor.actor_id,
+                        actor.actor_id,
+                        restored_hp=restored,
+                        hp_after=actor.hp,
+                        source_instance_id=actor.metadata["equipment_hp_regeneration_instance_id"],
+                    )
         self._finalize_expired_deaths(encounter)
 
     def revive_recently_fallen(
@@ -277,6 +315,17 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 "revivedHpRatio": "simulation calibration",
             },
         }
+
+    def feed_civis_nocte(self, civis_actor_id: str, donor_actor_id: str, donor_hp_cost: int) -> dict:
+        resolution = resolve_civis_feeding(
+            self.actors[civis_actor_id],
+            self.actors[donor_actor_id],
+            donor_hp_cost=donor_hp_cost,
+        )
+        return asdict(resolution)
+
+    def nightfolk_state(self, actor_id: str) -> dict:
+        return nightfolk_state(self.actors[actor_id])
 
     def travel_actor(self, actor_id: str, destination_id: str):
         actor = self.actors[actor_id]

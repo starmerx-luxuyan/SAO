@@ -9,6 +9,7 @@ from sao_mcp.rules.npcs import CORE_NPCS, NPCDefinition
 PROGRESSIVE_8 = "Sword Art Online Progressive Volume 8: Rhapsody of Crimson Heat (Finish)"
 MAP_OF_SCYIA_ID = "map_of_scyia"
 GREENLEAF_CAPE_ID = "greenleaf_cape"
+RUBY_KEY_ID = "elf_war_ruby_key"
 ARGO_ID = "pc_argo"
 
 FIELD_OF_BONES = "floor_7_field_of_bones"
@@ -56,6 +57,20 @@ def apply_floor7_pursuit_corpus(catalog: Catalog) -> Catalog:
             tags=("floor_7", "elf_war", "kizmel", "castle_galey_treasury", "arid_weakness_protection"),
             provenance=_canon(
                 "Treasured cape borrowed from Castle Galey's treasury. It protects Kizmel from the arid-region weakness that would otherwise affect an elf in the Field of Bones. Weight is simulation."
+            ),
+        ),
+    )
+    catalog.items.setdefault(
+        RUBY_KEY_ID,
+        ItemTemplate(
+            template_id=RUBY_KEY_ID,
+            name="Ruby Key",
+            kind=ItemKind.QUEST,
+            weight=0.12,
+            stack_limit=1,
+            tags=("floor_7", "elf_war", "sacred_key", "ruby_key"),
+            provenance=_canon(
+                "The Ruby Key is the Floor 7 sacred key pursued by the Dark Elves and Fallen Elves. Weight is simulation."
             ),
         ),
     )
