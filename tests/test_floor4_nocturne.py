@@ -86,7 +86,6 @@ def _setup_nocturne_runtime():
     lavik = _npc_actor("nocturne_lavik", "Lavik Fen Cortassios", LAVIK_ID, "floor_7_field")
     runtime.actors[kizmel.actor_id] = kizmel
     runtime.actors[lavik.actor_id] = lavik
-    runtime.npcs.states[LAVIK_ID].location_id = lavik.location_id
 
     kysarah = _npc_actor("nocturne_kysarah", "Kysarah the Ransacker", KYSARAH_ID, "floor_7_field")
     runtime.actors[kysarah.actor_id] = kysarah
@@ -151,6 +150,8 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     assert YOFILIS_ID == "npc_floor4_yofilis"
     assert "npc_floor4_viscount_yofilis" not in runtime.npcs.definitions
     assert CETRANN_ID in runtime.npcs.definitions
+    lavik_npc_state_location = runtime.npcs.states[LAVIK_ID].location_id
+    assert lavik_npc_state_location != LAKE_YOFEL_WEST_SHORE
 
     opened = nocturne.open_five_key_backtrack("harin7_nocturne_fixture", "aghyellr7_nocturne_fixture")
     instance_id = opened["instance_id"]
@@ -166,7 +167,8 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     assert "lake_to_hideout_ms" not in opened
     assert "river_route_segments_ms" not in opened
     assert runtime.actors[lavik.actor_id].location_id == LAKE_YOFEL_WEST_SHORE
-    assert runtime.npcs.states[LAVIK_ID].location_id == LAKE_YOFEL_WEST_SHORE
+    assert runtime.npcs.states[LAVIK_ID].location_id == lavik_npc_state_location
+    assert runtime.npc_location_id(LAVIK_ID) == LAKE_YOFEL_WEST_SHORE
     assert runtime.npcs.states[YOFILIS_ID].location_id == YOFEL_CASTLE
 
     group_ids = [a.actor_id, b.actor_id, kizmel.actor_id]
@@ -313,6 +315,8 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     assert restored.actors[kysarah.actor_id].inventory[bag.instance_id].template_id == SACRED_KEY_BAG_ID
     assert restored.actors[fallen.actor_id].inventory[ruby.instance_id].template_id == RUBY_KEY_ID
     assert restored.actors[lavik.actor_id].location_id == LAKE_YOFEL_WEST_SHORE
+    assert restored.npcs.states[LAVIK_ID].location_id == lavik_npc_state_location
+    assert restored.npc_location_id(LAVIK_ID) == LAKE_YOFEL_WEST_SHORE
     assert restored.npcs.states[YOFILIS_ID].location_id == YOFEL_CASTLE
 
     lake = restored_nocturne.embark_five_key_hideout_recon(instance_id)

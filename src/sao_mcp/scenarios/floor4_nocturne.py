@@ -191,7 +191,6 @@ class Floor4NocturneScenario:
                 "nocturne_arrived_yofel_at_ms": self.runtime.world.now_ms,
             }
         )
-        self.runtime.npcs.states[LAVIK_ID].location_id = LAKE_YOFEL_WEST_SHORE
         if self.runtime.npcs.states[YOFILIS_ID].location_id != YOFEL_CASTLE:
             raise RuntimeError("the authoritative Yofilis NPC is not at Yofel Castle")
         if self.runtime.npcs.states[CETRANN_ID].location_id != YOFEL_CASTLE:
