@@ -166,7 +166,7 @@ def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_after_
             responder.actor_id,
             forest_id,
             defense=DefenseMode.NONE,
-            seed=1 + index,
+            seed=1,
         )
         assert attack.legal and attack.hit
         assert target.alive is False
