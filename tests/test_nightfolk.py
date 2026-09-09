@@ -12,6 +12,8 @@ from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 
 def _give_doleful(runtime, actor, instance_id):
     template = runtime.catalog.weapons[SWORD_OF_VOLUPTA_ID]
+    assert "experience_drain_without_night_kind" in template.tags
+    assert "experience_drain_without_civis_nocte" not in template.tags
     item = ItemInstance(
         instance_id=instance_id,
         template_id=SWORD_OF_VOLUPTA_ID,
@@ -84,6 +86,34 @@ def test_doleful_drains_only_accumulated_xp_from_non_night_wielder():
     soul_events = [event for event in encounter.events if event.event_type == "weapon_soul_cost"]
     assert soul_events[-1].payload["drained_experience"] == 20
     assert soul_events[-1].payload["level_floor_experience"] == floor_xp
+
+
+def test_doleful_soul_cost_also_applies_to_queued_timeline_attack():
+    runtime = HousingAincradRuntime(seed=12)
+    actor = runtime.create_character("QueuedMortal", level=20)
+    actor.location_id = "floor_1_west_field"
+    floor_xp = experience_to_reach_level(actor.level)
+    actor.metadata["experience"] = floor_xp + 1000
+    _give_doleful(runtime, actor, "doleful_queued")
+    monster = runtime.create_training_monster(level=1)
+    encounter = runtime.start_encounter([actor.actor_id, monster.actor_id], zone_id="floor_1_west_field")
+
+    runtime.queue_player_attack(
+        encounter.encounter_id,
+        actor.actor_id,
+        monster.actor_id,
+        defense=DefenseMode.NONE,
+        seed=1,
+    )
+    processed = runtime.process_next_timeline_event(encounter.encounter_id)
+
+    assert processed["processed"] is True
+    assert processed["resolved"] is True
+    assert actor.metadata["experience"] == floor_xp + 980
+    soul_events = [event for event in encounter.events if event.event_type == "weapon_soul_cost"]
+    assert len(soul_events) == 1
+    assert soul_events[0].payload["wielder_actor_id"] == actor.actor_id
+    assert soul_events[0].payload["drained_experience"] == 20
 
 
 def test_civis_nocte_is_exempt_from_doleful_xp_drain_and_regenerates_hp():

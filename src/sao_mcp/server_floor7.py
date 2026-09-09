@@ -266,37 +266,3 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> 
     def get_floor7_aghyellr_state(instance_id: str) -> str:
         """Inspect Aghyellr bars, synchronized encounter/world time, Civis transformations, blood jars and linked Nirrnir countdown."""
         return _json(aghyellr.raid_status(instance_id))
-
-    @mcp.tool()
-    def get_floor7_campaign_handoff(harin_instance_id: str, aghyellr_instance_id: str) -> str:
-        """Validate the completed Floor 7 handoff: five sacred keys under Fallen control, Nirrnir cured, Civis Nocte created and Aghyellr defeated."""
-        pursuit_state = pursuit.status(harin_instance_id)
-        raid_state = aghyellr.raid_status(aghyellr_instance_id)
-        if pursuit_state["stage"] != "boss_room_reached":
-            raise ValueError("the Harin pursuit has not reached the Floor 7 Boss Room")
-        if pursuit_state["fallen_sacred_key_count"] != 5 or pursuit_state["ruby_key_status"] != "fallen_control":
-            raise ValueError("the five-key Fallen handoff state has not been established")
-        if raid_state["boss_alive"]:
-            raise ValueError("Aghyellr is still alive")
-        if raid_state["nirrnir"]["stage"] != "cured":
-            raise ValueError("Nirrnir has not been cured")
-        if len(raid_state["civis_actor_ids"]) != 1:
-            raise ValueError("the Floor 7 handoff requires exactly one Civis Nocte transformation")
-        if len(raid_state["doleful_nocturne_revealed_instance_ids"]) != 1:
-            raise ValueError("Doleful Nocturne has not been revealed on the Floor 7 route")
-        floor7 = aghyellr.runtime.world.floors[7]
-        if not floor7.floor_boss_defeated:
-            raise RuntimeError("Aghyellr is defeated but Floor 7 is not marked cleared")
-        return _json(
-            {
-                "floor7Cleared": True,
-                "fallenSacredKeyCount": 5,
-                "rubyKeyOwnerId": pursuit_state["ruby_key_owner_id"],
-                "fourKeyBagOwner": pursuit_state["target_key_bag_matches"][0],
-                "nirrnirCured": True,
-                "civisActorId": raid_state["civis_actor_ids"][0],
-                "dolefulNocturneInstanceId": raid_state["doleful_nocturne_revealed_instance_ids"][0],
-                "floor8Unlocked": aghyellr.runtime.world.floors[8].unlocked,
-                "floor8GateScheduledAtMs": floor7.scheduled_gate_activation_at_ms,
-            }
-        )

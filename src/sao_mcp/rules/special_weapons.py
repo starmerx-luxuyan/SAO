@@ -26,7 +26,7 @@ def apply_weapon_soul_cost(
     weapon_item: ItemInstance,
     weapon: WeaponTemplate,
 ) -> SoulCostResolution | None:
-    if "experience_drain_without_civis_nocte" not in weapon.tags:
+    if "experience_drain_without_night_kind" not in weapon.tags:
         return None
     floor_xp = experience_to_reach_level(actor.level)
     total = current_experience(actor)

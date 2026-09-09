@@ -73,7 +73,7 @@ def apply_floor7_corpus(catalog: Catalog) -> Catalog:
                 "hp_regeneration",
                 "poison_nullification",
                 "guaranteed_critical",
-                "experience_drain_without_civis_nocte",
+                "experience_drain_without_night_kind",
             ),
             provenance=_inferred(
                 "The casino advertises Falhari's Sword of Volupta for 100,000 Volcoins. Its listed effects are continuous wound/HP recovery, poison nullification and guaranteed critical hits. "
