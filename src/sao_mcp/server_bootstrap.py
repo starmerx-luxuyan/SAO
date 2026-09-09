@@ -27,6 +27,7 @@ from sao_mcp.scenarios.floor7_intrigue import install_floor7_casino_intrigue_sce
 from sao_mcp.scenarios.floor7_pursuit import install_floor7_pursuit_scenario
 from sao_mcp.scenarios.floor7_volupta import install_floor7_volupta_scenario
 from sao_mcp.scenarios.floor8_emergency import install_floor8_forest_emergency_scenario
+from sao_mcp.scenarios.floor8_standoff import install_floor8_cave_standoff_scenario
 from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 from sao_mcp.server_adventure import register_adventure_tools
 from sao_mcp.server_communications import register_communication_tools
@@ -82,6 +83,7 @@ floor7_pursuit = install_floor7_pursuit_scenario(runtime)
 floor7_campaign = install_floor7_campaign_scenario(runtime, floor7_pursuit, floor7_aghyellr)
 floor4_nocturne = install_floor4_nocturne_scenario(runtime, floor7_campaign)
 floor8_emergency = install_floor8_forest_emergency_scenario(runtime, floor4_nocturne)
+floor8_standoff = install_floor8_cave_standoff_scenario(runtime, floor8_emergency)
 floor22_witch = install_floor22_witch_scenario(runtime)
 
 if not hasattr(runtime, "economy"):
@@ -109,7 +111,7 @@ register_floor6_buxum_tools(mcp, floor6_buxum, floor6_irrational_cube)
 register_floor6_elfwar_tools(mcp, floor6_elfwar)
 register_floor7_tools(mcp, floor7_volupta, floor7_aghyellr, floor7_intrigue, floor7_elfwar, floor7_pursuit)
 register_floor7_campaign_tools(mcp, floor7_campaign)
-register_floor8_tools(mcp, floor8_emergency)
+register_floor8_tools(mcp, floor8_emergency, floor8_standoff)
 register_floor22_tools(mcp, floor22_witch)
 
 from sao_mcp.server_bosses import register_boss_tools  # noqa: E402
@@ -144,5 +146,6 @@ __all__ = [
     "floor7_pursuit",
     "floor7_campaign",
     "floor8_emergency",
+    "floor8_standoff",
     "floor22_witch",
 ]

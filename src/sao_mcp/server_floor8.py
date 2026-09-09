@@ -17,7 +17,7 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_floor8_tools(mcp, emergency) -> None:
+def register_floor8_tools(mcp, emergency, standoff) -> None:
     @mcp.tool()
     def trigger_progressive9_floor8_forest_emergency(nocturne_instance_id: str, recipient_actor_id: str) -> str:
         """Materialize Argo plus the already-existing ALS/DKB cave parties and Forest Elf pursuit party, send a real persistent friend message, and link the Floor 8 incident to Nocturne."""
@@ -58,6 +58,41 @@ def register_floor8_tools(mcp, emergency) -> None:
         return _json(emergency.enter_escape_cave(instance_id))
 
     @mcp.tool()
+    def offer_progressive9_cave_restitution(
+        instance_id: str,
+        mediator_actor_id: str,
+        payer_actor_id: str,
+        col_amount: int,
+    ) -> str:
+        """Create an explicit Col restitution offer from a living player inside the cave. No money moves and no NPC accepts automatically."""
+        return _json(standoff.offer_restitution(instance_id, mediator_actor_id, payer_actor_id, col_amount))
+
+    @mcp.tool()
+    def accept_progressive9_cave_restitution(instance_id: str, forest_elf_actor_id: str) -> str:
+        """Have the actual Forest Elf pursuit-party leader accept the pending offer, transfer the exact Col, and withdraw the live pursuit party to the protected woods."""
+        return _json(standoff.accept_restitution(instance_id, forest_elf_actor_id))
+
+    @mcp.tool()
+    def reject_progressive9_cave_restitution(instance_id: str, forest_elf_actor_id: str) -> str:
+        """Have the actual Forest Elf pursuit-party leader reject the pending offer and restore the unresolved cave standoff without moving money."""
+        return _json(standoff.reject_restitution(instance_id, forest_elf_actor_id))
+
+    @mcp.tool()
+    def surrender_progressive9_incident_players_to_custody(instance_id: str, mediator_actor_id: str) -> str:
+        """Resolve the standoff by moving every live ALS/DKB incident actor out of the cave and, together with the real Forest Elf pursuit party, through the protected woods into Sluva custody."""
+        return _json(standoff.surrender_incident_players_to_custody(instance_id, mediator_actor_id))
+
+    @mcp.tool()
+    def start_progressive9_cave_mouth_combat(instance_id: str, player_combatant_ids: list[str]) -> str:
+        """Escalate the unresolved standoff: selected live responder/frontline players walk out to the cave mouth and enter an ordinary encounter with the real Forest Elf pursuers."""
+        return _json(standoff.start_cave_mouth_combat(instance_id, player_combatant_ids))
+
+    @mcp.tool()
+    def resolve_progressive9_cave_mouth_combat(instance_id: str) -> str:
+        """After ordinary combat, resolve only when the real Forest Elf pursuit party or all selected player combatants are actually defeated."""
+        return _json(standoff.resolve_cave_mouth_combat(instance_id))
+
+    @mcp.tool()
     def get_progressive9_floor8_emergency_state(instance_id: str) -> str:
-        """Inspect Argo's real short message, response branch, incident PartyState actors, Forest Elf pursuers, route progress and live cave standoff."""
-        return _json(emergency.status(instance_id))
+        """Inspect Argo's message, response branch, live PartyState actors, cave positions and any active restitution/custody/combat resolution state."""
+        return _json(standoff.status(instance_id))
