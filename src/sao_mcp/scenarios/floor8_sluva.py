@@ -8,7 +8,7 @@ from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
-from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 
 
 FORMAL_CHARGE_STANDING_DELTA = -15
@@ -325,8 +325,8 @@ class Floor8SluvaJusticeScenario:
                 "service_started_at_ms": service_started,
                 "service_completed_at_ms": self.runtime.world.now_ms - returning.elapsed_ms,
                 "service_ms": RESTORATIVE_SERVICE_MS,
-                "outward_travel_ms": outward.elapsed_ms,
-                "return_travel_ms": returning.elapsed_ms,
+                "outward_route": [group_travel_record(outward)],
+                "return_route": [group_travel_record(returning)],
                 "standing_changes": standing_changes,
             }
         )

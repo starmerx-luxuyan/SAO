@@ -1,7 +1,7 @@
 import pytest
 
 from sao_mcp.corpus.floor8_progressive import FLOOR8_GUILD_CRISIS_REPORT
-from sao_mcp.corpus.floor8_world import SLUVA
+from sao_mcp.corpus.floor8_world import ARBOREAL_ROUTE_TAGS, FOREST_ELF_SACRED_WOODS, SLUVA
 from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
@@ -198,7 +198,29 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
 
     service_started = runtime.world.now_ms
     mitigated = sluva.perform_restorative_service_mitigation(INSTANCE_ID)
-    assert runtime.world.now_ms - service_started == 32 * 60_000 + RESTORATIVE_SERVICE_MS
+    service = mitigated["sluva_justice"]["mitigation"][0]
+    assert "outward_travel_ms" not in service
+    assert "return_travel_ms" not in service
+    assert len(service["outward_route"]) == 1
+    assert len(service["return_route"]) == 1
+    outward = service["outward_route"][0]
+    returning = service["return_route"][0]
+    assert (outward["from_location_id"], outward["to_location_id"], outward["elapsed_ms"]) == (
+        SLUVA,
+        FOREST_ELF_SACRED_WOODS,
+        16 * 60_000,
+    )
+    assert (returning["from_location_id"], returning["to_location_id"], returning["elapsed_ms"]) == (
+        FOREST_ELF_SACRED_WOODS,
+        SLUVA,
+        16 * 60_000,
+    )
+    expected_tags = list(ARBOREAL_ROUTE_TAGS + ("managed_inner_forest",))
+    assert outward["traversal_tags"] == expected_tags
+    assert returning["traversal_tags"] == expected_tags
+    route_elapsed = outward["elapsed_ms"] + returning["elapsed_ms"]
+    assert route_elapsed == 32 * 60_000
+    assert runtime.world.now_ms - service_started == route_elapsed + RESTORATIVE_SERVICE_MS
     assert mitigated["stage"] == "sluva_grave_judgment_issued"
     assert mitigated["sluva_justice"]["principal_finding"] is None
     assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -10, DKB_GUILD_ID: -10}

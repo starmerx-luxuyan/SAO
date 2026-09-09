@@ -15,7 +15,7 @@ from sao_mcp.corpus.floor8_world import (
 from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
-from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 
 
@@ -248,16 +248,6 @@ class Floor8ForestEmergencyScenario:
         return result
 
     @staticmethod
-    def _travel_record(resolution) -> dict:
-        return {
-            "from_location_id": resolution.from_location_id,
-            "to_location_id": resolution.to_location_id,
-            "elapsed_ms": resolution.elapsed_ms,
-            "newly_discovered": resolution.newly_discovered,
-            "traversal_tags": list(resolution.traversal_tags),
-        }
-
-    @staticmethod
     def _guild_crisis_report() -> dict:
         report = FLOOR8_GUILD_CRISIS_REPORT
         return {
@@ -378,7 +368,7 @@ class Floor8ForestEmergencyScenario:
         if argo.location_id != ACORN_SHOP or klein.location_id != ACORN_SHOP:
             raise RuntimeError("Argo and Klein are not both waiting at the Acorn Shop rendezvous")
         resolution = travel_together(self.runtime, state["floor8_actor_ids"], ACORN_SHOP)
-        state["frieben_to_acorn_shop_route"] = [self._travel_record(resolution)]
+        state["frieben_to_acorn_shop_route"] = [group_travel_record(resolution)]
         state["acorn_shop_rendezvous_at_ms"] = self.runtime.world.now_ms
         state["incident"]["argo_briefing_confirmed_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "responders_briefed_at_acorn_shop"
@@ -396,7 +386,7 @@ class Floor8ForestEmergencyScenario:
             travel_together(self.runtime, responders, FOREST_ELF_SACRED_WOODS),
         ]
         state["acorn_shop_to_sacred_woods_route"] = [
-            self._travel_record(resolution) for resolution in segments
+            group_travel_record(resolution) for resolution in segments
         ]
         state["stage"] = "responders_at_sacred_woods"
         return self.status(instance_id)
@@ -426,7 +416,7 @@ class Floor8ForestEmergencyScenario:
         self._require_actor_ids_at(forest_ids, FOREST_ELF_SACRED_WOODS)
         moving = list(state["floor8_actor_ids"]) + forest_ids
         resolution = travel_together(self.runtime, moving, FOREST_ELF_ESCAPE_CAVE_MOUTH)
-        state["incident"]["sacred_woods_to_cave_mouth_route"] = [self._travel_record(resolution)]
+        state["incident"]["sacred_woods_to_cave_mouth_route"] = [group_travel_record(resolution)]
         state["incident"]["cave_mouth_reached_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "cave_mouth_standoff"
         return self.status(instance_id)
@@ -439,7 +429,7 @@ class Floor8ForestEmergencyScenario:
         forest_ids = list(state["incident"]["forest_elf_actor_ids"])
         self._require_actor_ids_at(forest_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
         resolution = travel_together(self.runtime, state["floor8_actor_ids"], FOREST_ELF_ESCAPE_CAVE)
-        state["incident"]["cave_mouth_to_cave_route"] = [self._travel_record(resolution)]
+        state["incident"]["cave_mouth_to_cave_route"] = [group_travel_record(resolution)]
         frontline_ids = list(state["incident"]["frontline_actor_ids"])
         self._require_actor_ids_at(frontline_ids, FOREST_ELF_ESCAPE_CAVE)
         state["incident"]["responders_entered_cave_at_ms"] = self.runtime.world.now_ms

@@ -7,7 +7,7 @@ from sao_mcp.corpus.floor8_world import (
     SLUVA,
 )
 from sao_mcp.domain.models import EntityKind
-from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 
 
 class Floor8CaveStandoffScenario:
@@ -105,7 +105,8 @@ class Floor8CaveStandoffScenario:
             "accepted_at_ms": self.runtime.world.now_ms,
         }
         del state["pending_restitution"]
-        travel_together(self.runtime, self._forest_ids(state), FOREST_ELF_SACRED_WOODS)
+        withdrawal = travel_together(self.runtime, self._forest_ids(state), FOREST_ELF_SACRED_WOODS)
+        state["accepted_restitution"]["withdrawal_route"] = [group_travel_record(withdrawal)]
         for actor_id in self._frontline_ids(state):
             actor = self.runtime.actors[actor_id]
             actor.metadata["floor8_local_standoff_resolution"] = "restitution"
@@ -141,9 +142,12 @@ class Floor8CaveStandoffScenario:
 
         representative_ids = self._frontline_ids(state)
         forest_ids = self._forest_ids(state)
-        travel_together(self.runtime, representative_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
-        travel_together(self.runtime, representative_ids + forest_ids, FOREST_ELF_SACRED_WOODS)
-        travel_together(self.runtime, representative_ids + forest_ids, SLUVA)
+        segments = [
+            travel_together(self.runtime, representative_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH),
+            travel_together(self.runtime, representative_ids + forest_ids, FOREST_ELF_SACRED_WOODS),
+            travel_together(self.runtime, representative_ids + forest_ids, SLUVA),
+        ]
+        state["custody_transfer_route"] = [group_travel_record(segment) for segment in segments]
         for actor_id in representative_ids:
             actor = self.runtime.actors[actor_id]
             actor.metadata["forest_elf_custody"] = True
@@ -170,12 +174,13 @@ class Floor8CaveStandoffScenario:
         forest_ids = self._forest_ids(state)
         self._require_ids_at(forest_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
 
-        travel_together(self.runtime, player_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        approach = travel_together(self.runtime, player_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
         encounter = self.runtime.start_encounter(
             player_ids + forest_ids,
             zone_id=FOREST_ELF_ESCAPE_CAVE_MOUTH,
             safe_zone=False,
         )
+        state["cave_combat_approach_route"] = [group_travel_record(approach)]
         state["cave_combat_encounter_id"] = encounter.encounter_id
         state["cave_combat_player_ids"] = player_ids
         state["cave_combat_started_at_ms"] = self.runtime.world.now_ms

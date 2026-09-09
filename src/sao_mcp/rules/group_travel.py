@@ -17,6 +17,16 @@ class GroupTravelResolution:
     traversal_tags: tuple[str, ...] = ()
 
 
+def group_travel_record(resolution: GroupTravelResolution) -> dict:
+    return {
+        "from_location_id": resolution.from_location_id,
+        "to_location_id": resolution.to_location_id,
+        "elapsed_ms": resolution.elapsed_ms,
+        "newly_discovered": resolution.newly_discovered,
+        "traversal_tags": list(resolution.traversal_tags),
+    }
+
+
 def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination_id: str) -> GroupTravelResolution:
     members = tuple(actor_ids)
     if not members:
