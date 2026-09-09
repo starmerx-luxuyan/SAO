@@ -83,13 +83,13 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         return _json(standoff.reject_restitution(instance_id, forest_elf_actor_id))
 
     @mcp.tool()
-    def surrender_progressive9_incident_players_to_custody(instance_id: str, mediator_actor_id: str) -> str:
-        """Resolve the materialized local standoff by moving its live ALS/DKB representative actors out of the cave and, with the real Forest Elf pursuit party, through the protected woods into Sluva custody. Unmaterialized members in Argo's wider report are not moved or sentenced."""
-        return _json(standoff.surrender_incident_players_to_custody(instance_id, mediator_actor_id))
+    def surrender_progressive9_local_representatives_to_custody(instance_id: str, mediator_actor_id: str) -> str:
+        """Resolve only the materialized local standoff by moving its live ALS/DKB representative actors out of the cave and, with the real Forest Elf pursuit party, through the protected woods into Sluva custody. Unmaterialized members in Argo's wider report are not moved or sentenced."""
+        return _json(standoff.surrender_local_representatives_to_custody(instance_id, mediator_actor_id))
 
     @mcp.tool()
     def start_progressive9_sluva_hearing(instance_id: str, advocate_actor_id: str) -> str:
-        """Open the Sluva docket after the materialized custody branch reaches the Forest Elf capital; the living-tree charge carries canon-backed execution/imprisonment risk while exact procedure remains simulation."""
+        """Open a Sluva docket for the materialized detainees after the local custody branch reaches the Forest Elf capital; the wider DKB/ALS crisis remains separately represented by the corpus report."""
         return _json(sluva.open_hearing(instance_id, advocate_actor_id))
 
     @mcp.tool()
@@ -99,7 +99,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def deposit_progressive9_sluva_restitution_mitigation(instance_id: str, payer_actor_id: str) -> str:
-        """Transfer the fixed simulation restitution deposit from a real linked player to the arbiter as mitigation; custody remains active and the charge is not erased."""
+        """Transfer the fixed simulation restitution deposit from a real linked player to the arbiter as mitigation for the local Sluva case; custody remains active and the charge is not erased."""
         return _json(sluva.deposit_restitution_mitigation(instance_id, payer_actor_id))
 
     @mcp.tool()
@@ -114,7 +114,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         principal_actor_id: str,
         disposition: str,
     ) -> str:
-        """Issue strict, commuted, or pardon disposition for the materialized detainees. Strict records an execution order for the found principal and imprisonment orders for others but does not auto-kill; pardon is an explicit campaign deviation and requires mitigation."""
+        """Issue strict, commuted, or pardon disposition for the materialized detainees. Strict records an execution order for the adjudicated principal and imprisonment orders for the others but does not auto-kill; this disposition does not resolve the wider guild-scale crisis."""
         return _json(
             sluva.issue_disposition(
                 instance_id,
@@ -141,5 +141,5 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def get_progressive9_sluva_justice_state(instance_id: str) -> str:
-        """Inspect the local Sluva docket, mitigation, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
+        """Inspect the local Sluva docket together with the unchanged wider guild-crisis report, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
         return _json(sluva.status(instance_id))

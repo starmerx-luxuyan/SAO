@@ -82,6 +82,7 @@ def _make_live_standoff(seed=211):
 def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader_acceptance():
     runtime, nocturne, emergency, standoff, instance_id, responder = _make_live_standoff()
     state = emergency._state(instance_id)
+    representative_ids = list(state["incident"]["frontline_actor_ids"])
     forest_leader_id = runtime.world.parties[state["incident"]["forest_elf_party_id"]].leader_id
     forest_leader = runtime.actors[forest_leader_id]
     responder.col = 5_000
@@ -89,6 +90,10 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
 
     offered = standoff.offer_restitution(instance_id, responder.actor_id, responder.actor_id, 1_200)
     assert offered["stage"] == "restitution_offered"
+    assert offered["local_standoff_resolution"] == {
+        "scope": "materialized_local_standoff_only",
+        "outcome": None,
+    }
     assert responder.col == 5_000
     assert forest_leader.col == leader_before
     assert offered["pending_restitution"]["col_amount"] == 1_200
@@ -102,6 +107,11 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     standoff.offer_restitution(instance_id, responder.actor_id, responder.actor_id, 1_500)
     accepted = standoff.accept_restitution(instance_id, forest_leader_id)
     assert accepted["stage"] == "standoff_resolved_restitution"
+    assert accepted["local_standoff_resolution"] == {
+        "scope": "materialized_local_standoff_only",
+        "outcome": "restitution_accepted_by_local_pursuit_party",
+    }
+    assert accepted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     assert responder.col == 3_500
     assert forest_leader.col == leader_before + 1_500
     assert all(
@@ -110,7 +120,15 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     )
     assert all(
         runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE
-        for actor_id in state["incident"]["frontline_actor_ids"]
+        for actor_id in representative_ids
+    )
+    assert all(
+        runtime.actors[actor_id].metadata["floor8_local_standoff_resolution"] == "restitution"
+        for actor_id in representative_ids
+    )
+    assert all(
+        "floor8_forest_elf_claim_settled" not in runtime.actors[actor_id].metadata
+        for actor_id in representative_ids
     )
 
     saved = export_runtime(runtime)
@@ -121,27 +139,33 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     persisted = restored_standoff.status(instance_id)
     assert persisted["stage"] == "standoff_resolved_restitution"
     assert persisted["accepted_restitution"]["col_amount"] == 1_500
+    assert persisted["local_standoff_resolution"]["scope"] == "materialized_local_standoff_only"
     assert restored.actors[responder.actor_id].col == 3_500
 
 
-def test_cave_standoff_can_resolve_by_real_frontline_custody_transfer_to_sluva():
+def test_cave_standoff_can_transfer_only_local_representatives_to_sluva_custody():
     runtime, nocturne, emergency, standoff, instance_id, responder = _make_live_standoff(seed=223)
     state = emergency._state(instance_id)
-    frontline_ids = list(state["incident"]["frontline_actor_ids"])
+    representative_ids = list(state["incident"]["frontline_actor_ids"])
     forest_ids = list(state["incident"]["forest_elf_actor_ids"])
     started = runtime.world.now_ms
 
-    result = standoff.surrender_incident_players_to_custody(instance_id, responder.actor_id)
+    result = standoff.surrender_local_representatives_to_custody(instance_id, responder.actor_id)
 
     assert result["stage"] == "standoff_resolved_custody"
+    assert result["local_standoff_resolution"] == {
+        "scope": "materialized_local_standoff_only",
+        "outcome": "materialized_representatives_in_sluva_custody",
+    }
+    assert result["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     assert runtime.world.now_ms - started == 24 * 60_000
-    assert set(result["custody_actor_ids"]) == set(frontline_ids)
-    assert all(runtime.actors[actor_id].location_id == SLUVA for actor_id in frontline_ids + forest_ids)
-    assert all(runtime.actors[actor_id].metadata["forest_elf_custody"] is True for actor_id in frontline_ids)
+    assert set(result["custody_actor_ids"]) == set(representative_ids)
+    assert all(runtime.actors[actor_id].location_id == SLUVA for actor_id in representative_ids + forest_ids)
+    assert all(runtime.actors[actor_id].metadata["forest_elf_custody"] is True for actor_id in representative_ids)
     assert responder.location_id == FOREST_ELF_ESCAPE_CAVE
 
 
-def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_after_real_defeat():
+def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_local_encounter():
     runtime, nocturne, emergency, standoff, instance_id, responder = _make_live_standoff(seed=227)
     state = emergency._state(instance_id)
     forest_ids = list(state["incident"]["forest_elf_actor_ids"])
@@ -175,5 +199,10 @@ def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_after_
     resolved = standoff.resolve_cave_mouth_combat(instance_id)
     assert resolved["stage"] == "standoff_resolved_forest_elves_defeated"
     assert resolved["cave_combat_outcome"] == "forest_elf_pursuit_party_defeated"
+    assert resolved["local_standoff_resolution"] == {
+        "scope": "materialized_local_standoff_only",
+        "outcome": "local_forest_elf_pursuit_party_defeated",
+    }
+    assert resolved["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     assert all(runtime.actors[actor_id].alive is False for actor_id in forest_ids)
     assert responder.cursor is CursorColor.GREEN

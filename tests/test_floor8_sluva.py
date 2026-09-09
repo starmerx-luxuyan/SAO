@@ -1,13 +1,12 @@
+from sao_mcp.corpus.floor8_progressive import FLOOR8_GUILD_CRISIS_REPORT
 from sao_mcp.corpus.floor8_world import SLUVA
 from sao_mcp.corpus.location_access import FOREST_ELVES
+from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
-from sao_mcp.runtime.canonical_guilds import (
-    ALS_GUILD_ID,
-    DKB_GUILD_ID,
-    install_progressive_clearing_guilds,
-)
+from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
+from sao_mcp.scenarios.floor8_emergency import LOCAL_REPRESENTATION_SCOPE, LOCAL_RESOLUTION_SCOPE
 from sao_mcp.scenarios.floor8_sluva import (
     HEARING_TIME_MS,
     JUDGMENT_TIME_MS,
@@ -27,6 +26,21 @@ class _EmergencyStub:
     def _state(self, instance_id):
         assert instance_id == INSTANCE_ID
         return self.runtime.world.global_flags["floor8_forest_emergency_instances"][instance_id]
+
+    def status(self, instance_id):
+        state = self._state(instance_id)
+        return {
+            "instance_id": instance_id,
+            "stage": state["stage"],
+            "guild_crisis_report": {
+                "affected_guild_ids": list(FLOOR8_GUILD_CRISIS_REPORT.affected_guild_ids),
+                "affected_member_scope": FLOOR8_GUILD_CRISIS_REPORT.affected_member_scope,
+            },
+            "local_materialization": {
+                "representation_scope": LOCAL_REPRESENTATION_SCOPE,
+                "resolution_scope": LOCAL_RESOLUTION_SCOPE,
+            },
+        }
 
 
 def _forest_actor(actor_id, name):
@@ -91,7 +105,7 @@ def _setup_custody(seed=241):
     return runtime, emergency, sluva, players, forest
 
 
-def test_sluva_restitution_is_mitigation_not_release_and_strict_disposition_preserves_real_sentences():
+def test_sluva_restitution_is_local_mitigation_and_strict_disposition_preserves_real_sentences():
     runtime, emergency, sluva, players, forest = _setup_custody()
     payer = players[0]
     payer.col = 3_000
@@ -100,7 +114,22 @@ def test_sluva_restitution_is_mitigation_not_release_and_strict_disposition_pres
     hearing = sluva.open_hearing(INSTANCE_ID, payer.actor_id)
     assert hearing["stage"] == "sluva_hearing_open"
     assert runtime.world.now_ms - started == HEARING_TIME_MS
+    assert hearing["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
+    assert hearing["local_materialization"]["resolution_scope"] == "materialized_local_standoff_only"
+    assert hearing["sluva_case_scope"] == {
+        "resolution_scope": "materialized_local_standoff_only",
+        "custody_actor_ids": [actor.actor_id for actor in players],
+    }
     assert hearing["forest_elf_guild_standing"] == {ALS_GUILD_ID: -15, DKB_GUILD_ID: -15}
+    assert hearing["sluva_justice"]["charges"][0] == {
+        "code": "protected_tree_incident_participation",
+        "severity": "grave",
+        "description": (
+            "custody case arising from the felling of a large protected living tree; "
+            "the individual principal has not yet been established"
+        ),
+        "provenance": "canon_incident_cause_and_penalty_risk_plus_simulation_legal_framing",
+    }
     assert hearing["sluva_justice"]["known_penalty_risk"] == {
         "principal_or_commander": "execution_risk",
         "other_participants": "imprisonment_risk",
@@ -117,6 +146,7 @@ def test_sluva_restitution_is_mitigation_not_release_and_strict_disposition_pres
     assert runtime.actors[arbiter_id].col == RESTITUTION_COL
     assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -12, DKB_GUILD_ID: -12}
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
+    assert mitigated["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
 
     strict = sluva.issue_disposition(INSTANCE_ID, arbiter_id, players[0].actor_id, "strict")
     assert strict["stage"] == "sluva_disposition_strict"
@@ -125,6 +155,7 @@ def test_sluva_restitution_is_mitigation_not_release_and_strict_disposition_pres
         assert strict["sentences"][actor.actor_id] == "imprisonment_ordered"
     assert all(strict["custody_active"][actor.actor_id] is True for actor in players)
     assert strict["sluva_justice"]["disposition"]["execution_not_auto_resolved"] is True
+    assert strict["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
 
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
@@ -133,10 +164,12 @@ def test_sluva_restitution_is_mitigation_not_release_and_strict_disposition_pres
     persisted = restored_sluva.status(INSTANCE_ID)
     assert persisted["stage"] == "sluva_disposition_strict"
     assert persisted["sentences"][players[0].actor_id] == "execution_ordered"
+    assert persisted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
+    assert persisted["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
     assert restored.actors[arbiter_id].col == RESTITUTION_COL
 
 
-def test_sluva_service_mitigation_returns_detainees_to_custody_and_pardon_requires_explicit_deviation():
+def test_sluva_service_mitigation_returns_local_detainees_to_custody_and_pardon_requires_explicit_deviation():
     runtime, emergency, sluva, players, forest = _setup_custody(seed=251)
     hearing = sluva.open_hearing(INSTANCE_ID, players[0].actor_id)
     arbiter_id = hearing["sluva_justice"]["arbiter_actor_id"]
@@ -148,9 +181,11 @@ def test_sluva_service_mitigation_returns_detainees_to_custody_and_pardon_requir
     assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -10, DKB_GUILD_ID: -10}
     assert all(actor.location_id == SLUVA for actor in players + forest)
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
+    assert mitigated["sluva_case_scope"]["custody_actor_ids"] == [actor.actor_id for actor in players]
 
     pardoned = sluva.issue_disposition(INSTANCE_ID, arbiter_id, players[0].actor_id, "pardon")
     assert pardoned["stage"] == "sluva_disposition_pardon"
     assert pardoned["sluva_justice"]["disposition"]["campaign_deviation"] is True
     assert all(pardoned["sentences"][actor.actor_id] == "pardoned" for actor in players)
     assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
+    assert pardoned["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"

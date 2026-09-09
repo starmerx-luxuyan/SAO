@@ -5,10 +5,10 @@ from dataclasses import asdict
 
 from sao_mcp.corpus.floor8_world import FOREST_ELF_SACRED_WOODS, SLUVA
 from sao_mcp.corpus.location_access import FOREST_ELVES
+from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
 from sao_mcp.rules.group_travel import travel_together
-from sao_mcp.runtime.canonical_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 
 
 FORMAL_CHARGE_STANDING_DELTA = -15
@@ -21,11 +21,12 @@ RESTORATIVE_SERVICE_MS = 2 * 60 * 60_000
 
 
 class Floor8SluvaJusticeScenario:
-    """Sluva custody/hearing layer grounded in Progressive 9's severe Forest Elf taboo.
+    """Sluva custody/hearing layer for the materialized local Floor 8 representatives.
 
-    Progressive 9 establishes the protected-tree incident, Sluva, and a Dark Elf assessment
+    Progressive 9 establishes the wider protected-tree crisis, Sluva, and a Dark Elf assessment
     that capture exposes the responsible commander to execution and the remaining offenders to
-    imprisonment. Exact court procedure, money, service duration and any commutation/pardon are
+    imprisonment. The runtime docket applies only to the actors actually transferred into Sluva
+    custody. Exact court procedure, money, service duration and any commutation/pardon are
     simulation so the campaign can diverge without pretending an unpublished resolution is canon.
     """
 
@@ -92,7 +93,7 @@ class Floor8SluvaJusticeScenario:
         custody_ids = self._custody_ids(state)
         guild_ids = sorted({self.runtime.actors[actor_id].guild_id for actor_id in custody_ids})
         if guild_ids != [ALS_GUILD_ID, DKB_GUILD_ID]:
-            raise RuntimeError("Sluva custody no longer matches the materialized ALS/DKB incident parties")
+            raise RuntimeError("Sluva custody no longer matches the materialized ALS/DKB representatives")
         for guild_id in guild_ids:
             if guild_id not in self.runtime.relationships.guilds:
                 raise RuntimeError(f"Sluva custody references missing authoritative GuildState {guild_id}")
@@ -119,9 +120,9 @@ class Floor8SluvaJusticeScenario:
     def open_hearing(self, instance_id: str, advocate_actor_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "standoff_resolved_custody":
-            raise ValueError("Sluva hearing requires the real custody branch to have reached Sluva")
+            raise ValueError("Sluva hearing requires the materialized local custody branch to have reached Sluva")
         if "sluva_justice" in state:
-            raise ValueError("this Floor 8 incident already has a Sluva legal docket")
+            raise ValueError("this materialized custody case already has a Sluva legal docket")
         custody_ids = self._custody_ids(state)
         forest_ids = self._forest_ids(state)
         self._require_ids_at(custody_ids, SLUVA)
@@ -129,7 +130,7 @@ class Floor8SluvaJusticeScenario:
         advocate = self.runtime.actors[advocate_actor_id]
         eligible = set(state["floor8_actor_ids"]) | set(custody_ids)
         if advocate_actor_id not in eligible or advocate.kind is not EntityKind.PLAYER:
-            raise ValueError("Sluva advocate must be a linked player from the emergency or custody group")
+            raise ValueError("Sluva advocate must be a linked player from the response or custody group")
         if not advocate.alive or advocate.location_id != SLUVA:
             raise ValueError("Sluva advocate must be alive and physically present in Sluva")
 
@@ -142,7 +143,7 @@ class Floor8SluvaJusticeScenario:
                     guild_id,
                     FOREST_ELVES,
                     FORMAL_CHARGE_STANDING_DELTA,
-                    reason="formal Sluva grave charge for the protected-tree incident",
+                    reason="formal Sluva grave charge against materialized Floor 8 representatives",
                 )
             )
             for guild_id in guild_ids
@@ -156,16 +157,19 @@ class Floor8SluvaJusticeScenario:
             "guild_ids": guild_ids,
             "charges": [
                 {
-                    "code": "living_tree_felling",
+                    "code": "protected_tree_incident_participation",
                     "severity": "grave",
-                    "description": "unauthorized felling of a living protected Forest Elf tree",
-                    "provenance": "canon_incident_and_taboo_plus_simulation_legal_code",
+                    "description": (
+                        "custody case arising from the felling of a large protected living tree; "
+                        "the individual principal has not yet been established"
+                    ),
+                    "provenance": "canon_incident_cause_and_penalty_risk_plus_simulation_legal_framing",
                 },
                 {
                     "code": "flight_from_wardens",
                     "severity": "aggravating",
-                    "description": "flight from Forest Elf wardens into the escape cave",
-                    "provenance": "canon_incident_plus_simulation_legal_code",
+                    "description": "the materialized representatives fled from Forest Elf wardens into the escape cave",
+                    "provenance": "runtime_materialized_incident_plus_simulation_legal_code",
                 },
             ],
             "known_penalty_risk": {
@@ -236,7 +240,7 @@ class Floor8SluvaJusticeScenario:
                     guild_id,
                     FOREST_ELVES,
                     RESTITUTION_STANDING_RECOVERY,
-                    reason="restitution deposited as mitigation while Sluva custody continues",
+                    reason="restitution deposited as mitigation for the materialized Sluva case",
                 )
             )
             for guild_id in docket["guild_ids"]
@@ -275,7 +279,7 @@ class Floor8SluvaJusticeScenario:
                     guild_id,
                     FOREST_ELVES,
                     SERVICE_STANDING_RECOVERY,
-                    reason="restorative forest service completed as mitigation while custody continues",
+                    reason="restorative forest service completed for the materialized Sluva case",
                 )
             )
             for guild_id in docket["guild_ids"]
@@ -311,7 +315,7 @@ class Floor8SluvaJusticeScenario:
             raise ValueError("the Sluva arbiter must remain alive and present")
         custody_ids = self._custody_ids(state)
         if principal_actor_id not in custody_ids:
-            raise ValueError("the found principal must be one of the actual detained incident players")
+            raise ValueError("the adjudicated principal must be one of the materialized detainees")
         self._require_ids_at(custody_ids, SLUVA)
         if disposition not in {"strict", "commuted", "pardon"}:
             raise ValueError("disposition must be strict, commuted, or pardon")
@@ -354,37 +358,42 @@ class Floor8SluvaJusticeScenario:
 
     def status(self, instance_id: str) -> dict:
         state = self._state(instance_id)
+        payload = self.emergency.status(instance_id)
         docket = state.get("sluva_justice")
         if docket is None:
-            return {
-                "instance_id": instance_id,
-                "stage": state["stage"],
-                "sluva_justice_available": state["stage"] == "standoff_resolved_custody",
-                "sluva_justice": None,
-            }
+            payload["sluva_justice_available"] = state["stage"] == "standoff_resolved_custody"
+            payload["sluva_justice"] = None
+            payload["sluva_case_scope"] = None
+            return payload
         standing = {
             guild_id: faction_standing(self.runtime.world, guild_id, FOREST_ELVES)
             for guild_id in docket["guild_ids"]
         }
-        return {
-            "instance_id": instance_id,
-            "stage": state["stage"],
-            "sluva_justice_available": True,
-            "sluva_justice": docket,
-            "forest_elf_guild_standing": standing,
-            "custody_locations": {
-                actor_id: self.runtime.actors[actor_id].location_id for actor_id in docket["custody_actor_ids"]
-            },
-            "custody_active": {
-                actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_custody") is True
-                for actor_id in docket["custody_actor_ids"]
-            },
-            "sentences": {
-                actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_sentence")
-                for actor_id in docket["custody_actor_ids"]
-            },
-            "arbiter_location_id": self.runtime.actors[docket["arbiter_actor_id"]].location_id,
-        }
+        payload.update(
+            {
+                "sluva_justice_available": True,
+                "sluva_justice": docket,
+                "sluva_case_scope": {
+                    "resolution_scope": payload["local_materialization"]["resolution_scope"],
+                    "custody_actor_ids": list(docket["custody_actor_ids"]),
+                },
+                "forest_elf_guild_standing": standing,
+                "custody_locations": {
+                    actor_id: self.runtime.actors[actor_id].location_id
+                    for actor_id in docket["custody_actor_ids"]
+                },
+                "custody_active": {
+                    actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_custody") is True
+                    for actor_id in docket["custody_actor_ids"]
+                },
+                "sentences": {
+                    actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_sentence")
+                    for actor_id in docket["custody_actor_ids"]
+                },
+                "arbiter_location_id": self.runtime.actors[docket["arbiter_actor_id"]].location_id,
+            }
+        )
+        return payload
 
 
 def install_floor8_sluva_justice_scenario(runtime, emergency) -> Floor8SluvaJusticeScenario:

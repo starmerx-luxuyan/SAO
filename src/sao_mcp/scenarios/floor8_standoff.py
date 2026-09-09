@@ -11,7 +11,7 @@ from sao_mcp.rules.group_travel import travel_together
 
 
 class Floor8CaveStandoffScenario:
-    """Live resolution branches for the Floor 8 protected-woods cave standoff."""
+    """Live resolution branches for the materialized local Floor 8 cave standoff."""
 
     def __init__(self, runtime, emergency) -> None:
         if emergency.runtime is not runtime:
@@ -42,12 +42,12 @@ class Floor8CaveStandoffScenario:
 
     def _require_live_standoff(self, state: dict) -> None:
         if state["stage"] != "responders_inside_cave_standoff":
-            raise ValueError("the Floor 8 cave standoff is not in its unresolved inside/outside state")
+            raise ValueError("the materialized Floor 8 cave standoff is not in its unresolved inside/outside state")
         self._require_ids_at(state["floor8_actor_ids"], FOREST_ELF_ESCAPE_CAVE)
         self._require_ids_at(self._frontline_ids(state), FOREST_ELF_ESCAPE_CAVE)
         self._require_ids_at(self._forest_ids(state), FOREST_ELF_ESCAPE_CAVE_MOUTH)
         if any(not self.runtime.actors[actor_id].alive for actor_id in self._forest_ids(state)):
-            raise ValueError("the peaceful standoff branch requires all Forest Elf pursuers to be alive")
+            raise ValueError("the peaceful local standoff branch requires all Forest Elf pursuers to be alive")
 
     def offer_restitution(
         self,
@@ -86,7 +86,7 @@ class Floor8CaveStandoffScenario:
             raise ValueError("there is no live restitution offer to accept")
         leader_id = self._forest_leader_id(state)
         if forest_elf_actor_id != leader_id:
-            raise ValueError("the Forest Elf pursuit-party leader must accept the settlement")
+            raise ValueError("the Forest Elf pursuit-party leader must accept the local settlement")
         self._require_ids_at(self._forest_ids(state), FOREST_ELF_ESCAPE_CAVE_MOUTH)
         offer = state["pending_restitution"]
         payer = self.runtime.actors[offer["payer_actor_id"]]
@@ -107,7 +107,9 @@ class Floor8CaveStandoffScenario:
         del state["pending_restitution"]
         travel_together(self.runtime, self._forest_ids(state), FOREST_ELF_SACRED_WOODS)
         for actor_id in self._frontline_ids(state):
-            self.runtime.actors[actor_id].metadata["floor8_forest_elf_claim_settled"] = "restitution"
+            actor = self.runtime.actors[actor_id]
+            actor.metadata["floor8_local_standoff_resolution"] = "restitution"
+            actor.metadata["floor8_local_standoff_resolved_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "standoff_resolved_restitution"
         return self.status(instance_id)
 
@@ -117,7 +119,7 @@ class Floor8CaveStandoffScenario:
             raise ValueError("there is no live restitution offer to reject")
         leader_id = self._forest_leader_id(state)
         if forest_elf_actor_id != leader_id:
-            raise ValueError("the Forest Elf pursuit-party leader must reject the settlement")
+            raise ValueError("the Forest Elf pursuit-party leader must reject the local settlement")
         self._require_ids_at(self._forest_ids(state), FOREST_ELF_ESCAPE_CAVE_MOUTH)
         state["last_rejected_restitution"] = {
             **state["pending_restitution"],
@@ -128,26 +130,26 @@ class Floor8CaveStandoffScenario:
         state["stage"] = "responders_inside_cave_standoff"
         return self.status(instance_id)
 
-    def surrender_incident_players_to_custody(self, instance_id: str, mediator_actor_id: str) -> dict:
+    def surrender_local_representatives_to_custody(self, instance_id: str, mediator_actor_id: str) -> dict:
         state = self._state(instance_id)
         self._require_live_standoff(state)
         if mediator_actor_id not in state["floor8_actor_ids"]:
-            raise ValueError("custody handoff must be mediated by an assigned Floor 8 responder")
+            raise ValueError("local custody handoff must be mediated by an assigned Floor 8 responder")
         mediator = self.runtime.actors[mediator_actor_id]
         if mediator.location_id != FOREST_ELF_ESCAPE_CAVE or not mediator.alive:
             raise ValueError("the custody mediator must be alive inside the cave")
 
-        frontline_ids = self._frontline_ids(state)
+        representative_ids = self._frontline_ids(state)
         forest_ids = self._forest_ids(state)
-        travel_together(self.runtime, frontline_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
-        travel_together(self.runtime, frontline_ids + forest_ids, FOREST_ELF_SACRED_WOODS)
-        travel_together(self.runtime, frontline_ids + forest_ids, SLUVA)
-        for actor_id in frontline_ids:
+        travel_together(self.runtime, representative_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        travel_together(self.runtime, representative_ids + forest_ids, FOREST_ELF_SACRED_WOODS)
+        travel_together(self.runtime, representative_ids + forest_ids, SLUVA)
+        for actor_id in representative_ids:
             actor = self.runtime.actors[actor_id]
             actor.metadata["forest_elf_custody"] = True
             actor.metadata["forest_elf_custody_started_at_ms"] = self.runtime.world.now_ms
             actor.metadata["forest_elf_custody_location_id"] = SLUVA
-        state["custody_actor_ids"] = list(frontline_ids)
+        state["custody_actor_ids"] = list(representative_ids)
         state["custody_mediator_actor_id"] = mediator_actor_id
         state["custody_started_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "standoff_resolved_custody"
@@ -161,7 +163,7 @@ class Floor8CaveStandoffScenario:
             raise ValueError("cave-mouth combat needs at least one player combatant")
         eligible = set(state["floor8_actor_ids"]) | set(self._frontline_ids(state))
         if any(actor_id not in eligible for actor_id in player_ids):
-            raise ValueError("cave-mouth combatants must come from responders or the incident frontline parties")
+            raise ValueError("cave-mouth combatants must come from responders or the materialized local representatives")
         self._require_ids_at(player_ids, FOREST_ELF_ESCAPE_CAVE)
         if any(not self.runtime.actors[actor_id].alive for actor_id in player_ids):
             raise ValueError("defeated players cannot start the cave-mouth combat branch")
@@ -212,14 +214,24 @@ class Floor8CaveStandoffScenario:
         payload = self.emergency.status(instance_id)
         stage = state["stage"]
         if stage == "responders_inside_cave_standoff":
-            actions = ["offer_restitution", "surrender_incident_players_to_custody", "start_cave_mouth_combat"]
+            actions = ["offer_restitution", "surrender_local_representatives_to_custody", "start_cave_mouth_combat"]
         elif stage == "restitution_offered":
             actions = ["accept_restitution", "reject_restitution"]
         elif stage == "cave_mouth_combat":
             actions = ["ordinary_combat", "resolve_cave_mouth_combat"]
         else:
             actions = []
+        outcomes = {
+            "standoff_resolved_restitution": "restitution_accepted_by_local_pursuit_party",
+            "standoff_resolved_custody": "materialized_representatives_in_sluva_custody",
+            "standoff_resolved_forest_elves_defeated": "local_forest_elf_pursuit_party_defeated",
+            "cave_mouth_combat_player_side_defeated": "selected_local_player_combatants_defeated",
+        }
         payload["standoff_available_actions"] = actions
+        payload["local_standoff_resolution"] = {
+            "scope": payload["local_materialization"]["resolution_scope"],
+            "outcome": outcomes.get(stage),
+        }
         return payload
 
 
