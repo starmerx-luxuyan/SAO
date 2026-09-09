@@ -25,6 +25,7 @@ class Floor4BicepsScenario:
         CORE_LOOT_TABLES[definition.loot_table_id] = AINCRAD_MONSTER_LOOT_TABLES[
             definition.loot_table_id
         ]
+        runtime.register_defeat_hook(self._on_defeat)
 
     def _instances(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor4_biceps_instances", {})
@@ -34,6 +35,15 @@ class Floor4BicepsScenario:
             return self._instances()[instance_id]
         except KeyError as exc:
             raise KeyError(f"unknown Biceps Archelon instance: {instance_id}") from exc
+
+    def _on_defeat(self, encounter, target, killer_id: str | None) -> None:
+        for state in self._instances().values():
+            if state["boss_id"] != target.actor_id or state["stage"] != "battle":
+                continue
+            state["stage"] = "cleared"
+            state["cleared_at_ms"] = self.runtime.world.now_ms
+            state["last_attack_player_id"] = killer_id
+            self.runtime.world.global_flags[CLEAR_FLAG] = True
 
     def start_raid(self, player_ids: list[str]) -> dict:
         players = list(dict.fromkeys(player_ids))
@@ -106,21 +116,6 @@ class Floor4BicepsScenario:
         self._instances()[instance_id] = state
         return self.status(instance_id)
 
-    def _sync_clear(self, state: dict) -> None:
-        boss = self.runtime.actors[state["boss_id"]]
-        if boss.alive or state["stage"] == "cleared":
-            return
-        encounter = self.runtime.encounters[state["encounter_id"]]
-        killer_id = None
-        for event in reversed(encounter.events):
-            if event.event_type == "defeated" and event.target_id == boss.actor_id:
-                killer_id = event.actor_id
-                break
-        state["stage"] = "cleared"
-        state["cleared_at_ms"] = self.runtime.world.now_ms
-        state["last_attack_player_id"] = killer_id
-        self.runtime.world.global_flags[CLEAR_FLAG] = True
-
     def ram_abdomen(self, instance_id: str, actor_id: str) -> dict:
         state = self._instance(instance_id)
         encounter = self.runtime.encounters[state["encounter_id"]]
@@ -132,7 +127,6 @@ class Floor4BicepsScenario:
         if not gondola or not gondola.get("ram_installed"):
             raise ValueError("a gondola with the Fire-Bear ram is required")
         if not boss.alive:
-            self._sync_clear(state)
             return self.status(instance_id)
         if boss.hp / boss.max_hp > 0.10:
             raise ValueError("the abdomen ram finisher is available during Biceps's sub-10% spin preparation")
@@ -152,12 +146,10 @@ class Floor4BicepsScenario:
         self.runtime.advance_encounter(encounter.encounter_id, RAM_ACTION_MS)
         if not boss.alive:
             self.runtime._resolve_defeat(encounter, boss, actor_id)
-        self._sync_clear(state)
         return self.status(instance_id)
 
     def status(self, instance_id: str) -> dict:
         state = self._instance(instance_id)
-        self._sync_clear(state)
         boss = self.runtime.actors[state["boss_id"]]
         bar_hp = boss.max_hp / 2
         remaining = boss.hp
