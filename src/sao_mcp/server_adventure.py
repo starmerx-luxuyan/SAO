@@ -168,14 +168,14 @@ def register_adventure_tools(mcp, runtime) -> None:
         """List known persistent NPCs, optionally restricted to one location."""
         rows = []
         for npc_id, definition in runtime.npcs.definitions.items():
-            state = runtime.npcs.states[npc_id]
-            if location_id is not None and state.location_id != location_id:
+            resolved_location_id = runtime.npc_location_id(npc_id)
+            if location_id is not None and resolved_location_id != location_id:
                 continue
             rows.append(
                 {
                     "id": npc_id,
                     "name": definition.name,
-                    "locationId": state.location_id,
+                    "locationId": resolved_location_id,
                     "roles": list(definition.roles),
                     "questIds": list(definition.quest_ids),
                     "provenance": asdict(definition.provenance),

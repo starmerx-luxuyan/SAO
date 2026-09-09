@@ -105,9 +105,28 @@ class NPCRuntime:
         now_ms: int,
         quests: QuestRuntime,
     ) -> NPCInteraction:
+        return self.interact_at(
+            actor_id,
+            npc_id,
+            actor_location_id=actor_location_id,
+            npc_location_id=self.states[npc_id].location_id,
+            now_ms=now_ms,
+            quests=quests,
+        )
+
+    def interact_at(
+        self,
+        actor_id: str,
+        npc_id: str,
+        *,
+        actor_location_id: str | None,
+        npc_location_id: str,
+        now_ms: int,
+        quests: QuestRuntime,
+    ) -> NPCInteraction:
         definition = self.definitions[npc_id]
         state = self.states[npc_id]
-        if actor_location_id != state.location_id:
+        if actor_location_id != npc_location_id:
             raise ValueError("actor and NPC are not at the same location")
         completed = quests.completed_by_actor.get(actor_id, set())
         active = quests.progress_by_actor.get(actor_id, {})
@@ -127,7 +146,7 @@ class NPCRuntime:
         return NPCInteraction(
             npc_id=npc_id,
             name=definition.name,
-            location_id=state.location_id,
+            location_id=npc_location_id,
             roles=definition.roles,
             available_quests=tuple(available),
             relationship=state.relationship_by_actor.get(actor_id, 0),
