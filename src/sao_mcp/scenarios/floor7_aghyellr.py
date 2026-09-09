@@ -203,14 +203,13 @@ class Floor7AghyellrScenario:
             nirrnir.hp = min(nirrnir.hp, poison_cap)
 
     def _sync_raid_world_time(self, state: dict) -> None:
-        encounter = self.runtime.encounters[state["encounter_id"]]
-        synced_ms = int(state["world_synced_encounter_ms"])
-        if encounter.time_ms < synced_ms:
-            raise RuntimeError("Aghyellr encounter time moved backwards")
-        delta = encounter.time_ms - synced_ms
-        if delta:
-            self.runtime.advance_world(delta)
-            state["world_synced_encounter_ms"] = encounter.time_ms
+        encounter_id = state["encounter_id"]
+        encounter = self.runtime.encounters[encounter_id]
+        expected_world_ms = self.runtime.encounter_world_time_ms(encounter_id)
+        if self.runtime.world.now_ms < expected_world_ms:
+            raise RuntimeError("Aghyellr encounter advanced beyond the authoritative world clock")
+        if encounter.time_ms < 0:
+            raise RuntimeError("Aghyellr encounter time moved before zero")
         self._sync_nirrnir()
 
     def nirrnir_status(self) -> dict:
@@ -280,7 +279,6 @@ class Floor7AghyellrScenario:
             "blood_jars_total": AGHYELLR_BLOOD_JAR_COUNT,
             "blood_jars_collected": 0,
             "started_at_ms": self.runtime.world.now_ms,
-            "world_synced_encounter_ms": encounter.time_ms,
         }
         self._raids()[instance_id] = state
         return self.raid_status(instance_id)
@@ -424,9 +422,7 @@ class Floor7AghyellrScenario:
         remaining = max(0, int(pending["resolve_at_ms"]) - encounter.time_ms)
         if remaining:
             self.runtime.advance_encounter(encounter.encounter_id, remaining)
-            self.runtime.advance_world(remaining)
-            state["world_synced_encounter_ms"] = encounter.time_ms
-            self._sync_nirrnir()
+            self._sync_raid_world_time(state)
         looking_away = set(look_away_actor_ids or ())
         stunned: list[str] = []
         unaffected: list[str] = []

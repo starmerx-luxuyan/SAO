@@ -63,7 +63,8 @@ def test_floor7_nirrnir_civis_doleful_and_aghyellr_blood_drop_are_real_state():
     runtime.advance_encounter(encounter.encounter_id, 60_000)
     synced = aghyellr.raid_status(raid["instance_id"])
     assert runtime.world.now_ms - world_before_battle_minute == 60_000
-    assert synced["world_synced_encounter_ms"] == encounter.time_ms
+    assert runtime.encounter_world_time_ms(encounter.encounter_id) == runtime.world.now_ms
+    assert "world_synced_encounter_ms" not in synced
     assert synced["nirrnir"]["remaining_ms"] == remaining_before_battle_minute - 60_000
 
     hp_before_bridge = lead.hp

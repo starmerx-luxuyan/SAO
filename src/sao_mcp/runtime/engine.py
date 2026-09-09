@@ -231,6 +231,13 @@ class GameRuntime:
             anti_crystal=resolved_anti,
         )
         self.encounters[encounter.encounter_id] = encounter
+        self._append(
+            encounter,
+            "encounter_started",
+            None,
+            None,
+            world_started_at_ms=self.world.now_ms,
+        )
         return encounter
 
     def _equipped_weapon(self, actor: CombatantState) -> tuple[ItemInstance, object]:
@@ -251,6 +258,29 @@ class GameRuntime:
         event = CombatEvent(encounter.time_ms, event_type, actor_id, target_id, payload)
         encounter.events.append(event)
         return event
+
+    @staticmethod
+    def _encounter_world_started_at_ms(encounter: EncounterState) -> int:
+        anchors = [event for event in encounter.events if event.event_type == "encounter_started"]
+        if len(anchors) != 1:
+            raise RuntimeError(
+                f"encounter {encounter.encounter_id} must contain exactly one encounter_started event"
+            )
+        anchor = anchors[0]
+        if anchor.time_ms != 0:
+            raise RuntimeError(
+                f"encounter {encounter.encounter_id} start event must be at encounter time zero"
+            )
+        value = anchor.payload.get("world_started_at_ms")
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise RuntimeError(
+                f"encounter {encounter.encounter_id} has an invalid world_started_at_ms anchor"
+            )
+        return value
+
+    def encounter_world_time_ms(self, encounter_id: str) -> int:
+        encounter = self.encounters[encounter_id]
+        return self._encounter_world_started_at_ms(encounter) + encounter.time_ms
 
     def _reward_recipients(self, encounter: EncounterState, killer: CombatantState) -> list[CombatantState]:
         if not killer.party_id:
@@ -338,6 +368,7 @@ class GameRuntime:
     def _advance_encounter_to(self, encounter: EncounterState, new_time_ms: int) -> None:
         if new_time_ms <= encounter.time_ms:
             return
+        world_target_ms = self._encounter_world_started_at_ms(encounter) + new_time_ms
         elapsed = new_time_ms - encounter.time_ms
         encounter.time_ms = new_time_ms
         for actor in list(encounter.participants.values()):
@@ -358,6 +389,8 @@ class GameRuntime:
                     actor,
                     encounter.last_attacker_by_target.get(actor.actor_id),
                 )
+        if world_target_ms > self.world.now_ms:
+            self.advance_world(world_target_ms - self.world.now_ms)
 
     def advance_encounter(self, encounter_id: str, elapsed_ms: int) -> EncounterState:
         if elapsed_ms < 0:

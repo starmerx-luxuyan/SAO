@@ -10,7 +10,8 @@ from sao_mcp.rules.spatial import default_formation
 from sao_mcp.runtime.engine import GameRuntime
 
 
-SAVE_SCHEMA = "sao.aincrad.save.v1"
+SAVE_SCHEMA_V1 = "sao.aincrad.save.v1"
+SAVE_SCHEMA = "sao.aincrad.save.v2"
 ACTORS_ADAPTER = TypeAdapter(dict[str, CombatantState])
 WORLD_ADAPTER = TypeAdapter(WorldState)
 EVENTS_ADAPTER = TypeAdapter(list[CombatEvent])
@@ -24,9 +25,29 @@ def _tuplify(value: Any) -> Any:
     return value
 
 
+def _upgrade_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    schema = payload.get("schema")
+    if schema == SAVE_SCHEMA:
+        return payload
+    if schema == SAVE_SCHEMA_V1:
+        if payload.get("encounters"):
+            raise ValueError(
+                "sao.aincrad.save.v1 encounters cannot be migrated exactly because v1 did not record encounter world-time anchors"
+            )
+        upgraded = dict(payload)
+        upgraded["schema"] = SAVE_SCHEMA
+        return upgraded
+    raise ValueError(f"unsupported save schema: {schema!r}")
+
+
 def export_runtime(runtime: GameRuntime) -> str:
     encounters: dict[str, dict[str, Any]] = {}
     for encounter_id, encounter in runtime.encounters.items():
+        absolute_encounter_ms = runtime.encounter_world_time_ms(encounter_id)
+        if runtime.world.now_ms < absolute_encounter_ms:
+            raise RuntimeError(
+                f"world clock precedes encounter {encounter_id}: {runtime.world.now_ms} < {absolute_encounter_ms}"
+            )
         encounters[encounter_id] = {
             "encounter_id": encounter.encounter_id,
             "participant_ids": list(encounter.participants),
@@ -72,9 +93,7 @@ def export_runtime(runtime: GameRuntime) -> str:
 
 
 def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> GameRuntime:
-    payload = json.loads(payload_json)
-    if payload.get("schema") != SAVE_SCHEMA:
-        raise ValueError(f"unsupported save schema: {payload.get('schema')!r}")
+    payload = _upgrade_payload(json.loads(payload_json))
 
     if into is None:
         from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
@@ -119,6 +138,11 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         )
         default_formation(encounter)
         runtime.encounters[encounter_id] = encounter
+        absolute_encounter_ms = runtime.encounter_world_time_ms(encounter_id)
+        if runtime.world.now_ms < absolute_encounter_ms:
+            raise ValueError(
+                f"save world clock precedes encounter {encounter_id}: {runtime.world.now_ms} < {absolute_encounter_ms}"
+            )
 
     if "rng_state" in payload:
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
