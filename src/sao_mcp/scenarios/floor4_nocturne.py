@@ -9,9 +9,11 @@ from sao_mcp.corpus.floor4_nocturne import (
     CALDERA_LAKE,
     CETRANN_ID,
     FALLEN_HIDEOUT,
+    ICHTHYOID_TUBER_ID,
     KELPIE_ID,
     KELPIE_LEVEL,
     KELPIE_WEAPON_ID,
+    KYSARAH_TRANSFER_ROOM,
     LAKE_YOFEL,
     LAKE_YOFEL_FOG_BOUNDARY,
     LAKE_YOFEL_NORTH_BEACH,
@@ -19,11 +21,13 @@ from sao_mcp.corpus.floor4_nocturne import (
     RIVER_ULL,
     YOFEL_CASTLE,
 )
-from sao_mcp.corpus.floor6_elfwar import SACRED_KEY_BAG_ID
+from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
+from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_elfwar import LAVIK_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.group_travel import travel_together
+from sao_mcp.rules.inventory import transfer_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, night_rank, tame_lower_level_monster
 
 
@@ -37,7 +41,7 @@ KELPIE_WEST_SHORE_RETURN_MS = 12 * 60_000
 
 
 class Floor4NocturneScenario:
-    """Progressive 9: the five-key trail returns to Floor 4 and opens Lavik/Yofilis/Kelpie state."""
+    """Progressive 9: five-key pursuit, Lavik/Yofilis, Kelpie, optional Floor 8 split and Kysarah interception."""
 
     def __init__(self, runtime, floor7_campaign) -> None:
         if floor7_campaign.runtime is not runtime:
@@ -69,6 +73,9 @@ class Floor4NocturneScenario:
 
     def _group_actor_ids(self, state: dict) -> list[str]:
         return list(state["player_ids"]) + [state["kizmel_actor_id"]]
+
+    def _hideout_branch_actor_ids(self, state: dict) -> list[str]:
+        return list(state["hideout_actor_ids"]) + [state["kizmel_actor_id"]]
 
     def _require_actor_ids_at(self, actor_ids: list[str], location_id: str) -> None:
         wrong = [
@@ -229,6 +236,19 @@ class Floor4NocturneScenario:
             "lake_to_hideout_ms": None,
             "river_route_segments_ms": {},
             "fallen_hideout_reached_at_ms": None,
+            "floor8_emergency_instance_id": None,
+            "floor8_emergency_message_id": None,
+            "floor8_actor_ids": [],
+            "hideout_actor_ids": [],
+            "floor8_branch_stage": None,
+            "hideout_branch_stage": None,
+            "response_split_assigned_at_ms": None,
+            "kysarah_interception_actor_id": None,
+            "kysarah_interception_encounter_id": None,
+            "kysarah_interception_outcome": None,
+            "kysarah_truce_at_ms": None,
+            "kysarah_requested_item_template_id": None,
+            "kysarah_tuber_delivered_at_ms": None,
         }
         self._states()[instance_id] = state
         self._validate_inherited_keys(state)
@@ -492,13 +512,57 @@ class Floor4NocturneScenario:
         state["stage"] = "five_key_hideout_recon_on_lake"
         return self.status(instance_id)
 
-    def follow_river_ull_to_fallen_hideout(self, instance_id: str) -> dict:
+    def link_floor8_emergency(self, instance_id: str, emergency_instance_id: str, message_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "five_key_hideout_recon_on_lake":
-            raise ValueError("the Nocturne group must begin the hideout route from Lake Yofel")
+            raise ValueError("Floor 8 emergency can only interrupt the active Lake Yofel five-key route")
+        if state["floor8_emergency_instance_id"] is not None:
+            raise ValueError("this Nocturne instance already has a linked Floor 8 emergency")
+        message = self.runtime.communications.messages[message_id]
+        if message.recipient_id not in state["player_ids"]:
+            raise ValueError("linked Floor 8 message was not sent to a Nocturne player")
+        state["floor8_emergency_instance_id"] = emergency_instance_id
+        state["floor8_emergency_message_id"] = message_id
+        state["stage"] = "floor8_emergency_received"
+        return self.status(instance_id)
+
+    def assign_floor8_emergency_split(
+        self,
+        instance_id: str,
+        floor8_actor_ids: list[str],
+        hideout_actor_ids: list[str],
+    ) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "floor8_emergency_received":
+            raise ValueError("the linked Floor 8 emergency has not reached the response-split stage")
+        floor8_ids = list(dict.fromkeys(floor8_actor_ids))
+        hideout_ids = list(dict.fromkeys(hideout_actor_ids))
+        if set(floor8_ids) & set(hideout_ids):
+            raise ValueError("a player cannot be assigned to both Nocturne branches")
+        if set(floor8_ids) | set(hideout_ids) != set(state["player_ids"]):
+            raise ValueError("the Floor 8/hideout split must assign every Nocturne player exactly once")
+        state["floor8_actor_ids"] = floor8_ids
+        state["hideout_actor_ids"] = hideout_ids
+        state["floor8_branch_stage"] = "departing_floor4" if floor8_ids else "no_responder"
+        state["hideout_branch_stage"] = "on_lake"
+        state["response_split_assigned_at_ms"] = self.runtime.world.now_ms
+        state["stage"] = "parallel_nocturne_branches"
+        return self.status(instance_id)
+
+    def follow_river_ull_to_fallen_hideout(self, instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] == "five_key_hideout_recon_on_lake":
+            group = self._group_actor_ids(state)
+            branch_mode = False
+        elif state["stage"] == "parallel_nocturne_branches":
+            if state["hideout_branch_stage"] != "on_lake":
+                raise ValueError("the hideout branch has already left Lake Yofel or already reached the hideout")
+            group = self._hideout_branch_actor_ids(state)
+            branch_mode = True
+        else:
+            raise ValueError("the Nocturne sacred-key route is not ready to leave Lake Yofel")
         self._validate_inherited_keys(state)
-        group = self._group_actor_ids(state)
-        self._require_group_at(state, LAKE_YOFEL)
+        self._require_actor_ids_at(group, LAKE_YOFEL)
 
         river = travel_together(self.runtime, group, RIVER_ULL)
         caldera = travel_together(self.runtime, group, CALDERA_LAKE)
@@ -516,7 +580,130 @@ class Floor4NocturneScenario:
         state["river_route_segments_ms"] = segments
         state["lake_to_hideout_ms"] = total
         state["fallen_hideout_reached_at_ms"] = self.runtime.world.now_ms
-        state["stage"] = "floor4_fallen_hideout_reached"
+        if branch_mode:
+            state["hideout_branch_stage"] = "floor4_fallen_hideout_reached"
+        else:
+            state["stage"] = "floor4_fallen_hideout_reached"
+        return self.status(instance_id)
+
+    def trigger_kysarah_interception(self, instance_id: str, actor_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "parallel_nocturne_branches":
+            raise ValueError("Kysarah interception belongs to an assigned Floor 8 response branch")
+        if actor_id not in state["floor8_actor_ids"]:
+            raise ValueError("Kysarah interception actor must be assigned to the Floor 8 response branch")
+        if state["floor8_branch_stage"] != "departing_floor4":
+            raise ValueError("the Floor 8 branch is not in its Floor 4 departure phase")
+        actor = self.runtime.actors[actor_id]
+        if actor.location_id != "floor_4_labyrinth":
+            raise ValueError("the Kysarah interception occurs in the Floor 4 Labyrinth")
+        self._validate_inherited_keys(state)
+        bag_owner = self.runtime.actors[state["four_key_bag_owner_id"]]
+        if bag_owner.metadata.get("npc_definition_id") != KYSARAH_ID:
+            raise ValueError("Kysarah no longer owns the four-key bag, so this interception cannot occur")
+        if not bag_owner.alive:
+            raise ValueError("Kysarah is not alive for the interception")
+        bag_owner.location_id = "floor_4_labyrinth"
+        encounter = self.runtime.start_encounter(
+            [actor_id, bag_owner.actor_id],
+            zone_id="floor_4_labyrinth",
+            safe_zone=False,
+        )
+        state["kysarah_interception_actor_id"] = bag_owner.actor_id
+        state["kysarah_interception_encounter_id"] = encounter.encounter_id
+        state["floor8_branch_stage"] = "kysarah_interception"
+        return self.status(instance_id)
+
+    def resolve_kysarah_falhari_truce(self, instance_id: str, actor_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "parallel_nocturne_branches" or state["floor8_branch_stage"] != "kysarah_interception":
+            raise ValueError("there is no active Kysarah interception to resolve by Falhari truce")
+        if actor_id != state["floor7_civis_actor_id"] or actor_id not in state["floor8_actor_ids"]:
+            raise ValueError("the Falhari truce route requires the Floor 7 Civis on the Floor 8 branch")
+        actor = self.runtime.actors[actor_id]
+        if night_rank(actor) != CIVIS_NOCTE:
+            raise ValueError("the Floor 7 Civis actor no longer has Civis Nocte rank")
+        encounter = self.runtime.encounters[state["kysarah_interception_encounter_id"]]
+        kysarah = self.runtime.actors[state["kysarah_interception_actor_id"]]
+        if not actor.alive or not kysarah.alive:
+            raise ValueError("both combatants must still be alive for the Falhari truce")
+        if actor.location_id != "floor_4_labyrinth" or kysarah.location_id != "floor_4_labyrinth":
+            raise ValueError("both combatants must still be in the Floor 4 Labyrinth")
+
+        sword_id = state["doleful_nocturne_instance_id"]
+        if actor.equipment.get("weapon") != sword_id or sword_id not in actor.inventory:
+            raise ValueError("the exact Floor 7 Doleful Nocturne instance must be equipped")
+        sword = actor.inventory[sword_id]
+        if sword.template_id != SWORD_OF_VOLUPTA_ID:
+            raise RuntimeError("the recorded Doleful Nocturne instance has the wrong weapon template")
+        if sword.metadata.get("true_identity_revealed") is not True or sword.metadata.get("true_name") != "Doleful Nocturne":
+            raise ValueError("the equipped Sword of Volupta has not actually revealed its Doleful Nocturne identity")
+        if state["four_key_bag_instance_id"] not in kysarah.inventory:
+            raise RuntimeError("Kysarah no longer holds the inherited four-key bag during the truce")
+
+        encounter.threat.clear()
+        kysarah.location_id = KYSARAH_TRANSFER_ROOM
+        kysarah.metadata.update(
+            {
+                "progressive9_falhari_truce": True,
+                "falhari_truce_actor_id": actor_id,
+                "requested_item_template_id": ICHTHYOID_TUBER_ID,
+                "falhari_truce_at_ms": self.runtime.world.now_ms,
+            }
+        )
+        state["kysarah_interception_outcome"] = "falhari_truce"
+        state["kysarah_truce_at_ms"] = self.runtime.world.now_ms
+        state["kysarah_requested_item_template_id"] = ICHTHYOID_TUBER_ID
+        state["floor8_branch_stage"] = "kysarah_truce_resolved"
+        return self.status(instance_id)
+
+    def claim_four_key_bag_after_kysarah_defeat(self, instance_id: str, actor_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] != "parallel_nocturne_branches" or state["floor8_branch_stage"] != "kysarah_interception":
+            raise ValueError("the Kysarah encounter is not in the defeat-resolution state")
+        if actor_id not in state["floor8_actor_ids"]:
+            raise ValueError("only a Floor 8 branch player can recover the keys from this encounter")
+        encounter = self.runtime.encounters[state["kysarah_interception_encounter_id"]]
+        if actor_id not in encounter.participants or not self.runtime.actors[actor_id].alive:
+            raise ValueError("key claimant must be a living participant in the Kysarah encounter")
+        kysarah = self.runtime.actors[state["kysarah_interception_actor_id"]]
+        if kysarah.alive or kysarah.hp > 0:
+            raise ValueError("Kysarah has not been defeated")
+        bag_id = state["four_key_bag_instance_id"]
+        if bag_id not in kysarah.inventory:
+            raise RuntimeError("defeated Kysarah no longer has the four-key bag")
+        transfer_item(
+            kysarah,
+            self.runtime.actors[actor_id],
+            bag_id,
+            self.runtime.catalog,
+            allow_destination_overweight=True,
+        )
+        state["kysarah_interception_outcome"] = "kysarah_defeated_four_keys_recovered"
+        state["floor8_branch_stage"] = "four_keys_recovered"
+        self._validate_inherited_keys(state)
+        return self.status(instance_id)
+
+    def deliver_ichthyoid_tuber_to_kysarah(self, instance_id: str, actor_id: str, item_instance_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["kysarah_interception_outcome"] != "falhari_truce":
+            raise ValueError("Kysarah has not made the Ichthyoid tuber request")
+        actor = self.runtime.actors[actor_id]
+        kysarah = self.runtime.actors[state["kysarah_interception_actor_id"]]
+        if actor.location_id != KYSARAH_TRANSFER_ROOM or kysarah.location_id != KYSARAH_TRANSFER_ROOM:
+            raise ValueError("the player and Kysarah must meet in the hidden transfer room to hand over the tuber")
+        item = actor.inventory[item_instance_id]
+        if item.template_id != ICHTHYOID_TUBER_ID:
+            raise ValueError("item is not an Ichthyoid tuber")
+        transfer_item(
+            actor,
+            kysarah,
+            item_instance_id,
+            self.runtime.catalog,
+            allow_destination_overweight=True,
+        )
+        state["kysarah_tuber_delivered_at_ms"] = self.runtime.world.now_ms
+        kysarah.metadata["ichthyoid_tuber_received"] = True
         return self.status(instance_id)
 
     def status(self, instance_id: str) -> dict:
@@ -544,6 +731,18 @@ class Floor4NocturneScenario:
                 "nickname": kelpie.metadata.get("nickname"),
                 "water_walking": kelpie.metadata.get("water_walking"),
             }
+        kysarah_state = None
+        if state["kysarah_interception_actor_id"] is not None:
+            kysarah = self.runtime.actors[state["kysarah_interception_actor_id"]]
+            kysarah_state = {
+                "actor_id": kysarah.actor_id,
+                "hp": kysarah.hp,
+                "max_hp": kysarah.max_hp,
+                "alive": kysarah.alive,
+                "location_id": kysarah.location_id,
+                "owns_four_key_bag": state["four_key_bag_instance_id"] in kysarah.inventory,
+                "requested_item_template_id": kysarah.metadata.get("requested_item_template_id"),
+            }
         return {
             **state,
             "group_locations": group_locations,
@@ -551,6 +750,7 @@ class Floor4NocturneScenario:
             "yofilis_location_id": yofilis_state.location_id,
             "cetrann_location_id": cetrann_state.location_id,
             "kelpie": kelpie_state,
+            "kysarah": kysarah_state,
             "five_key_assets_intact": True,
             "next_stage": (
                 "use the active Floor 4 gate and existing roads to reach Lavik on Lake Yofel's west shore"
@@ -581,8 +781,12 @@ class Floor4NocturneScenario:
                 if state["stage"] == "return_yofilis_to_castle"
                 else "reassemble the full pursuit group and embark from Yofel Castle to resume the five-key investigation"
                 if state["stage"] == "five_key_hideout_recon_ready"
-                else "follow River Ull and the old Floor 4 waterways toward the submerged Fallen Elf hideout"
+                else "follow River Ull toward the Fallen Elf hideout, or allow the autonomous Floor 8 emergency to interrupt this route"
                 if state["stage"] == "five_key_hideout_recon_on_lake"
+                else "assign every player to either the Floor 8 emergency or the sacred-key hideout branch"
+                if state["stage"] == "floor8_emergency_received"
+                else "run the Floor 8 and hideout branches independently from their actual actor locations"
+                if state["stage"] == "parallel_nocturne_branches"
                 else None
             ),
         }
@@ -599,6 +803,7 @@ def install_floor4_nocturne_scenario(runtime, floor7_campaign) -> Floor4Nocturne
         LAKE_YOFEL_WEST_SHORE,
         LAKE_YOFEL_NORTH_BEACH,
         LAKE_YOFEL_FOG_BOUNDARY,
+        KYSARAH_TRANSFER_ROOM,
     }
     missing = sorted(required_locations - set(runtime.world_map.locations))
     if missing:
@@ -608,4 +813,6 @@ def install_floor4_nocturne_scenario(runtime, floor7_campaign) -> Floor4Nocturne
             raise RuntimeError(f"Progressive 9 NPC corpus was not loaded: {npc_id}")
     if KELPIE_WEAPON_ID not in runtime.catalog.weapons:
         raise RuntimeError("Morvarc'h natural weapon corpus was not loaded")
+    if ICHTHYOID_TUBER_ID not in runtime.catalog.items:
+        raise RuntimeError("Ichthyoid tuber corpus was not loaded")
     return Floor4NocturneScenario(runtime, floor7_campaign)

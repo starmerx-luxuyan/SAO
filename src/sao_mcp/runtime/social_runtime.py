@@ -91,8 +91,11 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 for duel_id in duel_ids
             ):
                 continue
+            actor = encounter.participants[actor_id]
             other_alive = any(
-                member_id != actor_id and member.alive
+                member_id != actor_id
+                and member.alive
+                and member.location_id == actor.location_id
                 for member_id, member in encounter.participants.items()
             )
             if other_alive:

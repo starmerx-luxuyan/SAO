@@ -2,17 +2,20 @@ from __future__ import annotations
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.floor4 import YOFILIS_ID
+from sao_mcp.corpus.loot import CORE_LOOT_TABLES
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS, MonsterDefinition
 from sao_mcp.corpus.world import LocationDefinition, TravelConnection
 from sao_mcp.domain.models import (
     DamageType,
     ItemKind,
+    ItemTemplate,
     Provenance,
     ProvenanceKind,
     WeaponClass,
     WeaponTemplate,
     ZoneKind,
 )
+from sao_mcp.rules.loot import LootEntry, LootTable
 from sao_mcp.rules.npcs import CORE_NPCS, NPCDefinition
 
 
@@ -20,6 +23,8 @@ PROGRESSIVE_9 = "Sword Art Online Progressive Volume 9: Nocturne of the Blue Ref
 CETRANN_ID = "npc_floor4_cetrann"
 KELPIE_ID = "morvarch_the_lake_kelpie"
 KELPIE_WEAPON_ID = "morvarch_kelpie_natural_attack"
+ICHTHYOID_CULTIVATOR_ID = "ichthyoid_cultivator"
+ICHTHYOID_TUBER_ID = "ichthyoid_tuber"
 
 LAKE_YOFEL = "floor_4_lake_yofel"
 RIVER_ULL = "floor_4_river_ull"
@@ -30,8 +35,10 @@ FALLEN_HIDEOUT = "floor_4_fallen_elf_hideout"
 LAKE_YOFEL_WEST_SHORE = "floor_4_lake_yofel_west_shore"
 LAKE_YOFEL_NORTH_BEACH = "floor_4_lake_yofel_north_beach"
 LAKE_YOFEL_FOG_BOUNDARY = "floor_4_lake_yofel_fog_boundary"
+KYSARAH_TRANSFER_ROOM = "floor_4_labyrinth_hidden_transfer_room"
 
 KELPIE_LEVEL = 27  # Simulation calibration: canon describes it as slightly below Kirito's overall ability.
+ICHTHYOID_LEVEL = 25  # Simulation calibration; identity/habitat/drop are canon-backed.
 
 
 def _canon(notes: str) -> Provenance:
@@ -95,6 +102,33 @@ def apply_floor4_nocturne_corpus(catalog: Catalog) -> Catalog:
         ),
     )
 
+    catalog.items.setdefault(
+        ICHTHYOID_TUBER_ID,
+        ItemTemplate(
+            template_id=ICHTHYOID_TUBER_ID,
+            name="Ichthyoid Tuber",
+            kind=ItemKind.FOOD,
+            weight=0.35,
+            stack_limit=20,
+            tags=("floor_4", "labyrinth", "ichthyoid_cultivator_drop", "kysarah_request"),
+            provenance=_inferred(
+                "Ichthyoid Cultivators in the Floor 4 Labyrinth drop a sweet-potato-like tuber. The compact English runtime name, weight and stack limit are simulation-facing choices."
+            ),
+        ),
+    )
+    CORE_LOOT_TABLES.setdefault(
+        "floor4_ichthyoid_cultivator",
+        LootTable(
+            table_id="floor4_ichthyoid_cultivator",
+            col_min=55,
+            col_max=90,
+            xp_min=220,
+            xp_max=330,
+            entries=(LootEntry(ICHTHYOID_TUBER_ID, 1.0),),
+            provenance="canon_tuber_drop_plus_simulation_col_xp",
+        ),
+    )
+
     catalog.weapons.setdefault(
         KELPIE_WEAPON_ID,
         WeaponTemplate(
@@ -132,6 +166,23 @@ def apply_floor4_nocturne_corpus(catalog: Catalog) -> Catalog:
             provenance=_inferred(
                 "Morvarc'h the Lake Kelpie is the blue horse-like field boss inhabiting Lake Yofel. "
                 "Its exact runtime level and HP factor are simulation; the Night-tameable flag exposes the Progressive 9 interaction through generic Night rules."
+            ),
+        ),
+    )
+    AINCRAD_MONSTERS.setdefault(
+        ICHTHYOID_CULTIVATOR_ID,
+        MonsterDefinition(
+            monster_id=ICHTHYOID_CULTIVATOR_ID,
+            name="Ichthyoid Cultivator",
+            floor_number=4,
+            level=ICHTHYOID_LEVEL,
+            location_id="floor_4_labyrinth",
+            hp_factor=1.15,
+            quest_kill_id=ICHTHYOID_CULTIVATOR_ID,
+            loot_table_id="floor4_ichthyoid_cultivator",
+            tags=("ichthyoid", "cultivator", "tuber_drop", "flee_at_half_hp"),
+            provenance=_inferred(
+                "The Ichthyoid Cultivator inhabits the Floor 4 Labyrinth, carries/cultivates the tuber requested in the Kysarah chapter, and attempts to flee when badly hurt. Exact level and HP are simulation calibration."
             ),
         ),
     )
@@ -181,6 +232,15 @@ def floor4_nocturne_locations() -> dict[str, LocationDefinition]:
                 "The approach to Yofel Castle passes through deep fog and an instanced boundary. Nocturne uses that fog together with stowed metal equipment for the Kelpie encounter."
             ),
         ),
+        KYSARAH_TRANSFER_ROOM: LocationDefinition(
+            KYSARAH_TRANSFER_ROOM,
+            4,
+            "Floor 4 Labyrinth - Hidden Transfer Room",
+            ZoneKind.LABYRINTH,
+            provenance=_inferred(
+                "Descriptive hidden room branching from the Floor 4 Labyrinth route used for the later Progressive 9 Fallen Elf transfer/interception sequence; the source does not provide a proper room name."
+            ),
+        ),
     }
 
 
@@ -199,4 +259,5 @@ def floor4_nocturne_connections() -> tuple[TravelConnection, ...]:
         TravelConnection(LAKE_YOFEL, RIVER_ULL, 10 * 60_000, provenance=whole_route),
         TravelConnection(RIVER_ULL, CALDERA_LAKE, 10 * 60_000, provenance=whole_route),
         TravelConnection(CALDERA_LAKE, BEAR_FOREST, 18 * 60_000, provenance=whole_route),
+        TravelConnection("floor_4_labyrinth", KYSARAH_TRANSFER_ROOM, 2 * 60_000, provenance=local),
     )

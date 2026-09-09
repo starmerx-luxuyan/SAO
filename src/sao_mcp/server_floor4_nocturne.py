@@ -95,10 +95,30 @@ def register_floor4_nocturne_tools(mcp, nocturne) -> None:
 
     @mcp.tool()
     def follow_progressive9_river_ull_to_hideout(instance_id: str) -> str:
-        """Follow Lake Yofel, River Ull, the caldera and Bear Forest route to the existing submerged Floor 4 Fallen Elf hideout."""
+        """Move the active sacred-key branch through Lake Yofel, River Ull, the caldera and Bear Forest to the existing submerged Fallen Elf hideout."""
         return _json(nocturne.follow_river_ull_to_fallen_hideout(instance_id))
 
     @mcp.tool()
+    def trigger_progressive9_kysarah_interception(instance_id: str, actor_id: str) -> str:
+        """When an assigned Floor 8 responder physically enters the Floor 4 Labyrinth, reuse the real Kysarah four-key-bag holder and start an ordinary encounter."""
+        return _json(nocturne.trigger_kysarah_interception(instance_id, actor_id))
+
+    @mcp.tool()
+    def resolve_progressive9_kysarah_falhari_truce(instance_id: str, actor_id: str) -> str:
+        """Optional live branch: if the Floor 7 Civis still equips the exact revealed Doleful Nocturne, resolve the Falhari debt truce and record Kysarah's real Ichthyoid-tuber request."""
+        return _json(nocturne.resolve_kysarah_falhari_truce(instance_id, actor_id))
+
+    @mcp.tool()
+    def claim_progressive9_four_key_bag_after_kysarah_defeat(instance_id: str, actor_id: str) -> str:
+        """Divergent live branch: after ordinary encounter combat actually defeats Kysarah, transfer her real four-sacred-key bag to the living claimant."""
+        return _json(nocturne.claim_four_key_bag_after_kysarah_defeat(instance_id, actor_id))
+
+    @mcp.tool()
+    def deliver_progressive9_ichthyoid_tuber(instance_id: str, actor_id: str, item_instance_id: str) -> str:
+        """After obtaining a real Ichthyoid Cultivator tuber through ordinary play, transfer that exact item instance to Kysarah at the hidden transfer room."""
+        return _json(nocturne.deliver_ichthyoid_tuber_to_kysarah(instance_id, actor_id, item_instance_id))
+
+    @mcp.tool()
     def get_progressive9_nocturne_state(instance_id: str) -> str:
-        """Inspect inherited key assets, Lavik/Yofilis/Cetrann state, exact stowed equipment, Morvarc'h control and Floor 4 route progress."""
+        """Inspect inherited key assets, Lavik/Yofilis/Cetrann, Morvarc'h, branch split, Kysarah encounter and Floor 4 route progress."""
         return _json(nocturne.status(instance_id))

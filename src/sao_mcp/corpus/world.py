@@ -117,6 +117,11 @@ def build_world_map_catalog() -> WorldMapCatalog:
         floor7_connections,
         floor7_locations,
     )
+    from sao_mcp.corpus.floor8_world import (
+        FLOOR8_MAIN_SETTLEMENT,
+        floor8_connections,
+        floor8_locations,
+    )
     from sao_mcp.corpus.low_floors import (
         LOW_FLOOR_MAIN_SETTLEMENTS,
         low_floor_connections,
@@ -186,6 +191,7 @@ def build_world_map_catalog() -> WorldMapCatalog:
         settlement = (
             LOW_FLOOR_MAIN_SETTLEMENTS.get(floor)
             or (FLOOR7_MAIN_SETTLEMENT if floor == 7 else None)
+            or (FLOOR8_MAIN_SETTLEMENT if floor == 8 else None)
             or _CANON_MAIN_SETTLEMENTS.get(floor)
         )
         if settlement:
@@ -232,6 +238,8 @@ def build_world_map_catalog() -> WorldMapCatalog:
     connections.extend(floor4_nocturne_connections())
     locations.update(floor7_locations())
     connections.extend(floor7_connections())
+    locations.update(floor8_locations())
+    connections.extend(floor8_connections())
 
     # Canon player-run shops are real world nodes rather than lore-only labels. The short in-city
     # travel times below are simulation conveniences; shop identity and floor/city are canon.
