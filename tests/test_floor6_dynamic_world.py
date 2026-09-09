@@ -7,6 +7,11 @@ from sao_mcp.corpus.floor6_world import (
 from sao_mcp.rules.world import DYNAMIC_CONNECTION_IDS_FLAG, unlock_dynamic_world_connection
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
+from sao_mcp.scenarios.floor6_elfwar import install_floor6_elfwar_scenario
+from sao_mcp.scenarios.floor6_irrational_cube import install_floor6_irrational_cube_scenario
+from sao_mcp.scenarios.floor6_south import install_floor6_south_scenario
+from sao_mcp.scenarios.floor6_stachion import install_floor6_stachion_scenario
+from sao_mcp.scenarios.floor6_trials import install_floor6_trials_scenario
 
 
 DYNAMIC_IDS = (
@@ -48,6 +53,21 @@ DYNAMIC_ENDPOINTS = {
 
 def _edge_pairs(runtime) -> set[tuple[str, str]]:
     return {(edge.from_location_id, edge.to_location_id) for edge in runtime.world_map.connections}
+
+
+def test_floor6_scenario_installation_does_not_seed_world_geometry():
+    runtime = HousingAincradRuntime(seed=72)
+    locations_before = dict(runtime.world_map.locations)
+    connections_before = tuple(runtime.world_map.connections)
+
+    install_floor6_stachion_scenario(runtime)
+    install_floor6_trials_scenario(runtime)
+    install_floor6_elfwar_scenario(runtime)
+    install_floor6_south_scenario(runtime)
+    install_floor6_irrational_cube_scenario(runtime)
+
+    assert runtime.world_map.locations == locations_before
+    assert runtime.world_map.connections == connections_before
 
 
 def test_floor6_static_geometry_is_base_world_and_dynamic_routes_persist():
