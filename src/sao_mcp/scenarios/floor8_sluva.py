@@ -355,26 +355,18 @@ class Floor8SluvaJusticeScenario:
         if disposition in {"commuted", "pardon"} and not docket["mitigation"]:
             raise ValueError("commutation or pardon requires an actual mitigation action on this docket")
 
-        sentences = {}
         if disposition == "strict":
-            for actor_id in custody_ids:
-                sentence = "execution_ordered" if actor_id == principal_actor_id else "imprisonment_ordered"
-                actor = self.runtime.actors[actor_id]
-                actor.metadata["forest_elf_sentence"] = sentence
-                sentences[actor_id] = sentence
+            sentences = {
+                actor_id: "execution_ordered" if actor_id == principal_actor_id else "imprisonment_ordered"
+                for actor_id in custody_ids
+            }
             state["stage"] = "sluva_disposition_strict"
         elif disposition == "commuted":
-            for actor_id in custody_ids:
-                actor = self.runtime.actors[actor_id]
-                actor.metadata["forest_elf_sentence"] = "imprisonment_ordered"
-                sentences[actor_id] = "imprisonment_ordered"
+            sentences = {actor_id: "imprisonment_ordered" for actor_id in custody_ids}
             state["stage"] = "sluva_disposition_commuted"
         else:
             self._release_custody(state, resolution="sluva_explicit_pardon")
-            for actor_id in custody_ids:
-                actor = self.runtime.actors[actor_id]
-                actor.metadata["forest_elf_sentence"] = "pardoned"
-                sentences[actor_id] = "pardoned"
+            sentences = {actor_id: "pardoned" for actor_id in custody_ids}
             state["stage"] = "sluva_disposition_pardon"
 
         docket["status"] = "disposed"
@@ -401,6 +393,12 @@ class Floor8SluvaJusticeScenario:
             guild_id: faction_standing(self.runtime.world, guild_id, FOREST_ELVES)
             for guild_id in docket["guild_ids"]
         }
+        disposition = docket["disposition"]
+        sentences = (
+            dict(disposition["sentences"])
+            if disposition is not None
+            else {actor_id: None for actor_id in docket["custody_actor_ids"]}
+        )
         payload.update(
             {
                 "sluva_justice_available": True,
@@ -418,10 +416,7 @@ class Floor8SluvaJusticeScenario:
                     actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_custody") is True
                     for actor_id in docket["custody_actor_ids"]
                 },
-                "sentences": {
-                    actor_id: self.runtime.actors[actor_id].metadata.get("forest_elf_sentence")
-                    for actor_id in docket["custody_actor_ids"]
-                },
+                "sentences": sentences,
                 "arbiter_location_id": self.runtime.actors[docket["arbiter_actor_id"]].location_id,
             }
         )
