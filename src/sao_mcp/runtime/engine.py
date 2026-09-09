@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 
 from sao_mcp.corpus.canon_seed import apply_canon_seed
@@ -68,7 +69,14 @@ class GameRuntime:
         self.npcs = NPCRuntime()
         self.actors: dict[str, CombatantState] = {}
         self.encounters: dict[str, EncounterState] = {}
+        self.defeat_hooks: list[Callable[[EncounterState, CombatantState, str | None], None]] = []
         self.rng = random.Random(seed)
+
+    def register_defeat_hook(
+        self,
+        hook: Callable[[EncounterState, CombatantState, str | None], None],
+    ) -> None:
+        self.defeat_hooks.append(hook)
 
     def create_character(
         self,
@@ -358,13 +366,13 @@ class GameRuntime:
             return
         target.metadata["defeat_resolved"] = True
         self._append(encounter, "defeated", killer_id, target.actor_id)
-        if target.kind not in (EntityKind.MONSTER, EntityKind.BOSS) or not killer_id:
-            return
-        killer = encounter.participants.get(killer_id)
-        if killer is None or killer.kind is not EntityKind.PLAYER:
-            return
-        self._credit_quest_kill(encounter, target, killer)
-        self._grant_defeat_rewards(encounter, target, killer)
+        if target.kind in (EntityKind.MONSTER, EntityKind.BOSS) and killer_id:
+            killer = encounter.participants.get(killer_id)
+            if killer is not None and killer.kind is EntityKind.PLAYER:
+                self._credit_quest_kill(encounter, target, killer)
+                self._grant_defeat_rewards(encounter, target, killer)
+        for hook in tuple(self.defeat_hooks):
+            hook(encounter, target, killer_id)
 
     def _advance_encounter_to(self, encounter: EncounterState, new_time_ms: int) -> None:
         if new_time_ms <= encounter.time_ms:
