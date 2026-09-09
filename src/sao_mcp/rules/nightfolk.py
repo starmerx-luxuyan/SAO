@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sao_mcp.domain.models import CombatantState
+from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 
 
 CIVIS_NOCTE = "civis_nocte"
@@ -31,6 +31,16 @@ class BloodFeedingResolution:
     civis_hp_after: int
     donor_hp_after: int
     donor_transformed: bool
+
+
+@dataclass(slots=True, frozen=True)
+class NightMonsterTamingResolution:
+    tamer_actor_id: str
+    monster_actor_id: str
+    tamer_level: int
+    monster_level: int
+    night_rank: str
+    tamed_at_ms: int
 
 
 def night_rank(actor: CombatantState) -> str | None:
@@ -121,6 +131,47 @@ def feed_civis_nocte(
         civis.hp,
         donor.hp,
         False,
+    )
+
+
+def tame_lower_level_monster(
+    tamer: CombatantState,
+    monster: CombatantState,
+    *,
+    now_ms: int,
+) -> NightMonsterTamingResolution:
+    rank = night_rank(tamer)
+    if rank is None:
+        raise ValueError("monster control requires a Night-kind actor")
+    if not tamer.alive or not monster.alive:
+        raise ValueError("both Night tamer and monster must be alive")
+    if tamer.location_id is None or tamer.location_id != monster.location_id:
+        raise ValueError("Night tamer and monster must be colocated")
+    if monster.kind not in {EntityKind.MONSTER, EntityKind.BOSS}:
+        raise ValueError("Night monster control can only target monsters or bosses")
+    if monster.metadata.get("night_tameable") is not True:
+        raise ValueError("this monster is not exposed as Night-tameable")
+    if monster.level >= tamer.level:
+        raise ValueError("Night monster control requires the monster to be lower level than the tamer")
+    if monster.metadata.get("night_tamed_by_actor_id") is not None:
+        raise ValueError("monster is already controlled by a Night-kind actor")
+
+    monster.metadata.update(
+        {
+            "night_tamed_by_actor_id": tamer.actor_id,
+            "night_tamed_by_rank": rank,
+            "night_tamed_at_ms": now_ms,
+            "night_tamed": True,
+        }
+    )
+    monster.cursor = CursorColor.YELLOW
+    return NightMonsterTamingResolution(
+        tamer.actor_id,
+        monster.actor_id,
+        tamer.level,
+        monster.level,
+        rank,
+        now_ms,
     )
 
 
