@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sao_mcp.domain.models import CursorColor, EntityKind
 from sao_mcp.rules.access import require_location_access
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.travel import has_surviving_colocated_outsider
 
 
 @dataclass(slots=True, frozen=True)
@@ -53,14 +54,7 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
     for encounter in runtime.encounters.values():
         if not member_ids.intersection(encounter.participants):
             continue
-        living_outsiders = [
-            actor_id
-            for actor_id, participant in encounter.participants.items()
-            if actor_id not in member_ids
-            and participant.alive
-            and participant.location_id == origin
-        ]
-        if living_outsiders:
+        if has_surviving_colocated_outsider(encounter, member_ids, origin):
             raise ValueError("group travel is unavailable while a live encounter has surviving colocated outsiders")
 
     if destination_id not in runtime.world_map.locations:
