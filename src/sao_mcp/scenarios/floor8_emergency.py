@@ -22,7 +22,10 @@ from sao_mcp.runtime.canonical_guilds import (
 )
 
 
-EMERGENCY_TEXT = "Floor 8 emergency: sacred Forest Elf trees were cut; frontline players fled into a cave."
+EMERGENCY_TEXT = (
+    "Floor 8 emergency: most DKB and ALS members are immobilized in a Forest Elf dispute "
+    "after a large living tree was felled in the Forest Elf capital area."
+)
 
 
 class Floor8ForestEmergencyScenario:
@@ -143,6 +146,7 @@ class Floor8ForestEmergencyScenario:
             {
                 "floor8_protected_tree_incident": True,
                 "frontline_incident_group_member": True,
+                "incident_representation_scope": "simulation_subset_of_reported_guild_majority",
                 "personal_identity_provenance": "simulation",
                 "guild_affiliation_provenance": "canon",
                 "sheltering_in_escape_cave": True,
@@ -211,12 +215,12 @@ class Floor8ForestEmergencyScenario:
             raise RuntimeError("Floor 8 incident actors were already materialized")
 
         als = [
-            self._make_incident_player("ALS Incident Frontliner A", ALS_GUILD_ID, 26),
-            self._make_incident_player("ALS Incident Frontliner B", ALS_GUILD_ID, 25),
+            self._make_incident_player("ALS Incident Representative A", ALS_GUILD_ID, 26),
+            self._make_incident_player("ALS Incident Representative B", ALS_GUILD_ID, 25),
         ]
         dkb = [
-            self._make_incident_player("DKB Incident Frontliner A", DKB_GUILD_ID, 27),
-            self._make_incident_player("DKB Incident Frontliner B", DKB_GUILD_ID, 26),
+            self._make_incident_player("DKB Incident Representative A", DKB_GUILD_ID, 27),
+            self._make_incident_player("DKB Incident Representative B", DKB_GUILD_ID, 26),
         ]
         als_party = self._create_party("party8_als_incident", als)
         dkb_party = self._create_party("party8_dkb_incident", dkb)
@@ -233,6 +237,19 @@ class Floor8ForestEmergencyScenario:
         incident["forest_elf_party_id"] = forest_party.party_id
         incident["forest_elf_actor_ids"] = [actor.actor_id for actor in forest_elves]
         incident["actors_materialized_at_ms"] = self.runtime.world.now_ms
+
+    def _guild_decision_authority(self, incident: dict) -> dict[str, dict]:
+        result: dict[str, dict] = {}
+        for guild_id in incident["affected_guild_ids"]:
+            guild = self.runtime.relationships.guilds[guild_id]
+            leader = self.runtime.actors[guild.leader_id]
+            result[guild_id] = {
+                "actor_id": leader.actor_id,
+                "name": leader.name,
+                "alive": leader.alive,
+                "location_id": leader.location_id,
+            }
+        return result
 
     def trigger_from_nocturne(self, nocturne_instance_id: str, recipient_actor_id: str) -> dict:
         if any(state["nocturne_instance_id"] == nocturne_instance_id for state in self._states().values()):
@@ -262,6 +279,15 @@ class Floor8ForestEmergencyScenario:
             "rendezvous_location_id": ACORN_SHOP,
             "incident": {
                 "location_id": FOREST_ELF_ESCAPE_CAVE,
+                "affected_guild_ids": [DKB_GUILD_ID, ALS_GUILD_ID],
+                "reported_affected_member_scope": "majority_of_each_guild",
+                "reported_trigger": {
+                    "kind": "felled_large_living_tree",
+                    "location_scope": "forest_elf_capital_area",
+                },
+                "report_provenance": "canon_inferred_progressive9_late_book_argo_report",
+                "frontline_representation_scope": "simulation_subset_of_reported_guild_majority",
+                "simulation_resolution_scope": "materialized_local_standoff_only",
                 "protected_trees_cut": True,
                 "forest_elf_pursuit_triggered": True,
                 "frontline_group_sheltering_in_cave": True,
@@ -271,6 +297,7 @@ class Floor8ForestEmergencyScenario:
                 "forest_elf_party_id": None,
                 "forest_elf_actor_ids": [],
                 "actors_materialized_at_ms": None,
+                "argo_briefing_confirmed_at_ms": None,
                 "sacred_woods_inspected_at_ms": None,
                 "cave_mouth_reached_at_ms": None,
                 "responders_entered_cave_at_ms": None,
@@ -337,6 +364,7 @@ class Floor8ForestEmergencyScenario:
         travel_together(self.runtime, state["floor8_actor_ids"], ACORN_SHOP)
         state["frieben_to_acorn_shop_ms"] = self.runtime.world.now_ms - started
         state["acorn_shop_rendezvous_at_ms"] = self.runtime.world.now_ms
+        state["incident"]["argo_briefing_confirmed_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "responders_briefed_at_acorn_shop"
         return self.status(instance_id)
 
@@ -365,7 +393,7 @@ class Floor8ForestEmergencyScenario:
             raise RuntimeError("Forest Elf pursuit actors left the protected woods before inspection")
         frontline = [self.runtime.actors[actor_id] for actor_id in incident["frontline_actor_ids"]]
         if any(actor.location_id != FOREST_ELF_ESCAPE_CAVE for actor in frontline):
-            raise RuntimeError("incident frontline actors are not sheltering inside the cave")
+            raise RuntimeError("materialized incident representatives are not sheltering inside the cave")
         incident["sacred_woods_inspected_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "sacred_woods_incident_confirmed"
         return self.status(instance_id)
@@ -418,6 +446,7 @@ class Floor8ForestEmergencyScenario:
                 "party_id": self.runtime.actors[actor_id].party_id,
                 "location_id": self.runtime.actors[actor_id].location_id,
                 "alive": self.runtime.actors[actor_id].alive,
+                "representation_scope": self.runtime.actors[actor_id].metadata["incident_representation_scope"],
             }
             for actor_id in incident["frontline_actor_ids"]
         }
@@ -435,10 +464,10 @@ class Floor8ForestEmergencyScenario:
             guild_id: {
                 "name": self.runtime.relationships.guilds[guild_id].name,
                 "leader_id": self.runtime.relationships.guilds[guild_id].leader_id,
-                "member_ids": list(self.runtime.relationships.guilds[guild_id].member_ids),
-                "storage_id": self.runtime.relationships.guilds[guild_id].storage_id,
+                "runtime_materialized_member_ids": list(self.runtime.relationships.guilds[guild_id].member_ids),
+                "reported_affected_member_scope": incident["reported_affected_member_scope"],
             }
-            for guild_id in (ALS_GUILD_ID, DKB_GUILD_ID)
+            for guild_id in incident["affected_guild_ids"]
         }
         return {
             **state,
@@ -464,6 +493,7 @@ class Floor8ForestEmergencyScenario:
             "frontline_actors": frontline_actors,
             "forest_elf_actors": forest_elf_actors,
             "clearing_guilds": guilds,
+            "guild_decision_authority": self._guild_decision_authority(incident),
             "frontline_parties": {
                 party_id: {
                     "leader_id": self.runtime.world.parties[party_id].leader_id,
@@ -491,13 +521,13 @@ class Floor8ForestEmergencyScenario:
                 if state["stage"] == "responders_at_frieben"
                 else "leave the Acorn Shop through Frieben and enter the outer managed forest toward the protected woods"
                 if state["stage"] == "responders_briefed_at_acorn_shop"
-                else "inspect the protected-woods damage and verify where each live incident party currently is"
+                else "inspect the protected-woods damage and the materialized local representatives without treating them as the full reported guild majorities"
                 if state["stage"] == "responders_at_sacred_woods"
                 else "follow the Forest Elf pursuit party to the escape-cave mouth"
                 if state["stage"] == "sacred_woods_incident_confirmed"
                 else "decide whether the responders enter the cave while Forest Elf pursuers remain outside"
                 if state["stage"] == "cave_mouth_standoff"
-                else "live standoff reached: frontline players are inside the cave and Forest Elf pursuers remain outside; negotiation, restitution or escalation is unresolved"
+                else "local standoff reached: materialized representatives are inside the cave and Forest Elf pursuers remain outside; the wider guild-scale crisis remains unresolved"
                 if state["stage"] == "responders_inside_cave_standoff"
                 else None
             ),

@@ -20,7 +20,7 @@ def _json(value: Any) -> str:
 def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
     @mcp.tool()
     def trigger_progressive9_floor8_forest_emergency(nocturne_instance_id: str, recipient_actor_id: str) -> str:
-        """Materialize Argo and Klein at the Acorn Shop, plus the already-existing ALS/DKB cave parties and Forest Elf pursuit party; send a real persistent friend message and link the Floor 8 incident to Nocturne."""
+        """Materialize Argo and Klein at the Acorn Shop plus a simulation 2+2 local representative cohort from the real ALS/DKB GuildStates and the Forest Elf pursuit party. Argo's report covers a wider majority-of-each-guild crisis; no exact total is fabricated."""
         return _json(emergency.trigger_from_nocturne(nocturne_instance_id, recipient_actor_id))
 
     @mcp.tool()
@@ -39,7 +39,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def meet_progressive9_argo_and_klein(instance_id: str) -> str:
-        """Walk the assigned responders from the Frieben Teleport Gate to the real Acorn Shop rendezvous where Argo and Klein are waiting."""
+        """Walk the assigned responders from the Frieben Teleport Gate to the real Acorn Shop rendezvous where Argo and Klein are waiting, and confirm Argo's majority-of-both-guilds incident briefing."""
         return _json(emergency.meet_argo_and_klein(instance_id))
 
     @mcp.tool()
@@ -49,7 +49,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def inspect_progressive9_sacred_woods_incident(instance_id: str) -> str:
-        """Confirm the already-materialized frontline parties are sheltering in the cave while the live Forest Elf pursuit party remains at the damaged protected woods."""
+        """Inspect the local materialized ALS/DKB representative cohort sheltering in the cave and the live Forest Elf pursuit party at the damaged woods. The 2+2 representatives are not treated as the full reported guild majorities."""
         return _json(emergency.inspect_sacred_woods_incident(instance_id))
 
     @mcp.tool()
@@ -59,7 +59,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def enter_progressive9_escape_cave(instance_id: str) -> str:
-        """Move only the responders into the cave to meet the ALS/DKB incident parties while the Forest Elf pursuers remain outside in an unresolved standoff."""
+        """Move only the responders into the cave to meet the local materialized ALS/DKB representatives while the Forest Elf pursuers remain outside in an unresolved standoff."""
         return _json(emergency.enter_escape_cave(instance_id))
 
     @mcp.tool()
@@ -69,32 +69,32 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         payer_actor_id: str,
         col_amount: int,
     ) -> str:
-        """Create an explicit Col restitution offer from a living player inside the cave. No money moves and no NPC accepts automatically."""
+        """Create an explicit Col restitution offer for the materialized local standoff from a living player inside the cave. No money moves and no NPC accepts automatically; the wider guild-scale crisis is not auto-resolved."""
         return _json(standoff.offer_restitution(instance_id, mediator_actor_id, payer_actor_id, col_amount))
 
     @mcp.tool()
     def accept_progressive9_cave_restitution(instance_id: str, forest_elf_actor_id: str) -> str:
-        """Have the actual Forest Elf pursuit-party leader accept the pending offer, transfer the exact Col, and withdraw the live pursuit party to the protected woods."""
+        """Have the actual Forest Elf pursuit-party leader accept the pending local offer, transfer the exact Col, and withdraw the live pursuit party to the protected woods. This resolves only the materialized local standoff."""
         return _json(standoff.accept_restitution(instance_id, forest_elf_actor_id))
 
     @mcp.tool()
     def reject_progressive9_cave_restitution(instance_id: str, forest_elf_actor_id: str) -> str:
-        """Have the actual Forest Elf pursuit-party leader reject the pending offer and restore the unresolved cave standoff without moving money."""
+        """Have the actual Forest Elf pursuit-party leader reject the pending local offer and restore the unresolved cave standoff without moving money."""
         return _json(standoff.reject_restitution(instance_id, forest_elf_actor_id))
 
     @mcp.tool()
     def surrender_progressive9_incident_players_to_custody(instance_id: str, mediator_actor_id: str) -> str:
-        """Resolve the standoff by moving every live ALS/DKB incident actor out of the cave and, together with the real Forest Elf pursuit party, through the protected woods into Sluva custody."""
+        """Resolve the materialized local standoff by moving its live ALS/DKB representative actors out of the cave and, with the real Forest Elf pursuit party, through the protected woods into Sluva custody. Unmaterialized members in Argo's wider report are not moved or sentenced."""
         return _json(standoff.surrender_incident_players_to_custody(instance_id, mediator_actor_id))
 
     @mcp.tool()
     def start_progressive9_sluva_hearing(instance_id: str, advocate_actor_id: str) -> str:
-        """Open the Sluva docket after the real custody branch reaches the Forest Elf capital; the living-tree charge carries canon-backed execution/imprisonment risk while exact procedure remains simulation."""
+        """Open the Sluva docket after the materialized custody branch reaches the Forest Elf capital; the living-tree charge carries canon-backed execution/imprisonment risk while exact procedure remains simulation."""
         return _json(sluva.open_hearing(instance_id, advocate_actor_id))
 
     @mcp.tool()
     def issue_progressive9_sluva_grave_judgment(instance_id: str, arbiter_actor_id: str) -> str:
-        """Have the authoritative Sluva arbiter recognize the grave baseline: principal execution risk and other-participant imprisonment risk, without auto-resolving either punishment."""
+        """Have the authoritative Sluva arbiter recognize the grave baseline for the materialized detainees: principal execution risk and other-participant imprisonment risk, without auto-resolving either punishment."""
         return _json(sluva.issue_grave_judgment(instance_id, arbiter_actor_id))
 
     @mcp.tool()
@@ -104,7 +104,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def perform_progressive9_sluva_restorative_service_mitigation(instance_id: str) -> str:
-        """Escort detainees under guard to the protected woods, spend the full restoration time, return them to Sluva, and record mitigation without releasing custody."""
+        """Escort the materialized detainees under guard to the protected woods, spend the full restoration time, return them to Sluva, and record mitigation without releasing custody."""
         return _json(sluva.perform_restorative_service_mitigation(instance_id))
 
     @mcp.tool()
@@ -114,7 +114,7 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         principal_actor_id: str,
         disposition: str,
     ) -> str:
-        """Issue strict, commuted, or pardon disposition. Strict records an execution order for the found principal and imprisonment orders for others but does not auto-kill; pardon is an explicit campaign deviation and requires mitigation."""
+        """Issue strict, commuted, or pardon disposition for the materialized detainees. Strict records an execution order for the found principal and imprisonment orders for others but does not auto-kill; pardon is an explicit campaign deviation and requires mitigation."""
         return _json(
             sluva.issue_disposition(
                 instance_id,
@@ -126,20 +126,20 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def start_progressive9_cave_mouth_combat(instance_id: str, player_combatant_ids: list[str]) -> str:
-        """Escalate the unresolved standoff: selected live responder/frontline players walk out to the cave mouth and enter an ordinary encounter with the real Forest Elf pursuers."""
+        """Escalate the local unresolved standoff: selected live responders or materialized representative players walk out to the cave mouth and enter an ordinary encounter with the real Forest Elf pursuers."""
         return _json(standoff.start_cave_mouth_combat(instance_id, player_combatant_ids))
 
     @mcp.tool()
     def resolve_progressive9_cave_mouth_combat(instance_id: str) -> str:
-        """After ordinary combat, resolve only when the real Forest Elf pursuit party or all selected player combatants are actually defeated."""
+        """After ordinary combat, resolve the local encounter only when the real Forest Elf pursuit party or all selected player combatants are actually defeated."""
         return _json(standoff.resolve_cave_mouth_combat(instance_id))
 
     @mcp.tool()
     def get_progressive9_floor8_emergency_state(instance_id: str) -> str:
-        """Inspect Argo/Klein rendezvous state, response branch, live PartyState actors, cave positions and any active restitution/custody/combat resolution state."""
+        """Inspect Argo/Klein rendezvous state, Argo's reported majority-of-both-guilds scope, real Lind/Kibaou GuildState decision authority, local materialized representatives, cave positions and any active local restitution/custody/combat resolution state."""
         return _json(standoff.status(instance_id))
 
     @mcp.tool()
     def get_progressive9_sluva_justice_state(instance_id: str) -> str:
-        """Inspect the grave Sluva docket, mitigation, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
+        """Inspect the local Sluva docket, mitigation, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
         return _json(sluva.status(instance_id))
