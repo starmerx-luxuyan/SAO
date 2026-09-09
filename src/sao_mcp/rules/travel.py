@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from sao_mcp.corpus.world import LocationDefinition, WorldMapCatalog
 from sao_mcp.domain.models import CombatantState, WorldState
+from sao_mcp.rules.access import require_location_access
 
 
 @dataclass(slots=True, frozen=True)
@@ -36,6 +37,7 @@ def travel(
     destination = catalog.locations[destination_id]
     if not world.floors[destination.floor_number].unlocked:
         raise ValueError("destination floor is not unlocked")
+    require_location_access(actor, destination_id)
 
     candidates = [
         edge
@@ -65,6 +67,7 @@ def teleport_to_active_gate(
     floor = world.floors[destination.floor_number]
     if not floor.unlocked or not floor.main_town_gate_active:
         raise ValueError("destination teleport gate is not active")
+    require_location_access(actor, destination_id)
     origin = actor.location_id
     newly_discovered = discover_location(world, actor, destination)
     return TravelResolution(origin, destination_id, 0, newly_discovered, teleport=True)

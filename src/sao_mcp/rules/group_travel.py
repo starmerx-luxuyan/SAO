@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sao_mcp.domain.models import CursorColor, EntityKind
+from sao_mcp.rules.access import require_location_access
 from sao_mcp.rules.quests import QuestObjectiveKind
 
 
@@ -56,6 +57,8 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
         raise ValueError("destination floor is not unlocked")
     if destination.safe_zone and any(actor.cursor is CursorColor.ORANGE for actor in actors):
         raise ValueError("Anti-Criminal Code settlement access is blocked for Orange Players")
+    for actor in actors:
+        require_location_access(actor, destination_id)
 
     candidates = [
         edge
