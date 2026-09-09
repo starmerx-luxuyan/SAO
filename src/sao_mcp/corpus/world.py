@@ -114,6 +114,11 @@ def build_world_map_catalog() -> WorldMapCatalog:
         floor4_nocturne_connections,
         floor4_nocturne_locations,
     )
+    from sao_mcp.corpus.floor6_world import (
+        FLOOR6_MAIN_SETTLEMENT,
+        floor6_connections,
+        floor6_locations,
+    )
     from sao_mcp.corpus.floor7_world import (
         FLOOR7_MAIN_SETTLEMENT,
         floor7_connections,
@@ -192,6 +197,7 @@ def build_world_map_catalog() -> WorldMapCatalog:
     for floor in range(2, 101):
         settlement = (
             LOW_FLOOR_MAIN_SETTLEMENTS.get(floor)
+            or (FLOOR6_MAIN_SETTLEMENT if floor == 6 else None)
             or (FLOOR7_MAIN_SETTLEMENT if floor == 7 else None)
             or (FLOOR8_MAIN_SETTLEMENT if floor == 8 else None)
             or _CANON_MAIN_SETTLEMENTS.get(floor)
@@ -238,6 +244,8 @@ def build_world_map_catalog() -> WorldMapCatalog:
     connections.extend(low_floor_connections())
     locations.update(floor4_nocturne_locations())
     connections.extend(floor4_nocturne_connections())
+    locations.update(floor6_locations())
+    connections.extend(floor6_connections())
     locations.update(floor7_locations())
     connections.extend(floor7_connections())
     locations.update(floor8_locations())
