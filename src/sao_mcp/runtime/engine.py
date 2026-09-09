@@ -42,7 +42,13 @@ from sao_mcp.rules.progression import (
 )
 from sao_mcp.rules.quests import QuestClaimResolution, QuestObjectiveKind, QuestProgress, QuestRuntime
 from sao_mcp.rules.social import add_party_member, add_raid_party, apply_unlawful_hostile_action
-from sao_mcp.rules.travel import TravelResolution, discover_location, teleport_to_active_gate, travel
+from sao_mcp.rules.travel import (
+    TravelResolution,
+    apply_teleport_to_gate,
+    discover_location,
+    require_active_teleport_gate,
+    travel,
+)
 from sao_mcp.rules.world import advance_world_time, defeat_floor_boss, make_aincrad_world
 
 
@@ -566,17 +572,19 @@ class GameRuntime:
         encounter_id: str | None = None,
     ) -> TravelResolution:
         actor = self.actors[actor_id]
-        destination = self.world_map.locations[destination_id]
-        floor = self.world.floors[destination.floor_number]
-        if not destination.teleport_gate or not floor.unlocked or not floor.main_town_gate_active:
-            raise ValueError("destination is not an active teleport gate")
+        destination = require_active_teleport_gate(
+            self.world,
+            actor,
+            destination_id,
+            self.world_map,
+        )
         template_id = actor.inventory[crystal_instance_id].template_id
         if template_id != "teleport_crystal":
             raise ValueError("item is not a teleport crystal")
         used = self.use_inventory_item(actor_id, crystal_instance_id, encounter_id=encounter_id)
         if not used.consumed:
             raise ValueError(used.reason or "teleport crystal could not be used")
-        resolution = teleport_to_active_gate(self.world, actor, destination_id, self.world_map)
+        resolution = apply_teleport_to_gate(self.world, actor, destination)
         if encounter_id and actor_id in self.encounters[encounter_id].participants:
             encounter = self.encounters[encounter_id]
             self._append(encounter, "teleport_escape", actor_id, actor_id, destination_id=destination_id)

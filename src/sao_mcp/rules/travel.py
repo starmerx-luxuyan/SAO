@@ -53,12 +53,12 @@ def travel(
     return TravelResolution(origin, destination_id, edge.travel_ms, newly_discovered)
 
 
-def teleport_to_active_gate(
+def require_active_teleport_gate(
     world: WorldState,
     actor: CombatantState,
     destination_id: str,
     catalog: WorldMapCatalog,
-) -> TravelResolution:
+) -> LocationDefinition:
     if actor.location_id is None:
         raise ValueError("actor has no current location")
     destination = catalog.locations[destination_id]
@@ -68,6 +68,26 @@ def teleport_to_active_gate(
     if not floor.unlocked or not floor.main_town_gate_active:
         raise ValueError("destination teleport gate is not active")
     require_location_access(actor, destination_id)
+    return destination
+
+
+def apply_teleport_to_gate(
+    world: WorldState,
+    actor: CombatantState,
+    destination: LocationDefinition,
+) -> TravelResolution:
+    if actor.location_id is None:
+        raise RuntimeError("teleport commit requires an actor with a prevalidated current location")
     origin = actor.location_id
     newly_discovered = discover_location(world, actor, destination)
-    return TravelResolution(origin, destination_id, 0, newly_discovered, teleport=True)
+    return TravelResolution(origin, destination.location_id, 0, newly_discovered, teleport=True)
+
+
+def teleport_to_active_gate(
+    world: WorldState,
+    actor: CombatantState,
+    destination_id: str,
+    catalog: WorldMapCatalog,
+) -> TravelResolution:
+    destination = require_active_teleport_gate(world, actor, destination_id, catalog)
+    return apply_teleport_to_gate(world, actor, destination)
