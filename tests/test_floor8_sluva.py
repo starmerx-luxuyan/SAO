@@ -5,6 +5,7 @@ from sao_mcp.corpus.floor8_world import ARBOREAL_ROUTE_TAGS, FOREST_ELF_SACRED_W
 from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
+from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
@@ -73,6 +74,7 @@ def _setup_custody(seed=241):
         actor.location_id = SLUVA
         actor.metadata["forest_elf_custody"] = True
         actor.metadata["forest_elf_custody_location_id"] = SLUVA
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = "forest_elf_custody"
         guild = guilds[guild_id]
         invite = runtime.invite_to_guild(guild_id, guild.leader_id, actor.actor_id)
         runtime.accept_guild_invite(invite.invite_id, actor.actor_id)
@@ -174,6 +176,10 @@ def test_sluva_principal_finding_is_explicit_before_strict_disposition():
     for actor in players[1:]:
         assert strict["sentences"][actor.actor_id] == "imprisonment_ordered"
     assert all("forest_elf_sentence" not in actor.metadata for actor in players)
+    assert all(
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        for actor in players
+    )
     assert all(strict["custody_active"][actor.actor_id] is True for actor in players)
     assert strict["sluva_justice"]["disposition"]["execution_not_auto_resolved"] is True
     assert strict["sentences"] == strict["sluva_justice"]["disposition"]["sentences"]
@@ -192,6 +198,10 @@ def test_sluva_principal_finding_is_explicit_before_strict_disposition():
     assert persisted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     assert persisted["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
     assert all("forest_elf_sentence" not in restored.actors[actor.actor_id].metadata for actor in players)
+    assert all(
+        restored.actors[actor.actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        for actor in players
+    )
     assert restored.actors[arbiter_id].col == RESTITUTION_COL
 
 
@@ -231,6 +241,10 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -10, DKB_GUILD_ID: -10}
     assert all(actor.location_id == SLUVA for actor in players + forest)
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
+    assert all(
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        for actor in players
+    )
     assert mitigated["sluva_case_scope"]["custody_actor_ids"] == [actor.actor_id for actor in players]
 
     finding = sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[1].actor_id)
@@ -242,5 +256,6 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     assert all(pardoned["sentences"][actor.actor_id] == "pardoned" for actor in players)
     assert pardoned["sentences"] == pardoned["sluva_justice"]["disposition"]["sentences"]
     assert all("forest_elf_sentence" not in actor.metadata for actor in players)
+    assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players)
     assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
     assert pardoned["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"

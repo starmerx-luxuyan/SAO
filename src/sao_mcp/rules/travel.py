@@ -7,6 +7,9 @@ from sao_mcp.domain.models import CombatantState, WorldState
 from sao_mcp.rules.access import require_location_access
 
 
+AUTONOMOUS_TRAVEL_RESTRICTION_KEY = "autonomous_travel_restriction"
+
+
 @dataclass(slots=True, frozen=True)
 class TravelResolution:
     from_location_id: str
@@ -25,6 +28,12 @@ def discover_location(world: WorldState, actor: CombatantState, location: Locati
     return not before
 
 
+def require_autonomous_travel(actor: CombatantState) -> None:
+    restriction = actor.metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY)
+    if restriction is not None:
+        raise ValueError(f"autonomous travel is restricted by {restriction}")
+
+
 def travel(
     world: WorldState,
     actor: CombatantState,
@@ -33,6 +42,7 @@ def travel(
 ) -> TravelResolution:
     if actor.location_id is None:
         raise ValueError("actor has no current location")
+    require_autonomous_travel(actor)
     if destination_id not in catalog.locations:
         raise KeyError(destination_id)
     destination = catalog.locations[destination_id]
@@ -68,6 +78,7 @@ def require_active_teleport_gate(
 ) -> LocationDefinition:
     if actor.location_id is None:
         raise ValueError("actor has no current location")
+    require_autonomous_travel(actor)
     destination = catalog.locations[destination_id]
     if not destination.teleport_gate:
         raise ValueError("destination has no teleport gate")

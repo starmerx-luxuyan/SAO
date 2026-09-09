@@ -1,3 +1,5 @@
+import pytest
+
 from sao_mcp.corpus.floor8_world import (
     ARBOREAL_ROUTE_TAGS,
     FOREST_ELF_ESCAPE_CAVE,
@@ -8,6 +10,7 @@ from sao_mcp.corpus.floor8_world import (
 )
 from sao_mcp.domain.models import CursorColor, DefenseMode, ItemInstance
 from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor8_emergency import install_floor8_forest_emergency_scenario
@@ -84,7 +87,6 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     runtime, nocturne, emergency, standoff, instance_id, responder = _make_live_standoff()
     state = emergency._state(instance_id)
     representative_ids = list(state["incident"]["frontline_actor_ids"])
-    forest_ids = list(state["incident"]["forest_elf_actor_ids"])
     forest_leader_id = runtime.world.parties[state["incident"]["forest_elf_party_id"]].leader_id
     forest_leader = runtime.actors[forest_leader_id]
     responder.col = 5_000
@@ -116,15 +118,21 @@ def test_cave_standoff_restitution_requires_explicit_offer_and_forest_elf_leader
     assert accepted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     withdrawal = accepted["accepted_restitution"]["withdrawal_route"]
     assert len(withdrawal) == 1
-    assert withdrawal[0]["actor_ids"] == forest_ids
+    assert withdrawal[0]["actor_ids"] == list(state["incident"]["forest_elf_actor_ids"])
     assert withdrawal[0]["from_location_id"] == FOREST_ELF_ESCAPE_CAVE_MOUTH
     assert withdrawal[0]["to_location_id"] == FOREST_ELF_SACRED_WOODS
     assert withdrawal[0]["elapsed_ms"] == 6 * 60_000
     assert withdrawal[0]["traversal_tags"] == list(ARBOREAL_ROUTE_TAGS)
     assert responder.col == 3_500
     assert forest_leader.col == leader_before + 1_500
-    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_SACRED_WOODS for actor_id in forest_ids)
-    assert all(runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE for actor_id in representative_ids)
+    assert all(
+        runtime.actors[actor_id].location_id == FOREST_ELF_SACRED_WOODS
+        for actor_id in state["incident"]["forest_elf_actor_ids"]
+    )
+    assert all(
+        runtime.actors[actor_id].location_id == FOREST_ELF_ESCAPE_CAVE
+        for actor_id in representative_ids
+    )
     assert all(
         runtime.actors[actor_id].metadata["floor8_local_standoff_resolution"] == "restitution"
         for actor_id in representative_ids
@@ -178,7 +186,30 @@ def test_cave_standoff_can_transfer_only_local_representatives_to_sluva_custody(
     assert set(result["custody_actor_ids"]) == set(representative_ids)
     assert all(runtime.actors[actor_id].location_id == SLUVA for actor_id in representative_ids + forest_ids)
     assert all(runtime.actors[actor_id].metadata["forest_elf_custody"] is True for actor_id in representative_ids)
+    assert all(
+        runtime.actors[actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == "forest_elf_custody"
+        for actor_id in representative_ids
+    )
     assert responder.location_id == FOREST_ELF_ESCAPE_CAVE
+
+    detainee = runtime.actors[representative_ids[0]]
+    blocked_at = runtime.world.now_ms
+    with pytest.raises(ValueError, match="autonomous travel is restricted by forest_elf_custody"):
+        runtime.travel_actor(detainee.actor_id, FOREST_ELF_SACRED_WOODS)
+    assert runtime.world.now_ms == blocked_at
+    assert detainee.location_id == SLUVA
+
+    crystal = ItemInstance(
+        instance_id=f"custody_crystal_{detainee.actor_id}",
+        template_id="teleport_crystal",
+        owner_id=detainee.actor_id,
+        quantity=1,
+    )
+    add_item(detainee, crystal, runtime.catalog, allow_overweight=True)
+    with pytest.raises(ValueError, match="autonomous travel is restricted by forest_elf_custody"):
+        runtime.teleport_actor(detainee.actor_id, crystal.instance_id, FRIEBEN)
+    assert detainee.location_id == SLUVA
+    assert detainee.inventory[crystal.instance_id].quantity == 1
 
 
 def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_local_encounter():

@@ -9,6 +9,7 @@ from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
+from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 
 
 FORMAL_CHARGE_STANDING_DELTA = -15
@@ -116,6 +117,7 @@ class Floor8SluvaJusticeScenario:
             actor.metadata["forest_elf_custody"] = False
             actor.metadata["forest_elf_custody_ended_at_ms"] = self.runtime.world.now_ms
             actor.metadata["forest_elf_custody_resolution"] = resolution
+            del actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY]
 
     def open_hearing(self, instance_id: str, advocate_actor_id: str) -> dict:
         state = self._state(instance_id)
