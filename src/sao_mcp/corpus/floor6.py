@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from sao_mcp.corpus.bosses import CORE_BOSS_ACTIONS, CORE_BOSSES, BossActionDefinition, BossDefinition, BossPhaseDefinition
-from sao_mcp.corpus.world import LocationDefinition, TravelConnection
-from sao_mcp.domain.models import DamageType, ItemKind, Provenance, ProvenanceKind, WeaponClass, WeaponTemplate, ZoneKind
+from sao_mcp.corpus.floor6_world import FLOOR6_MAIN_SETTLEMENT, floor6_connections, floor6_locations
+from sao_mcp.domain.models import DamageType, ItemKind, Provenance, ProvenanceKind, WeaponClass, WeaponTemplate
 
 
 PROGRESSIVE_5 = "Sword Art Online Progressive Volume 5: Canon of the Golden Rule (Start)"
@@ -27,133 +27,19 @@ def _sim(notes: str) -> Provenance:
 
 
 def apply_floor6_world_seed(world_map) -> None:
-    """Replace the functional Floor-6 placeholder town with verified Progressive locations."""
-    placeholder = "floor_6_main_town"
-    if placeholder in world_map.locations:
-        world_map.locations.pop(placeholder, None)
-        world_map.adjacency.pop(placeholder, None)
-        world_map.connections = tuple(
-            edge
-            for edge in world_map.connections
-            if edge.from_location_id != placeholder and edge.to_location_id != placeholder
-        )
-        for node_id, edges in list(world_map.adjacency.items()):
-            world_map.adjacency[node_id] = [
-                edge
-                for edge in edges
-                if edge.from_location_id != placeholder and edge.to_location_id != placeholder
-            ]
+    """Verify that the authoritative base world already contains the Floor 6 Progressive geometry."""
+    expected_locations = set(floor6_locations()) | {FLOOR6_MAIN_SETTLEMENT[0]}
+    missing_locations = sorted(expected_locations.difference(world_map.locations))
+    if missing_locations:
+        raise RuntimeError(f"base world is missing Floor 6 locations: {missing_locations}")
+    if "floor_6_main_town" in world_map.locations:
+        raise RuntimeError("base world still contains the obsolete Floor 6 placeholder settlement")
 
-    locations = {
-        "floor_6_stachion": LocationDefinition(
-            "floor_6_stachion",
-            6,
-            "Stachion",
-            ZoneKind.SAFE_TOWN,
-            safe_zone=True,
-            teleport_gate=True,
-            provenance=_canon(
-                "Main settlement of Floor 6 and the opening urban location of Canon of the Golden Rule; Stachion is characterised by puzzle mechanisms throughout the city.",
-                PROGRESSIVE_5,
-            ),
-        ),
-        "floor_6_stachion_puzzle_quarter": LocationDefinition(
-            "floor_6_stachion_puzzle_quarter",
-            6,
-            "Stachion Puzzle Quarter",
-            ZoneKind.SAFE_TOWN,
-            safe_zone=True,
-            provenance=_inferred(
-                "Descriptive runtime node grouping Stachion's canon puzzle-heavy urban content; this label is not a canon district proper name.",
-                PROGRESSIVE_5,
-            ),
-        ),
-        "floor_6_suribus": LocationDefinition(
-            "floor_6_suribus",
-            6,
-            "Suribus",
-            ZoneKind.SAFE_TOWN,
-            safe_zone=True,
-            provenance=_canon(
-                "Named eastern settlement on Floor 6. Pithagrus maintains a second residence here during the golden-key investigation.",
-                PROGRESSIVE_5,
-            ),
-        ),
-        "floor_6_pithagrus_suribus_house": LocationDefinition(
-            "floor_6_pithagrus_suribus_house",
-            6,
-            "Pithagrus's Suribus House",
-            ZoneKind.SAFE_TOWN,
-            safe_zone=True,
-            provenance=_inferred(
-                "Pithagrus's second/secret home in Suribus, associated with the golden-key investigation. Exact house layout is abstracted.",
-                PROGRESSIVE_5,
-            ),
-        ),
-        "floor_6_ararro": LocationDefinition(
-            "floor_6_ararro",
-            6,
-            "Ararro",
-            ZoneKind.SAFE_TOWN,
-            safe_zone=True,
-            provenance=_inferred("Named Floor 6 settlement in Progressive; exact local geometry is abstracted.", PROGRESSIVE_5),
-        ),
-        "floor_6_castle_galey": LocationDefinition(
-            "floor_6_castle_galey",
-            6,
-            "Castle Galey",
-            ZoneKind.SAFE_TOWN,
-            safe_zone=True,
-            provenance=_canon(
-                "Dark Elf stronghold on Floor 6 where Kirito and Asuna reunite with Kizmel and continue the Elf War campaign.",
-                PROGRESSIVE_5,
-                PROGRESSIVE_6,
-                FLOOR6_TIMELINE,
-            ),
-        ),
-        "floor_6_lake_talpha": LocationDefinition(
-            "floor_6_lake_talpha",
-            6,
-            "Lake Talpha",
-            ZoneKind.FIELD,
-            provenance=_canon(
-                "Named Floor 6 lake crossed during the later Dark Elf route with Kizmel.",
-                PROGRESSIVE_6,
-                FLOOR6_TIMELINE,
-            ),
-        ),
-    }
-    for location_id, location in locations.items():
-        world_map.locations.setdefault(location_id, location)
-
-    p = _sim("Travel durations are runtime calibration; endpoint relationships follow the verified Floor 6 route.")
-    edges = (
-        TravelConnection("floor_6_stachion", "floor_6_stachion_puzzle_quarter", 4 * 60_000, provenance=p),
-        TravelConnection("floor_6_stachion", "floor_6_field", 10 * 60_000, provenance=p),
-        TravelConnection("floor_6_field", "floor_6_suribus", 28 * 60_000, provenance=p),
-        TravelConnection("floor_6_suribus", "floor_6_pithagrus_suribus_house", 3 * 60_000, provenance=p),
-        TravelConnection("floor_6_field", "floor_6_ararro", 22 * 60_000, provenance=p),
-        TravelConnection("floor_6_field", "floor_6_castle_galey", 42 * 60_000, provenance=p),
-        TravelConnection("floor_6_castle_galey", "floor_6_lake_talpha", 24 * 60_000, provenance=p),
-        TravelConnection("floor_6_lake_talpha", "floor_6_labyrinth", 48 * 60_000, provenance=p),
-    )
-    existing = {(edge.from_location_id, edge.to_location_id) for edge in world_map.connections}
-    for edge in edges:
-        if (edge.from_location_id, edge.to_location_id) in existing:
-            continue
-        world_map.connections = tuple(world_map.connections) + (edge,)
-        world_map.adjacency.setdefault(edge.from_location_id, []).append(edge)
-        if edge.bidirectional:
-            world_map.adjacency.setdefault(edge.to_location_id, []).append(
-                TravelConnection(
-                    edge.to_location_id,
-                    edge.from_location_id,
-                    edge.travel_ms,
-                    True,
-                    edge.requires_floor_unlocked,
-                    edge.provenance,
-                )
-            )
+    existing_edges = {(edge.from_location_id, edge.to_location_id) for edge in world_map.connections}
+    expected_edges = {(edge.from_location_id, edge.to_location_id) for edge in floor6_connections()}
+    missing_edges = sorted(expected_edges.difference(existing_edges))
+    if missing_edges:
+        raise RuntimeError(f"base world is missing Floor 6 travel connections: {missing_edges}")
 
 
 def apply_floor6_boss_corpus(catalog) -> None:
