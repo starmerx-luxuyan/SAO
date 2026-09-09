@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.floor4 import YOFILIS_ID
 from sao_mcp.corpus.loot import CORE_LOOT_TABLES
@@ -51,6 +53,67 @@ def _inferred(notes: str) -> Provenance:
 
 def _sim(notes: str) -> Provenance:
     return Provenance(ProvenanceKind.SIMULATION, sources=(PROGRESSIVE_9,), notes=notes)
+
+
+@dataclass(slots=True, frozen=True)
+class NocturneTransportSpec:
+    transport_id: str
+    from_location_id: str
+    to_location_id: str
+    elapsed_ms: int
+    carrier_to_location_id: str | None
+    transport_tags: tuple[str, ...]
+    provenance: Provenance
+
+
+YOFILIS_SECRET_ESCORT = NocturneTransportSpec(
+    "yofilis_secret_escort_to_north_beach",
+    YOFEL_CASTLE,
+    LAKE_YOFEL_NORTH_BEACH,
+    6 * 60_000,
+    None,
+    ("secret_escort", "yofilis_transfer", "restricted_scene_route"),
+    _sim(
+        "Progressive 9 has Kizmel move Yofilis to a secluded Lake Yofel rendezvous outside the ordinary public route. "
+        "The transfer itself is canon-backed; six minutes is runtime calibration."
+    ),
+)
+KELPIE_FOG_TO_NORTH_BEACH = NocturneTransportSpec(
+    "morvarch_fog_boundary_to_north_beach",
+    LAKE_YOFEL_FOG_BOUNDARY,
+    LAKE_YOFEL_NORTH_BEACH,
+    6 * 60_000,
+    LAKE_YOFEL_NORTH_BEACH,
+    ("kelpie_water_transport", "night_tamed_transport", "lake_surface_route"),
+    _sim(
+        "The tamed Lake Kelpie carries the search party across Lake Yofel to Yofilis. "
+        "The special water transport is canon-backed; six minutes is runtime calibration."
+    ),
+)
+KELPIE_NORTH_BEACH_TO_WEST_SHORE = NocturneTransportSpec(
+    "morvarch_north_beach_to_lavik_west_shore",
+    LAKE_YOFEL_NORTH_BEACH,
+    LAKE_YOFEL_WEST_SHORE,
+    8 * 60_000,
+    LAKE_YOFEL_WEST_SHORE,
+    ("kelpie_water_transport", "night_tamed_transport", "lake_surface_route", "yofilis_transfer"),
+    _sim(
+        "Morvarc'h carries the Nocturne party and Yofilis to Lavik's Lake Yofel shore meeting. "
+        "The transport is canon-backed; eight minutes is runtime calibration."
+    ),
+)
+KELPIE_WEST_SHORE_TO_CASTLE = NocturneTransportSpec(
+    "morvarch_west_shore_return_to_yofel_castle",
+    LAKE_YOFEL_WEST_SHORE,
+    YOFEL_CASTLE,
+    12 * 60_000,
+    LAKE_YOFEL,
+    ("kelpie_water_transport", "night_tamed_transport", "lake_surface_route", "castle_disembark"),
+    _sim(
+        "The Nocturne party returns Yofilis to Yofel Castle after the Lavik meeting while Morvarc'h remains on Lake Yofel. "
+        "The return is canon-backed; twelve minutes is runtime calibration."
+    ),
+)
 
 
 def apply_floor4_nocturne_corpus(catalog: Catalog) -> Catalog:

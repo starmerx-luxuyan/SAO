@@ -10,9 +10,12 @@ from sao_mcp.corpus.floor4_nocturne import (
     CETRANN_ID,
     FALLEN_HIDEOUT,
     ICHTHYOID_TUBER_ID,
+    KELPIE_FOG_TO_NORTH_BEACH,
     KELPIE_ID,
     KELPIE_LEVEL,
+    KELPIE_NORTH_BEACH_TO_WEST_SHORE,
     KELPIE_WEAPON_ID,
+    KELPIE_WEST_SHORE_TO_CASTLE,
     KYSARAH_TRANSFER_ROOM,
     LAKE_YOFEL,
     LAKE_YOFEL_FOG_BOUNDARY,
@@ -20,6 +23,7 @@ from sao_mcp.corpus.floor4_nocturne import (
     LAKE_YOFEL_WEST_SHORE,
     RIVER_ULL,
     YOFEL_CASTLE,
+    YOFILIS_SECRET_ESCORT,
 )
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
@@ -31,15 +35,11 @@ from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.inventory import transfer_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, night_rank, tame_lower_level_monster
+from sao_mcp.rules.transport import authorized_transport, authorized_transport_record
 
 
 ROVIA = "floor_4_rovia"
 USCO = "floor_4_usco"
-
-YOFILIS_TO_NORTH_BEACH_MS = 6 * 60_000
-KELPIE_FOG_TO_NORTH_BEACH_MS = 6 * 60_000
-KELPIE_NORTH_TO_WEST_SHORE_MS = 8 * 60_000
-KELPIE_WEST_SHORE_RETURN_MS = 12 * 60_000
 
 
 class Floor4NocturneScenario:
@@ -230,6 +230,10 @@ class Floor4NocturneScenario:
             "kelpie_tamed_by_actor_id": None,
             "kelpie_nickname": None,
             "kelpie_search_equipment_restored": False,
+            "yofilis_north_beach_transport": None,
+            "kelpie_to_yofilis_transport": None,
+            "kelpie_to_lavik_transport": None,
+            "yofilis_return_transport": None,
             "yofilis_north_beach_at_ms": None,
             "lavik_yofilis_reunited_at_ms": None,
             "lavik_yofilis_duel_promised": False,
@@ -411,9 +415,20 @@ class Floor4NocturneScenario:
             raise ValueError("Kizmel must still be at Yofel Castle to escort Yofilis")
         if self.runtime.npcs.states[YOFILIS_ID].location_id != YOFEL_CASTLE:
             raise RuntimeError("Yofilis is no longer at Yofel Castle before the secret departure")
-        self.runtime.advance_world(YOFILIS_TO_NORTH_BEACH_MS)
-        kizmel.location_id = LAKE_YOFEL_NORTH_BEACH
-        self.runtime.npcs.states[YOFILIS_ID].location_id = LAKE_YOFEL_NORTH_BEACH
+        spec = YOFILIS_SECRET_ESCORT
+        resolution = authorized_transport(
+            self.runtime,
+            transport_id=spec.transport_id,
+            actor_ids=[kizmel.actor_id],
+            npc_ids=[YOFILIS_ID],
+            carrier_actor_id=None,
+            from_location_id=spec.from_location_id,
+            to_location_id=spec.to_location_id,
+            elapsed_ms=spec.elapsed_ms,
+            carrier_to_location_id=spec.carrier_to_location_id,
+            transport_tags=spec.transport_tags,
+        )
+        state["yofilis_north_beach_transport"] = authorized_transport_record(resolution)
         state["yofilis_north_beach_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "ride_kelpie_to_yofilis"
         return self.status(instance_id)
@@ -428,10 +443,19 @@ class Floor4NocturneScenario:
         self._require_actor_ids_at(state["search_actor_ids"], LAKE_YOFEL_FOG_BOUNDARY)
         if kelpie.location_id != LAKE_YOFEL_FOG_BOUNDARY:
             raise RuntimeError("Morvarc'h is not at the fog boundary with its riders")
-        self.runtime.advance_world(KELPIE_FOG_TO_NORTH_BEACH_MS)
-        for actor_id in state["search_actor_ids"]:
-            self.runtime.actors[actor_id].location_id = LAKE_YOFEL_NORTH_BEACH
-        kelpie.location_id = LAKE_YOFEL_NORTH_BEACH
+        spec = KELPIE_FOG_TO_NORTH_BEACH
+        resolution = authorized_transport(
+            self.runtime,
+            transport_id=spec.transport_id,
+            actor_ids=state["search_actor_ids"],
+            carrier_actor_id=kelpie.actor_id,
+            from_location_id=spec.from_location_id,
+            to_location_id=spec.to_location_id,
+            elapsed_ms=spec.elapsed_ms,
+            carrier_to_location_id=spec.carrier_to_location_id,
+            transport_tags=spec.transport_tags,
+        )
+        state["kelpie_to_yofilis_transport"] = authorized_transport_record(resolution)
         state["stage"] = "kelpie_at_yofilis_rendezvous"
         return self.status(instance_id)
 
@@ -450,11 +474,20 @@ class Floor4NocturneScenario:
         if lavik.location_id != LAKE_YOFEL_WEST_SHORE:
             raise RuntimeError("Lavik left his Lake Yofel meeting point")
 
-        self.runtime.advance_world(KELPIE_NORTH_TO_WEST_SHORE_MS)
-        for actor_id in actor_ids:
-            self.runtime.actors[actor_id].location_id = LAKE_YOFEL_WEST_SHORE
-        kelpie.location_id = LAKE_YOFEL_WEST_SHORE
-        self.runtime.npcs.states[YOFILIS_ID].location_id = LAKE_YOFEL_WEST_SHORE
+        spec = KELPIE_NORTH_BEACH_TO_WEST_SHORE
+        resolution = authorized_transport(
+            self.runtime,
+            transport_id=spec.transport_id,
+            actor_ids=actor_ids,
+            npc_ids=[YOFILIS_ID],
+            carrier_actor_id=kelpie.actor_id,
+            from_location_id=spec.from_location_id,
+            to_location_id=spec.to_location_id,
+            elapsed_ms=spec.elapsed_ms,
+            carrier_to_location_id=spec.carrier_to_location_id,
+            transport_tags=spec.transport_tags,
+        )
+        state["kelpie_to_lavik_transport"] = authorized_transport_record(resolution)
         state["lavik_yofilis_reunited_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "lavik_yofilis_reunited"
         return self.status(instance_id)
@@ -488,11 +521,20 @@ class Floor4NocturneScenario:
         if self.runtime.npcs.states[YOFILIS_ID].location_id != LAKE_YOFEL_WEST_SHORE:
             raise RuntimeError("Yofilis is not with the returning party")
 
-        self.runtime.advance_world(KELPIE_WEST_SHORE_RETURN_MS)
-        for actor_id_value in returning:
-            self.runtime.actors[actor_id_value].location_id = YOFEL_CASTLE
-        kelpie.location_id = LAKE_YOFEL
-        self.runtime.npcs.states[YOFILIS_ID].location_id = YOFEL_CASTLE
+        spec = KELPIE_WEST_SHORE_TO_CASTLE
+        resolution = authorized_transport(
+            self.runtime,
+            transport_id=spec.transport_id,
+            actor_ids=returning,
+            npc_ids=[YOFILIS_ID],
+            carrier_actor_id=kelpie.actor_id,
+            from_location_id=spec.from_location_id,
+            to_location_id=spec.to_location_id,
+            elapsed_ms=spec.elapsed_ms,
+            carrier_to_location_id=spec.carrier_to_location_id,
+            transport_tags=spec.transport_tags,
+        )
+        state["yofilis_return_transport"] = authorized_transport_record(resolution)
         self.runtime.interact_npc(actor_id, YOFILIS_ID)
         state["yofilis_past_opened"] = True
         state["yofilis_past_facts"] = [

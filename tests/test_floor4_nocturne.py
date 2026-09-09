@@ -6,13 +6,17 @@ from sao_mcp.corpus.floor4_nocturne import (
     CALDERA_LAKE,
     CETRANN_ID,
     FALLEN_HIDEOUT,
+    KELPIE_FOG_TO_NORTH_BEACH,
     KELPIE_ID,
+    KELPIE_NORTH_BEACH_TO_WEST_SHORE,
+    KELPIE_WEST_SHORE_TO_CASTLE,
     LAKE_YOFEL,
     LAKE_YOFEL_FOG_BOUNDARY,
     LAKE_YOFEL_NORTH_BEACH,
     LAKE_YOFEL_WEST_SHORE,
     RIVER_ULL,
     YOFEL_CASTLE,
+    YOFILIS_SECRET_ESCORT,
 )
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7_elfwar import LAVIK_ID
@@ -214,28 +218,74 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     assert dict(b.equipment) == original_equipment[b.actor_id]
 
     beach = nocturne.escort_yofilis_to_north_beach(instance_id)
+    escort = beach["yofilis_north_beach_transport"]
     assert beach["stage"] == "ride_kelpie_to_yofilis"
+    assert escort["transport_id"] == YOFILIS_SECRET_ESCORT.transport_id
+    assert escort["actor_ids"] == [kizmel.actor_id]
+    assert escort["npc_ids"] == [YOFILIS_ID]
+    assert escort["carrier_actor_id"] is None
+    assert escort["from_location_id"] == YOFEL_CASTLE
+    assert escort["to_location_id"] == LAKE_YOFEL_NORTH_BEACH
+    assert escort["carrier_to_location_id"] is None
+    assert escort["elapsed_ms"] == YOFILIS_SECRET_ESCORT.elapsed_ms
+    assert escort["transport_tags"] == list(YOFILIS_SECRET_ESCORT.transport_tags)
     assert kizmel.location_id == LAKE_YOFEL_NORTH_BEACH
     assert runtime.npcs.states[YOFILIS_ID].location_id == LAKE_YOFEL_NORTH_BEACH
 
     ridden = nocturne.ride_kelpie_to_yofilis(instance_id)
+    ride = ridden["kelpie_to_yofilis_transport"]
     assert ridden["stage"] == "kelpie_at_yofilis_rendezvous"
+    assert ride["transport_id"] == KELPIE_FOG_TO_NORTH_BEACH.transport_id
+    assert ride["actor_ids"] == [a.actor_id, b.actor_id]
+    assert ride["npc_ids"] == []
+    assert ride["carrier_actor_id"] == kelpie_id
+    assert ride["from_location_id"] == LAKE_YOFEL_FOG_BOUNDARY
+    assert ride["to_location_id"] == LAKE_YOFEL_NORTH_BEACH
+    assert ride["carrier_to_location_id"] == LAKE_YOFEL_NORTH_BEACH
+    assert ride["elapsed_ms"] == KELPIE_FOG_TO_NORTH_BEACH.elapsed_ms
+    assert ride["transport_tags"] == list(KELPIE_FOG_TO_NORTH_BEACH.transport_tags)
     assert {a.location_id, b.location_id, kelpie.location_id} == {LAKE_YOFEL_NORTH_BEACH}
 
     reunion = nocturne.carry_yofilis_to_lavik(instance_id)
+    to_lavik = reunion["kelpie_to_lavik_transport"]
     assert reunion["stage"] == "lavik_yofilis_reunited"
+    assert to_lavik["transport_id"] == KELPIE_NORTH_BEACH_TO_WEST_SHORE.transport_id
+    assert to_lavik["actor_ids"] == [a.actor_id, b.actor_id, kizmel.actor_id]
+    assert to_lavik["npc_ids"] == [YOFILIS_ID]
+    assert to_lavik["carrier_actor_id"] == kelpie_id
+    assert to_lavik["from_location_id"] == LAKE_YOFEL_NORTH_BEACH
+    assert to_lavik["to_location_id"] == LAKE_YOFEL_WEST_SHORE
+    assert to_lavik["carrier_to_location_id"] == LAKE_YOFEL_WEST_SHORE
+    assert to_lavik["elapsed_ms"] == KELPIE_NORTH_BEACH_TO_WEST_SHORE.elapsed_ms
+    assert to_lavik["transport_tags"] == list(KELPIE_NORTH_BEACH_TO_WEST_SHORE.transport_tags)
     assert runtime.npcs.states[YOFILIS_ID].location_id == LAKE_YOFEL_WEST_SHORE
     assert {a.location_id, b.location_id, kizmel.location_id, kelpie.location_id} == {LAKE_YOFEL_WEST_SHORE}
 
     promised = nocturne.record_lavik_yofilis_duel_promise(instance_id, a.actor_id)
     assert promised["lavik_yofilis_duel_promised"] is True
     returned = nocturne.return_yofilis_and_open_past(instance_id, a.actor_id)
+    back = returned["yofilis_return_transport"]
     assert returned["stage"] == "five_key_hideout_recon_ready"
     assert returned["yofilis_past_opened"] is True
     assert len(returned["yofilis_past_facts"]) == 3
+    assert back["transport_id"] == KELPIE_WEST_SHORE_TO_CASTLE.transport_id
+    assert back["actor_ids"] == [a.actor_id, b.actor_id, kizmel.actor_id]
+    assert back["npc_ids"] == [YOFILIS_ID]
+    assert back["carrier_actor_id"] == kelpie_id
+    assert back["from_location_id"] == LAKE_YOFEL_WEST_SHORE
+    assert back["to_location_id"] == YOFEL_CASTLE
+    assert back["carrier_to_location_id"] == LAKE_YOFEL
+    assert back["elapsed_ms"] == KELPIE_WEST_SHORE_TO_CASTLE.elapsed_ms
+    assert back["transport_tags"] == list(KELPIE_WEST_SHORE_TO_CASTLE.transport_tags)
     assert set(returned["group_locations"].values()) == {YOFEL_CASTLE}
     assert returned["kelpie"]["location_id"] == LAKE_YOFEL
 
+    transport_history = {
+        "escort": escort,
+        "ride": ride,
+        "to_lavik": to_lavik,
+        "return": back,
+    }
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
     restored_campaign = _ValidatedFloor7Campaign(restored, campaign._handoff)
@@ -243,6 +293,10 @@ def test_progressive9_lavik_yofilis_kelpie_and_hideout_are_one_persistent_state_
     restored_state = restored_nocturne.status(instance_id)
     assert restored_state["stage"] == "five_key_hideout_recon_ready"
     assert restored_state["kelpie_search_route"] == prepared["kelpie_search_route"]
+    assert restored_state["yofilis_north_beach_transport"] == transport_history["escort"]
+    assert restored_state["kelpie_to_yofilis_transport"] == transport_history["ride"]
+    assert restored_state["kelpie_to_lavik_transport"] == transport_history["to_lavik"]
+    assert restored_state["yofilis_return_transport"] == transport_history["return"]
     assert restored_state["kelpie"]["actor_id"] == kelpie_id
     assert restored_state["kelpie"]["night_tamed_by_actor_id"] == a.actor_id
     assert restored_state["kelpie"]["nickname"] == "Moo"
