@@ -8,6 +8,7 @@ from sao_mcp.rules.duels import DuelMode, DuelRuntime, DuelStatus
 from sao_mcp.rules.nightfolk import feed_civis_nocte as resolve_civis_feeding
 from sao_mcp.rules.nightfolk import nightfolk_state
 from sao_mcp.rules.special_weapons import apply_equipment_hp_regeneration, apply_weapon_soul_cost
+from sao_mcp.rules.travel import has_surviving_colocated_outsider
 from sao_mcp.runtime.timeline_runtime import TimelineRaidAincradRuntime
 
 
@@ -82,6 +83,10 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
             encounter.threat.clear()
 
     def _in_live_encounter(self, actor_id: str) -> bool:
+        actor = self.actors[actor_id]
+        if not actor.alive or actor.location_id is None:
+            return False
+        member_ids = {actor_id}
         for encounter in self.encounters.values():
             if actor_id not in encounter.participants:
                 continue
@@ -91,14 +96,7 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                 for duel_id in duel_ids
             ):
                 continue
-            actor = encounter.participants[actor_id]
-            other_alive = any(
-                member_id != actor_id
-                and member.alive
-                and member.location_id == actor.location_id
-                for member_id, member in encounter.participants.items()
-            )
-            if other_alive:
+            if has_surviving_colocated_outsider(encounter, member_ids, actor.location_id):
                 return True
         return False
 
