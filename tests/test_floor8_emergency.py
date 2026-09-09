@@ -17,6 +17,7 @@ from sao_mcp.corpus.floor8_world import (
     MANAGED_FOREST_OUTER,
     SLUVA,
 )
+from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS
 from sao_mcp.domain.models import CombatantState, CursorColor, DefenseMode, EntityKind, ItemInstance
 from sao_mcp.rules.inventory import add_item
@@ -87,8 +88,8 @@ def _setup_branch_state():
     kizmel = _npc("branch_kizmel", "Kizmel", "npc_kizmel", "floor_7_boss_room")
     lavik = _npc("branch_lavik", "Lavik Fen Cortassios", LAVIK_ID, "floor_7_field")
     kysarah = _npc("branch_kysarah", "Kysarah the Ransacker", KYSARAH_ID, "floor_7_field", level=55)
-    fallen = _npc("branch_ruby_holder", "Fallen Elf Ruby Holder", "fallen_fixture", "floor_7_labyrinth")
-    fallen.metadata["fallen_elf"] = True
+    fallen = _npc("branch_ruby_holder", "Fallen Elf Ruby Holder", KYSARAH_ID, "floor_7_labyrinth")
+    fallen.metadata = {"faction_ids": (FALLEN_ELVES,)}
     for actor in (kizmel, lavik, kysarah, fallen):
         runtime.actors[actor.actor_id] = actor
     runtime.npcs.states[LAVIK_ID].location_id = lavik.location_id

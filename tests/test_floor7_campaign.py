@@ -1,6 +1,7 @@
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
+from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
@@ -68,7 +69,7 @@ def test_floor7_campaign_handoff_validates_real_assets_and_next_floor_schedule()
         agility=68,
         cursor=CursorColor.YELLOW,
         location_id="floor_7_labyrinth",
-        metadata={"fallen_elf": True},
+        metadata={"faction_ids": (FALLEN_ELVES,)},
     )
     runtime.actors[ruby_holder.actor_id] = ruby_holder
     ruby = ItemInstance(

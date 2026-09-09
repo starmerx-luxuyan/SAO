@@ -1,4 +1,5 @@
 from sao_mcp.corpus.floor8_world import SLUVA
+from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
 from sao_mcp.runtime.canonical_guilds import (
     ALS_GUILD_ID,
@@ -42,7 +43,7 @@ def _forest_actor(actor_id, name):
         evasion=16,
         cursor=CursorColor.YELLOW,
         location_id=SLUVA,
-        metadata={"forest_elf": True, "floor8_protected_woods_enforcement": True},
+        metadata={"faction_ids": (FOREST_ELVES,), "floor8_protected_woods_enforcement": True},
     )
 
 

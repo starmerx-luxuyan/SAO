@@ -14,6 +14,7 @@ from sao_mcp.corpus.floor4_nocturne import (
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, SACRED_KEY_BAG_ID
 from sao_mcp.corpus.floor7_elfwar import LAVIK_ID
 from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
+from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.group_travel import travel_together
 from sao_mcp.rules.inventory import add_item
@@ -50,6 +51,22 @@ def _npc_actor(actor_id, name, npc_definition_id, location_id):
     )
 
 
+def _fallen_fixture(actor_id: str, location_id: str) -> CombatantState:
+    return CombatantState(
+        actor_id=actor_id,
+        name="Fallen Elf Ruby Holder",
+        kind=EntityKind.NPC,
+        level=28,
+        max_hp=7600,
+        hp=7600,
+        strength=64,
+        agility=62,
+        cursor=CursorColor.YELLOW,
+        location_id=location_id,
+        metadata={"faction_ids": (FALLEN_ELVES,)},
+    )
+
+
 def _setup_nocturne_runtime():
     runtime = HousingAincradRuntime(seed=151)
     runtime.world.floors[4].unlocked = True
@@ -74,8 +91,7 @@ def _setup_nocturne_runtime():
     )
     add_item(kysarah, bag, runtime.catalog, allow_overweight=True)
 
-    fallen = _npc_actor("nocturne_ruby_holder", "Fallen Elf Ruby Holder", "fallen_fixture", "floor_7_labyrinth")
-    fallen.metadata["fallen_elf"] = True
+    fallen = _fallen_fixture("nocturne_ruby_holder", "floor_7_labyrinth")
     runtime.actors[fallen.actor_id] = fallen
     ruby = ItemInstance(
         instance_id="nocturne_ruby_key",
