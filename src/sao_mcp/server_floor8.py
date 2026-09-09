@@ -94,8 +94,17 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def issue_progressive9_sluva_grave_judgment(instance_id: str, arbiter_actor_id: str) -> str:
-        """Have the authoritative Sluva arbiter recognize the grave baseline for the materialized detainees: principal execution risk and other-participant imprisonment risk, without auto-resolving either punishment."""
+        """Have the authoritative Sluva arbiter recognize the grave baseline for the materialized detainees: principal execution risk and other-participant imprisonment risk. The principal is still unresolved after this step."""
         return _json(sluva.issue_grave_judgment(instance_id, arbiter_actor_id))
+
+    @mcp.tool()
+    def adjudicate_progressive9_sluva_principal(
+        instance_id: str,
+        arbiter_actor_id: str,
+        principal_actor_id: str,
+    ) -> str:
+        """Record the authoritative Sluva arbiter's explicit principal finding among the materialized local detainees. This is a simulation judicial finding; it does not assert that the selected actor personally felled the protected tree or identify a principal for the wider guild-scale crisis."""
+        return _json(sluva.adjudicate_principal(instance_id, arbiter_actor_id, principal_actor_id))
 
     @mcp.tool()
     def deposit_progressive9_sluva_restitution_mitigation(instance_id: str, payer_actor_id: str) -> str:
@@ -111,15 +120,13 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
     def issue_progressive9_sluva_disposition(
         instance_id: str,
         arbiter_actor_id: str,
-        principal_actor_id: str,
         disposition: str,
     ) -> str:
-        """Issue strict, commuted, or pardon disposition for the materialized detainees. Strict records an execution order for the adjudicated principal and imprisonment orders for the others but does not auto-kill; this disposition does not resolve the wider guild-scale crisis."""
+        """Issue strict, commuted, or pardon disposition only after the local Sluva docket already contains an explicit principal finding. Strict records an execution order for that adjudicated principal and imprisonment orders for the others but does not auto-kill; this disposition does not resolve the wider guild-scale crisis."""
         return _json(
             sluva.issue_disposition(
                 instance_id,
                 arbiter_actor_id,
-                principal_actor_id,
                 disposition,
             )
         )
@@ -141,5 +148,5 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
 
     @mcp.tool()
     def get_progressive9_sluva_justice_state(instance_id: str) -> str:
-        """Inspect the local Sluva docket together with the unchanged wider guild-crisis report, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
+        """Inspect the local Sluva docket together with the unchanged wider guild-crisis report, explicit principal finding if one exists, real custody locations, sentences, arbiter, and authoritative ALS/DKB standing toward the Forest Elves."""
         return _json(sluva.status(instance_id))

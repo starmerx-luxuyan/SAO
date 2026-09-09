@@ -1,3 +1,5 @@
+import pytest
+
 from sao_mcp.corpus.floor8_progressive import FLOOR8_GUILD_CRISIS_REPORT
 from sao_mcp.corpus.floor8_world import SLUVA
 from sao_mcp.corpus.location_access import FOREST_ELVES
@@ -105,7 +107,7 @@ def _setup_custody(seed=241):
     return runtime, emergency, sluva, players, forest
 
 
-def test_sluva_restitution_is_local_mitigation_and_strict_disposition_preserves_real_sentences():
+def test_sluva_principal_finding_is_explicit_before_strict_disposition():
     runtime, emergency, sluva, players, forest = _setup_custody()
     payer = players[0]
     payer.col = 3_000
@@ -130,6 +132,7 @@ def test_sluva_restitution_is_local_mitigation_and_strict_disposition_preserves_
         ),
         "provenance": "canon_incident_cause_and_penalty_risk_plus_simulation_legal_framing",
     }
+    assert hearing["sluva_justice"]["principal_finding"] is None
     assert hearing["sluva_justice"]["known_penalty_risk"] == {
         "principal_or_commander": "execution_risk",
         "other_participants": "imprisonment_risk",
@@ -140,21 +143,38 @@ def test_sluva_restitution_is_local_mitigation_and_strict_disposition_preserves_
     judged = sluva.issue_grave_judgment(INSTANCE_ID, arbiter_id)
     assert judged["stage"] == "sluva_grave_judgment_issued"
     assert runtime.world.now_ms - started == HEARING_TIME_MS + JUDGMENT_TIME_MS
+    with pytest.raises(ValueError, match="requires an adjudicated principal"):
+        sluva.issue_disposition(INSTANCE_ID, arbiter_id, "strict")
+
+    finding = sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[0].actor_id)
+    assert finding["stage"] == "sluva_principal_adjudicated"
+    assert finding["sluva_justice"]["principal_finding"] == {
+        "actor_id": players[0].actor_id,
+        "finding": "principal_or_commander_for_materialized_local_case",
+        "adjudicated_by_actor_id": arbiter_id,
+        "adjudicated_at_ms": runtime.world.now_ms,
+        "provenance": (
+            "simulation Sluva judicial finding; Progressive 9 establishes differential penalty risk "
+            "but does not identify this campaign's principal"
+        ),
+    }
+    assert "forest_elf_principal" not in runtime.actors[players[0].actor_id].metadata
 
     mitigated = sluva.deposit_restitution_mitigation(INSTANCE_ID, payer.actor_id)
     assert payer.col == 3_000 - RESTITUTION_COL
     assert runtime.actors[arbiter_id].col == RESTITUTION_COL
     assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -12, DKB_GUILD_ID: -12}
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
-    assert mitigated["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
+    assert mitigated["stage"] == "sluva_principal_adjudicated"
 
-    strict = sluva.issue_disposition(INSTANCE_ID, arbiter_id, players[0].actor_id, "strict")
+    strict = sluva.issue_disposition(INSTANCE_ID, arbiter_id, "strict")
     assert strict["stage"] == "sluva_disposition_strict"
     assert strict["sentences"][players[0].actor_id] == "execution_ordered"
     for actor in players[1:]:
         assert strict["sentences"][actor.actor_id] == "imprisonment_ordered"
     assert all(strict["custody_active"][actor.actor_id] is True for actor in players)
     assert strict["sluva_justice"]["disposition"]["execution_not_auto_resolved"] is True
+    assert "principal_actor_id" not in strict["sluva_justice"]["disposition"]
     assert strict["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
 
     saved = export_runtime(runtime)
@@ -164,12 +184,13 @@ def test_sluva_restitution_is_local_mitigation_and_strict_disposition_preserves_
     persisted = restored_sluva.status(INSTANCE_ID)
     assert persisted["stage"] == "sluva_disposition_strict"
     assert persisted["sentences"][players[0].actor_id] == "execution_ordered"
+    assert persisted["sluva_justice"]["principal_finding"]["actor_id"] == players[0].actor_id
     assert persisted["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     assert persisted["sluva_case_scope"]["resolution_scope"] == "materialized_local_standoff_only"
     assert restored.actors[arbiter_id].col == RESTITUTION_COL
 
 
-def test_sluva_service_mitigation_returns_local_detainees_to_custody_and_pardon_requires_explicit_deviation():
+def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_finding():
     runtime, emergency, sluva, players, forest = _setup_custody(seed=251)
     hearing = sluva.open_hearing(INSTANCE_ID, players[0].actor_id)
     arbiter_id = hearing["sluva_justice"]["arbiter_actor_id"]
@@ -178,14 +199,19 @@ def test_sluva_service_mitigation_returns_local_detainees_to_custody_and_pardon_
     service_started = runtime.world.now_ms
     mitigated = sluva.perform_restorative_service_mitigation(INSTANCE_ID)
     assert runtime.world.now_ms - service_started == 32 * 60_000 + RESTORATIVE_SERVICE_MS
+    assert mitigated["stage"] == "sluva_grave_judgment_issued"
+    assert mitigated["sluva_justice"]["principal_finding"] is None
     assert mitigated["forest_elf_guild_standing"] == {ALS_GUILD_ID: -10, DKB_GUILD_ID: -10}
     assert all(actor.location_id == SLUVA for actor in players + forest)
     assert all(mitigated["custody_active"][actor.actor_id] is True for actor in players)
     assert mitigated["sluva_case_scope"]["custody_actor_ids"] == [actor.actor_id for actor in players]
 
-    pardoned = sluva.issue_disposition(INSTANCE_ID, arbiter_id, players[0].actor_id, "pardon")
+    finding = sluva.adjudicate_principal(INSTANCE_ID, arbiter_id, players[1].actor_id)
+    assert finding["sluva_justice"]["principal_finding"]["actor_id"] == players[1].actor_id
+    pardoned = sluva.issue_disposition(INSTANCE_ID, arbiter_id, "pardon")
     assert pardoned["stage"] == "sluva_disposition_pardon"
     assert pardoned["sluva_justice"]["disposition"]["campaign_deviation"] is True
+    assert pardoned["sluva_justice"]["principal_finding"]["actor_id"] == players[1].actor_id
     assert all(pardoned["sentences"][actor.actor_id] == "pardoned" for actor in players)
     assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
     assert pardoned["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"

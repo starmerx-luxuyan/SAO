@@ -180,6 +180,7 @@ class Floor8SluvaJusticeScenario:
             "hearing_opened_at_ms": self.runtime.world.now_ms,
             "formal_charge_standing_changes": guild_changes,
             "judgment": None,
+            "principal_finding": None,
             "mitigation": [],
             "disposition": None,
             "resolved_at_ms": None,
@@ -212,9 +213,43 @@ class Floor8SluvaJusticeScenario:
         state["stage"] = "sluva_grave_judgment_issued"
         return self.status(instance_id)
 
-    def deposit_restitution_mitigation(self, instance_id: str, payer_actor_id: str) -> dict:
+    def adjudicate_principal(
+        self,
+        instance_id: str,
+        arbiter_actor_id: str,
+        principal_actor_id: str,
+    ) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "sluva_grave_judgment_issued":
+            raise ValueError("principal adjudication requires an unresolved grave Sluva judgment")
+        docket = state["sluva_justice"]
+        if arbiter_actor_id != docket["arbiter_actor_id"]:
+            raise ValueError("only the authoritative Sluva arbiter can adjudicate the principal")
+        arbiter = self.runtime.actors[arbiter_actor_id]
+        if not arbiter.alive or arbiter.location_id != SLUVA:
+            raise ValueError("the Sluva arbiter must remain alive and present")
+        custody_ids = self._custody_ids(state)
+        if principal_actor_id not in custody_ids:
+            raise ValueError("the adjudicated principal must be one of the materialized detainees")
+        self._require_ids_at(custody_ids, SLUVA)
+
+        docket["principal_finding"] = {
+            "actor_id": principal_actor_id,
+            "finding": "principal_or_commander_for_materialized_local_case",
+            "adjudicated_by_actor_id": arbiter_actor_id,
+            "adjudicated_at_ms": self.runtime.world.now_ms,
+            "provenance": (
+                "simulation Sluva judicial finding; Progressive 9 establishes differential penalty risk "
+                "but does not identify this campaign's principal"
+            ),
+        }
+        docket["status"] = "principal_adjudicated"
+        state["stage"] = "sluva_principal_adjudicated"
+        return self.status(instance_id)
+
+    def deposit_restitution_mitigation(self, instance_id: str, payer_actor_id: str) -> dict:
+        state = self._state(instance_id)
+        if state["stage"] not in {"sluva_grave_judgment_issued", "sluva_principal_adjudicated"}:
             raise ValueError("restitution mitigation requires an unresolved grave Sluva judgment")
         docket = state["sluva_justice"]
         if any(row["kind"] == "restitution_deposit" for row in docket["mitigation"]):
@@ -258,7 +293,7 @@ class Floor8SluvaJusticeScenario:
 
     def perform_restorative_service_mitigation(self, instance_id: str) -> dict:
         state = self._state(instance_id)
-        if state["stage"] != "sluva_grave_judgment_issued":
+        if state["stage"] not in {"sluva_grave_judgment_issued", "sluva_principal_adjudicated"}:
             raise ValueError("restorative-service mitigation requires an unresolved grave Sluva judgment")
         docket = state["sluva_justice"]
         if any(row["kind"] == "restorative_service" for row in docket["mitigation"]):
@@ -301,12 +336,11 @@ class Floor8SluvaJusticeScenario:
         self,
         instance_id: str,
         arbiter_actor_id: str,
-        principal_actor_id: str,
         disposition: str,
     ) -> dict:
         state = self._state(instance_id)
-        if state["stage"] != "sluva_grave_judgment_issued":
-            raise ValueError("Sluva disposition requires an unresolved grave judgment")
+        if state["stage"] != "sluva_principal_adjudicated":
+            raise ValueError("Sluva disposition requires an adjudicated principal")
         docket = state["sluva_justice"]
         if arbiter_actor_id != docket["arbiter_actor_id"]:
             raise ValueError("only the authoritative Sluva arbiter can issue the disposition")
@@ -314,9 +348,8 @@ class Floor8SluvaJusticeScenario:
         if not arbiter.alive or arbiter.location_id != SLUVA:
             raise ValueError("the Sluva arbiter must remain alive and present")
         custody_ids = self._custody_ids(state)
-        if principal_actor_id not in custody_ids:
-            raise ValueError("the adjudicated principal must be one of the materialized detainees")
         self._require_ids_at(custody_ids, SLUVA)
+        principal_actor_id = docket["principal_finding"]["actor_id"]
         if disposition not in {"strict", "commuted", "pardon"}:
             raise ValueError("disposition must be strict, commuted, or pardon")
         if disposition in {"commuted", "pardon"} and not docket["mitigation"]:
@@ -347,7 +380,6 @@ class Floor8SluvaJusticeScenario:
         docket["status"] = "disposed"
         docket["disposition"] = {
             "kind": disposition,
-            "principal_actor_id": principal_actor_id,
             "sentences": sentences,
             "issued_at_ms": self.runtime.world.now_ms,
             "campaign_deviation": disposition == "pardon",
