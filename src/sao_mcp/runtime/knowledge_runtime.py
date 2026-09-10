@@ -103,6 +103,8 @@ class KnowledgeAincradRuntime(CommunicatingAincradRuntime):
     ) -> KnowledgeEvent:
         if not fact_id:
             raise ValueError("fact_id must be non-empty")
+        if not self._knowledge_entity_alive(entity_id):
+            raise ValueError("defeated materialized entities cannot acquire new knowledge")
         knower_id = self._knowledge_owner_id(entity_id)
         resolved_source = self._knowledge_owner_id(source_id) if source_id is not None and (
             source_id in self.actors or source_id in self.npcs.definitions
@@ -205,14 +207,22 @@ class KnowledgeAincradRuntime(CommunicatingAincradRuntime):
         }
 
     def load_knowledge_state(self, payload: dict) -> None:
-        self.knowledge_events = [
-            KnowledgeEvent(
-                knower_id=row["knower_id"],
-                fact_id=row["fact_id"],
-                value=row["value"],
-                basis=EpistemicBasis(row["basis"]),
-                source_id=row.get("source_id"),
-                learned_at_ms=int(row["learned_at_ms"]),
+        events: list[KnowledgeEvent] = []
+        for row in payload.get("events", []):
+            knower_id = row["knower_id"]
+            if knower_id not in self.actors and knower_id not in self.npcs.definitions:
+                raise ValueError(f"knowledge save references unknown knower: {knower_id}")
+            learned_at_ms = int(row["learned_at_ms"])
+            if learned_at_ms > self.world.now_ms:
+                raise ValueError(f"knowledge event occurs after current world time: {knower_id}/{row['fact_id']}")
+            events.append(
+                KnowledgeEvent(
+                    knower_id=knower_id,
+                    fact_id=row["fact_id"],
+                    value=row["value"],
+                    basis=EpistemicBasis(row["basis"]),
+                    source_id=row.get("source_id"),
+                    learned_at_ms=learned_at_ms,
+                )
             )
-            for row in payload.get("events", [])
-        ]
+        self.knowledge_events = events
