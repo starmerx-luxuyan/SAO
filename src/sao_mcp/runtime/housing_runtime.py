@@ -197,8 +197,7 @@ class HousingAincradRuntime(GuildAutonomyAincradRuntime):
             raise ValueError("actor must be outside this property before entering")
         if not self.can_enter_property(actor_id, property_id):
             raise ValueError("actor is not authorized to enter this property")
-        self.advance_world(PROPERTY_ENTRY_TIME_MS)
-        actor.location_id = state.interior_location_id
+        self.travel_actor(actor_id, state.interior_location_id)
         actor.metadata["inside_property_id"] = property_id
         return state
 
@@ -208,8 +207,7 @@ class HousingAincradRuntime(GuildAutonomyAincradRuntime):
         if not property_id or property_id not in self.housing.properties:
             raise ValueError("actor is not inside a registered property")
         state = self.housing.properties[str(property_id)]
-        self.advance_world(PROPERTY_ENTRY_TIME_MS)
-        actor.location_id = state.parent_location_id
+        self.travel_actor(actor_id, state.parent_location_id)
         actor.metadata.pop("inside_property_id", None)
         return state
 
