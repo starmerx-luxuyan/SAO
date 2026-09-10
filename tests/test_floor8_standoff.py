@@ -262,7 +262,11 @@ def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_local_
         assert attack.legal and attack.hit
         assert target.alive is False
 
-    resolved = standoff.resolve_cave_mouth_combat(instance_id)
+    resolved = standoff.status(instance_id)
+    assert runtime.world_event_state(
+        f"floor8.cave_mouth_combat_resolution:{instance_id}"
+    )["status"] == "resolved"
+    assert encounter.active is False
     assert resolved["stage"] == "standoff_resolved_forest_elves_defeated"
     assert resolved["cave_combat_outcome"] == "forest_elf_pursuit_party_defeated"
     assert resolved["local_standoff_resolution"] == {

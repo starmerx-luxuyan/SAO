@@ -43,6 +43,8 @@ QUSACK_RESCUE_CAVE = "floor_6_qusack_rescue_cave"
 
 BOUHROUM_TRIAL_MS = 3 * 60 * 60 * 1000
 KYSARAH_KNOCKBACK_MS = 1500
+CASTLE_GALEY_ATTACK_EVENT_RULE_ID = "floor6.castle_galey_attack"
+KYSARAH_KEY_THEFT_EVENT_RULE_ID = "floor6.kysarah_key_theft"
 
 
 class Floor6ElfWarScenario:
@@ -50,6 +52,17 @@ class Floor6ElfWarScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        runtime.register_world_event_rule(
+            CASTLE_GALEY_ATTACK_EVENT_RULE_ID,
+            self._discover_castle_galey_attack_events,
+            self._resolve_castle_galey_attack_event,
+        )
+        runtime.register_world_event_rule(
+            KYSARAH_KEY_THEFT_EVENT_RULE_ID,
+            self._discover_kysarah_key_theft_events,
+            self._resolve_kysarah_key_theft_event,
+        )
+        runtime.evaluate_world_events()
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_elfwar_states", {})
@@ -139,6 +152,81 @@ class Floor6ElfWarScenario:
         state["bouhroum_trial_completed_at_ms"] = self.runtime.world.now_ms
         return self.status(actor_id)
 
+    @staticmethod
+    def _event_actor_id(occurrence_id: str, rule_id: str) -> str:
+        prefix = f"{rule_id}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid {rule_id} occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_castle_galey_attack_events(self) -> list[str]:
+        states = self.runtime.world.global_flags.get("floor6_elfwar_states", {})
+        ready: list[str] = []
+        for actor_id, state in states.items():
+            actor = self.runtime.actors.get(actor_id)
+            if (
+                state["stage"] == "castle_galey_attack_pending"
+                and actor is not None
+                and actor.alive
+                and actor.location_id == CASTLE_GALEY
+            ):
+                ready.append(f"{CASTLE_GALEY_ATTACK_EVENT_RULE_ID}:{actor_id}")
+        return ready
+
+    def _resolve_castle_galey_attack_event(self, occurrence_id: str) -> dict:
+        actor_id = self._event_actor_id(occurrence_id, CASTLE_GALEY_ATTACK_EVENT_RULE_ID)
+        state = self._trigger_castle_galey_attack(actor_id)
+        return {
+            "actor_id": actor_id,
+            "gindo_actor_id": state["gindo_actor_id"],
+            "stage": state["stage"],
+            "spirit_tree_poisoned": state["spirit_tree_poisoned"],
+        }
+
+    def _discover_kysarah_key_theft_events(self) -> list[str]:
+        states = self.runtime.world.global_flags.get("floor6_elfwar_states", {})
+        stachion_states = self.runtime.world.global_flags.get("floor6_stachion_quest_states", {})
+        ready: list[str] = []
+        for actor_id, state in states.items():
+            if state["stage"] != "qusack_released_kysarah_pending":
+                continue
+            actor = self.runtime.actors.get(actor_id)
+            if actor is None or not actor.alive or actor.location_id != QUSACK_RESCUE_CAVE:
+                continue
+            bag_id = state.get("sacred_key_bag_instance_id")
+            if not bag_id or bag_id not in actor.inventory:
+                continue
+            if actor.inventory[bag_id].template_id != SACRED_KEY_BAG_ID:
+                raise RuntimeError("Floor 6 sacred-key bag state points to the wrong item template")
+            if not any(item.template_id == IRON_KEY_ID for item in actor.inventory.values()):
+                continue
+            stachion_state = stachion_states.get(actor_id)
+            if stachion_state is None or stachion_state.get("myia_met_at_ms") is None:
+                continue
+            myia_id = stachion_state.get("myia_actor_id")
+            myia = self.runtime.actors.get(myia_id) if myia_id else None
+            if myia is None or not myia.alive:
+                continue
+            if not any(item.template_id == THEANO_IRON_KEY_ID for item in myia.inventory.values()):
+                continue
+            if any(
+                not state.get(key) or state[key] not in self.runtime.actors
+                for key in ("gindo_actor_id", "kizmel_actor_id")
+            ):
+                continue
+            ready.append(f"{KYSARAH_KEY_THEFT_EVENT_RULE_ID}:{actor_id}")
+        return ready
+
+    def _resolve_kysarah_key_theft_event(self, occurrence_id: str) -> dict:
+        actor_id = self._event_actor_id(occurrence_id, KYSARAH_KEY_THEFT_EVENT_RULE_ID)
+        state = self._trigger_kysarah_key_theft(actor_id)
+        return {
+            "actor_id": actor_id,
+            "kysarah_actor_id": state["kysarah_actor_id"],
+            "combined_iron_key_instance_id": state["combined_iron_key_instance_id"],
+            "stage": state["stage"],
+        }
+
     def _create_gindo_actor(self) -> CombatantState:
         actor_id = f"namedplayer_gindo_{uuid.uuid4().hex[:10]}"
         gindo = CombatantState(
@@ -176,7 +264,7 @@ class Floor6ElfWarScenario:
         self.runtime.actors[actor_id] = gindo
         return gindo
 
-    def trigger_castle_galey_attack(self, actor_id: str) -> dict:
+    def _trigger_castle_galey_attack(self, actor_id: str) -> dict:
         actor = self.runtime.actors[actor_id]
         state = self._state(actor_id)
         if state["stage"] != "castle_galey_attack_pending" or actor.location_id != CASTLE_GALEY:
@@ -272,6 +360,7 @@ class Floor6ElfWarScenario:
         state["kizmel_actor_id"] = kizmel.actor_id
         state["stage"] = "qusack_released_kysarah_pending"
         state["qusack_hostages_released"] = True
+        self.runtime.evaluate_world_events()
         return self.status(actor_id)
 
     def _create_kysarah_actor(self) -> CombatantState:
@@ -309,7 +398,7 @@ class Floor6ElfWarScenario:
         self.runtime.actors[actor_id] = kysarah
         return kysarah
 
-    def trigger_kysarah_key_theft(self, actor_id: str) -> dict:
+    def _trigger_kysarah_key_theft(self, actor_id: str) -> dict:
         actor = self.runtime.actors[actor_id]
         state = self._state(actor_id)
         if state["stage"] != "qusack_released_kysarah_pending" or actor.location_id != QUSACK_RESCUE_CAVE:
@@ -460,4 +549,9 @@ def install_floor6_elfwar_scenario(runtime) -> Floor6ElfWarScenario:
     for npc_id in (KIZMEL_ID, BOUHROUM_ID, GINDO_ID, KYSARAH_ID, MYIA_ID):
         if npc_id not in runtime.npcs.definitions:
             raise RuntimeError("Floor 6 Castle Galey NPC corpus was not loaded")
-    return Floor6ElfWarScenario(runtime)
+    service = runtime.install_world_event_service(
+        "floor6.elfwar", lambda: Floor6ElfWarScenario(runtime)
+    )
+    if not isinstance(service, Floor6ElfWarScenario):
+        raise RuntimeError("floor6.elfwar service registry contains the wrong service type")
+    return service

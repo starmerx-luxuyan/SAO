@@ -147,22 +147,9 @@ def register_floor8_tools(mcp, emergency, standoff, sluva) -> None:
         )
 
     @mcp.tool()
-    def complete_progressive9_sluva_imprisonment_enforcement(
-        instance_id: str,
-        arbiter_actor_id: str,
-    ) -> str:
-        """Complete the active local Sluva imprisonment term only after the shared world clock reaches its recorded release time. Imprisoned actors are released from custody; any strict execution order remains pending and is not auto-resolved."""
-        return _json(sluva.complete_imprisonment_enforcement(instance_id, arbiter_actor_id))
-
-    @mcp.tool()
     def start_progressive9_cave_mouth_combat(instance_id: str, player_combatant_ids: list[str]) -> str:
         """Escalate the local unresolved standoff: selected live responders or materialized representative players walk out to the cave mouth and enter an ordinary encounter with the real Forest Elf pursuers."""
         return _json(standoff.start_cave_mouth_combat(instance_id, player_combatant_ids))
-
-    @mcp.tool()
-    def resolve_progressive9_cave_mouth_combat(instance_id: str) -> str:
-        """After ordinary combat, resolve the local encounter only when the real Forest Elf pursuit party or all selected player combatants are actually defeated."""
-        return _json(standoff.resolve_cave_mouth_combat(instance_id))
 
     @mcp.tool()
     def get_progressive9_floor8_emergency_state(instance_id: str) -> str:

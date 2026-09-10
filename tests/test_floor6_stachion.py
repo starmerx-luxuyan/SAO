@@ -185,7 +185,10 @@ def test_floor6_release_route_merges_stachion_elfwar_and_golden_cube_trail():
     assert player.skill_proficiencies[MEDITATION_SKILL_ID] == 500.0
     runtime.travel_actor(player.actor_id, CASTLE_GALEY)
 
-    elf_state = elfwar.trigger_castle_galey_attack(player.actor_id)
+    elf_state = elfwar.status(player.actor_id)
+    assert runtime.world_event_state(
+        f"floor6.castle_galey_attack:{player.actor_id}"
+    )["status"] == "resolved"
     assert elf_state["spirit_tree_poisoned"] is True
     assert elf_state["castle_weakness_active"] is True
     runtime.travel_actor(player.actor_id, CASTLE_SPRING)
@@ -199,8 +202,10 @@ def test_floor6_release_route_merges_stachion_elfwar_and_golden_cube_trail():
     assert player.inventory[sacred_bag_id].template_id == SACRED_KEY_BAG_ID
     assert player.inventory[sacred_bag_id].metadata["sacred_key_count"] == 4
     runtime.travel_actor(player.actor_id, QUSACK_RESCUE_CAVE)
-    elfwar.start_qusack_rescue(player.actor_id)
-    elf_state = elfwar.trigger_kysarah_key_theft(player.actor_id)
+    elf_state = elfwar.start_qusack_rescue(player.actor_id)
+    assert runtime.world_event_state(
+        f"floor6.kysarah_key_theft:{player.actor_id}"
+    )["status"] == "resolved"
 
     assert elf_state["stage"] == "kysarah_stole_and_combined_keys"
     assert original_cylon_iron_key_id not in player.inventory

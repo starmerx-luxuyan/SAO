@@ -149,6 +149,10 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
         super()._resolve_defeat(encounter, target, killer_id)
         self.evaluate_world_events()
 
+    def _finalize_expired_deaths(self, encounter) -> None:
+        super()._finalize_expired_deaths(encounter)
+        self.evaluate_world_events()
+
     def travel_actor(self, actor_id: str, destination_id: str):
         # GameRuntime.travel_actor delegates to the data-only travel rule, which advances
         # WorldState directly. Emit the same authoritative time event after that commit.

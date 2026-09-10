@@ -6,16 +6,17 @@ from sao_mcp.scenarios.floor5_fuscus import (
     Floor5FuscusScenario,
     install_floor5_fuscus_scenario,
 )
-from sao_mcp.scenarios.floor7_pursuit import (
-    LABYRINTH_PURSUIT_EVENT_RULE_ID,
-    Floor7PursuitScenario,
-    install_floor7_pursuit_scenario,
-)
 from sao_mcp.scenarios.floor6_buxum import (
     BUXUM_BETRAYAL_EVENT_RULE_ID,
     BUXUM_RETREAT_EVENT_RULE_ID,
     Floor6BuxumScenario,
     install_floor6_buxum_scenario,
+)
+from sao_mcp.scenarios.floor6_elfwar import (
+    CASTLE_GALEY_ATTACK_EVENT_RULE_ID,
+    KYSARAH_KEY_THEFT_EVENT_RULE_ID,
+    Floor6ElfWarScenario,
+    install_floor6_elfwar_scenario,
 )
 from sao_mcp.scenarios.floor6_irrational_cube import install_floor6_irrational_cube_scenario
 from sao_mcp.scenarios.floor6_stachion import (
@@ -25,9 +26,29 @@ from sao_mcp.scenarios.floor6_stachion import (
     Floor6StachionScenario,
     install_floor6_stachion_scenario,
 )
+from sao_mcp.scenarios.floor7_pursuit import (
+    LABYRINTH_PURSUIT_EVENT_RULE_ID,
+    Floor7PursuitScenario,
+    install_floor7_pursuit_scenario,
+)
+from sao_mcp.scenarios.floor8_sluva import (
+    SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID,
+    Floor8SluvaJusticeScenario,
+    install_floor8_sluva_justice_scenario,
+)
+from sao_mcp.scenarios.floor8_standoff import (
+    CAVE_MOUTH_COMBAT_EVENT_RULE_ID,
+    Floor8CaveStandoffScenario,
+    install_floor8_cave_standoff_scenario,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class _EmergencyNoState:
+    def __init__(self, runtime):
+        self.runtime = runtime
 
 
 def test_conditional_scene_transitions_are_registered_world_event_rules():
@@ -37,11 +58,18 @@ def test_conditional_scene_transitions_are_registered_world_event_rules():
     stachion = install_floor6_stachion_scenario(runtime)
     fuscus = install_floor5_fuscus_scenario(runtime)
     pursuit = install_floor7_pursuit_scenario(runtime)
+    elfwar = install_floor6_elfwar_scenario(runtime)
+    emergency = _EmergencyNoState(runtime)
+    standoff = install_floor8_cave_standoff_scenario(runtime, emergency)
+    sluva = install_floor8_sluva_justice_scenario(runtime, emergency)
 
     assert install_floor6_buxum_scenario(runtime, cube) is buxum
     assert install_floor6_stachion_scenario(runtime) is stachion
     assert install_floor5_fuscus_scenario(runtime) is fuscus
     assert install_floor7_pursuit_scenario(runtime) is pursuit
+    assert install_floor6_elfwar_scenario(runtime) is elfwar
+    assert install_floor8_cave_standoff_scenario(runtime, emergency) is standoff
+    assert install_floor8_sluva_justice_scenario(runtime, emergency) is sluva
 
     assert set(runtime.world_event_rules).issuperset(
         {
@@ -52,6 +80,10 @@ def test_conditional_scene_transitions_are_registered_world_event_rules():
             AMBUSHER_RETREAT_EVENT_RULE_ID,
             FUSCUS_FLAG_DROP_EVENT_RULE_ID,
             LABYRINTH_PURSUIT_EVENT_RULE_ID,
+            CASTLE_GALEY_ATTACK_EVENT_RULE_ID,
+            KYSARAH_KEY_THEFT_EVENT_RULE_ID,
+            CAVE_MOUTH_COMBAT_EVENT_RULE_ID,
+            SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID,
         }
     )
 
@@ -65,11 +97,22 @@ def test_migrated_conditional_events_have_no_public_manual_scenario_trigger_meth
     assert hasattr(Floor6StachionScenario, "wait_for_paralysis_release")
     assert not hasattr(Floor5FuscusScenario, "resolve_hidden_flag_drop")
     assert not hasattr(Floor7PursuitScenario, "resolve_labyrinth_pursuit")
+    assert not hasattr(Floor6ElfWarScenario, "trigger_castle_galey_attack")
+    assert not hasattr(Floor6ElfWarScenario, "trigger_kysarah_key_theft")
+    assert not hasattr(Floor8CaveStandoffScenario, "resolve_cave_mouth_combat")
+    assert not hasattr(Floor8SluvaJusticeScenario, "complete_imprisonment_enforcement")
 
 
 def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
-    floor6 = (ROOT / "src/sao_mcp/server_floor6.py").read_text(encoding="utf-8")
-    buxum = (ROOT / "src/sao_mcp/server_floor6_buxum.py").read_text(encoding="utf-8")
+    server_paths = (
+        "src/sao_mcp/server_floor5.py",
+        "src/sao_mcp/server_floor6.py",
+        "src/sao_mcp/server_floor6_buxum.py",
+        "src/sao_mcp/server_floor6_elfwar.py",
+        "src/sao_mcp/server_floor7.py",
+        "src/sao_mcp/server_floor8.py",
+    )
+    joined = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in server_paths)
     forbidden = (
         "trigger_floor6_morte_joe_ambush",
         "advance_floor6_to_paralysis_release",
@@ -78,7 +121,10 @@ def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
         "resolve_floor6_buxum_retreat",
         "resolve_floor5_hidden_flag_drop",
         "resolve_floor7_labyrinth_pursuit",
+        "trigger_floor6_castle_galey_attack",
+        "trigger_floor6_kysarah_key_theft",
+        "resolve_progressive9_cave_mouth_combat",
+        "complete_progressive9_sluva_imprisonment_enforcement",
     )
-    joined = floor6 + "\n" + buxum
     assert all(name not in joined for name in forbidden)
-    assert "wait_floor6_for_paralysis_release" in floor6
+    assert "wait_floor6_for_paralysis_release" in joined

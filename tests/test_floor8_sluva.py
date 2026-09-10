@@ -167,15 +167,15 @@ def test_sluva_strict_disposition_enforces_imprisonment_without_auto_executing_p
     assert enforcement["sentence_enforcement_remaining_ms"] == term_ms
     assert players[0].alive is True and players[0].hp == principal_hp
 
-    with pytest.raises(ValueError, match="has not reached its release time"):
-        sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    occurrence_id = f"floor8.sluva_imprisonment_complete:{INSTANCE_ID}"
+    assert occurrence_id not in runtime.world_events.occurrences
     runtime.advance_world(term_ms - 1)
     assert sluva.status(INSTANCE_ID)["sentence_enforcement_remaining_ms"] == 1
-    with pytest.raises(ValueError, match="has not reached its release time"):
-        sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    assert occurrence_id not in runtime.world_events.occurrences
     runtime.advance_world(1)
 
-    completed = sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    completed = sluva.status(INSTANCE_ID)
+    assert runtime.world_event_state(occurrence_id)["status"] == "resolved"
     assert completed["stage"] == "sluva_imprisonment_completed_execution_pending"
     assert completed["sluva_justice"]["sentence_enforcement"]["status"] == "imprisonment_completed"
     assert completed["sentence_enforcement_remaining_ms"] is None
@@ -256,7 +256,10 @@ def test_sluva_commuted_disposition_releases_all_imprisoned_actors_at_term_end()
     assert row["execution_order_actor_ids"] == []
     assert row["execution_status"] is None
     runtime.advance_world(term_ms)
-    completed = sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
+    completed = sluva.status(INSTANCE_ID)
+    assert runtime.world_event_state(
+        f"floor8.sluva_imprisonment_complete:{INSTANCE_ID}"
+    )["status"] == "resolved"
     assert completed["stage"] == "sluva_sentence_enforcement_completed"
     assert all(completed["custody_active"][actor.actor_id] is False for actor in players)
     assert all(runtime.actor_custody_state(actor.actor_id) is None for actor in players)

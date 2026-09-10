@@ -39,11 +39,6 @@ def register_floor6_elfwar_tools(mcp, elfwar) -> None:
         return _json(elfwar.complete_bouhroum_trial(actor_id))
 
     @mcp.tool()
-    def trigger_floor6_castle_galey_attack(actor_id: str) -> str:
-        """Start the Fallen Elf assault and Gindo's coerced poisoning of Castle Galey's spirit-tree spring."""
-        return _json(elfwar.trigger_castle_galey_attack(actor_id))
-
-    @mcp.tool()
     def purify_floor6_castle_galey_spring(actor_id: str) -> str:
         """Purify the poisoned spirit-tree spring and reveal why Qusack leader Gindo sabotaged it."""
         return _json(elfwar.purify_spirit_tree_spring(actor_id))
@@ -57,11 +52,6 @@ def register_floor6_elfwar_tools(mcp, elfwar) -> None:
     def start_floor6_qusack_rescue(actor_id: str) -> str:
         """Reach the Qusack hostage cave with Gindo and Kizmel after the Castle Galey attack."""
         return _json(elfwar.start_qusack_rescue(actor_id))
-
-    @mcp.tool()
-    def trigger_floor6_kysarah_key_theft(actor_id: str) -> str:
-        """Run Kysarah's Tsumujiguruma theft: she takes the sacred-key bag and crushes Cylon's/Theano's repelling iron keys into one real Combined Iron Key instance."""
-        return _json(elfwar.trigger_kysarah_key_theft(actor_id))
 
     @mcp.tool()
     def get_floor6_elfwar_state(actor_id: str) -> str:

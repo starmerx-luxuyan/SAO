@@ -11,6 +11,7 @@ from sao_mcp.rules.group_travel import escorted_travel_together, group_travel_re
 
 
 FOREST_ELF_CUSTODY_RESTRICTION = "forest_elf_custody"
+CAVE_MOUTH_COMBAT_EVENT_RULE_ID = "floor8.cave_mouth_combat_resolution"
 
 
 class Floor8CaveStandoffScenario:
@@ -21,6 +22,12 @@ class Floor8CaveStandoffScenario:
             raise RuntimeError("Floor 8 standoff and emergency services must share one runtime")
         self.runtime = runtime
         self.emergency = emergency
+        runtime.register_world_event_rule(
+            CAVE_MOUTH_COMBAT_EVENT_RULE_ID,
+            self._discover_cave_mouth_combat_events,
+            self._resolve_cave_mouth_combat_event,
+        )
+        runtime.evaluate_world_events()
 
     def _state(self, instance_id: str) -> dict:
         return self.emergency._state(instance_id)
@@ -200,32 +207,80 @@ class Floor8CaveStandoffScenario:
         state["stage"] = "cave_mouth_combat"
         return self.status(instance_id)
 
-    def resolve_cave_mouth_combat(self, instance_id: str) -> dict:
+    @staticmethod
+    def _combat_event_instance_id(occurrence_id: str) -> str:
+        prefix = f"{CAVE_MOUTH_COMBAT_EVENT_RULE_ID}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid cave-mouth combat occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_cave_mouth_combat_events(self) -> list[str]:
+        states = self.runtime.world.global_flags.get("floor8_forest_emergency_instances", {})
+        ready: list[str] = []
+        for instance_id, state in states.items():
+            if state["stage"] != "cave_mouth_combat":
+                continue
+            forest = [self.runtime.actors[actor_id] for actor_id in self._forest_ids(state)]
+            players = [self.runtime.actors[actor_id] for actor_id in state["cave_combat_player_ids"]]
+            forest_defeated = bool(forest) and all(
+                not actor.alive
+                and actor.hp <= 0
+                and actor.metadata.get("defeat_resolved") is True
+                for actor in forest
+            )
+            player_defeated = bool(players) and all(
+                not actor.alive
+                and actor.hp <= 0
+                and actor.metadata.get("death_state") == "permanent"
+                for actor in players
+            )
+            if forest_defeated or player_defeated:
+                ready.append(f"{CAVE_MOUTH_COMBAT_EVENT_RULE_ID}:{instance_id}")
+        return ready
+
+    def _resolve_cave_mouth_combat_event(self, occurrence_id: str) -> dict:
+        instance_id = self._combat_event_instance_id(occurrence_id)
+        state = self._resolve_cave_mouth_combat(instance_id)
+        return {
+            "instance_id": instance_id,
+            "outcome": state["cave_combat_outcome"],
+            "stage": state["stage"],
+        }
+
+    def _resolve_cave_mouth_combat(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "cave_mouth_combat":
             raise ValueError("there is no active cave-mouth combat branch to resolve")
         encounter = self.runtime.encounters[state["cave_combat_encounter_id"]]
-        forest_ids = self._forest_ids(state)
-        player_ids = list(state["cave_combat_player_ids"])
-        forest_defeated = all(
-            not encounter.participants[actor_id].alive or encounter.participants[actor_id].hp <= 0
-            for actor_id in forest_ids
+        forest = [self.runtime.actors[actor_id] for actor_id in self._forest_ids(state)]
+        players = [self.runtime.actors[actor_id] for actor_id in state["cave_combat_player_ids"]]
+        forest_defeated = bool(forest) and all(
+            not actor.alive
+            and actor.hp <= 0
+            and actor.metadata.get("defeat_resolved") is True
+            for actor in forest
         )
-        player_defeated = all(
-            not encounter.participants[actor_id].alive or encounter.participants[actor_id].hp <= 0
-            for actor_id in player_ids
+        player_defeated = bool(players) and all(
+            not actor.alive
+            and actor.hp <= 0
+            and actor.metadata.get("death_state") == "permanent"
+            for actor in players
         )
         if forest_defeated:
             state["cave_combat_outcome"] = "forest_elf_pursuit_party_defeated"
             state["cave_combat_resolved_at_ms"] = self.runtime.world.now_ms
             state["stage"] = "standoff_resolved_forest_elves_defeated"
+            if encounter.active:
+                self.runtime.end_encounter(encounter.encounter_id, reason="forest_elf_pursuit_party_defeated")
             return self.status(instance_id)
         if player_defeated:
             state["cave_combat_outcome"] = "selected_player_combatants_defeated"
             state["cave_combat_resolved_at_ms"] = self.runtime.world.now_ms
             state["stage"] = "cave_mouth_combat_player_side_defeated"
+            if encounter.active:
+                self.runtime.end_encounter(encounter.encounter_id, reason="selected_player_combatants_defeated")
             return self.status(instance_id)
-        raise ValueError("the cave-mouth encounter still has living combatants on both sides")
+        raise ValueError("the cave-mouth encounter still has an unresolved living or revivable side")
 
     def status(self, instance_id: str) -> dict:
         state = self._state(instance_id)
@@ -236,7 +291,7 @@ class Floor8CaveStandoffScenario:
         elif stage == "restitution_offered":
             actions = ["accept_restitution", "reject_restitution"]
         elif stage == "cave_mouth_combat":
-            actions = ["ordinary_combat", "resolve_cave_mouth_combat"]
+            actions = ["ordinary_combat"]
         else:
             actions = []
         outcomes = {
@@ -262,4 +317,11 @@ def install_floor8_cave_standoff_scenario(runtime, emergency) -> Floor8CaveStand
     ):
         if location_id not in runtime.world_map.locations:
             raise RuntimeError(f"Floor 8 standoff world corpus is missing {location_id}")
-    return Floor8CaveStandoffScenario(runtime, emergency)
+    service = runtime.install_world_event_service(
+        "floor8.cave_standoff", lambda: Floor8CaveStandoffScenario(runtime, emergency)
+    )
+    if not isinstance(service, Floor8CaveStandoffScenario):
+        raise RuntimeError("floor8.cave_standoff service registry contains the wrong service type")
+    if service.emergency is not emergency:
+        raise RuntimeError("floor8.cave_standoff is already bound to a different emergency service")
+    return service

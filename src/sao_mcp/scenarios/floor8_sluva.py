@@ -21,6 +21,7 @@ HEARING_TIME_MS = 15 * 60_000
 JUDGMENT_TIME_MS = 10 * 60_000
 RESTITUTION_COL = 1_800
 RESTORATIVE_SERVICE_MS = 2 * 60 * 60_000
+SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID = "floor8.sluva_imprisonment_complete"
 
 
 class Floor8SluvaJusticeScenario:
@@ -38,6 +39,12 @@ class Floor8SluvaJusticeScenario:
             raise RuntimeError("Sluva justice and Floor 8 emergency services must share one runtime")
         self.runtime = runtime
         self.emergency = emergency
+        runtime.register_world_event_rule(
+            SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID,
+            self._discover_imprisonment_completion_events,
+            self._resolve_imprisonment_completion_event,
+        )
+        runtime.evaluate_world_events()
 
     def _state(self, instance_id: str) -> dict:
         return self.emergency._state(instance_id)
@@ -495,34 +502,75 @@ class Floor8SluvaJusticeScenario:
         state["stage"] = "sluva_sentence_enforcement_active"
         return self.status(instance_id)
 
-    def complete_imprisonment_enforcement(self, instance_id: str, arbiter_actor_id: str) -> dict:
+    @staticmethod
+    def _sentence_event_instance_id(occurrence_id: str) -> str:
+        prefix = f"{SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid Sluva imprisonment occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_imprisonment_completion_events(self) -> list[str]:
+        states = self.runtime.world.global_flags.get("floor8_forest_emergency_instances", {})
+        ready: list[str] = []
+        for instance_id, state in states.items():
+            if state["stage"] != "sluva_sentence_enforcement_active":
+                continue
+            docket = state["sluva_justice"]
+            enforcement = docket["sentence_enforcement"]
+            expected_ids = list(enforcement["imprisonment_actor_ids"])
+            if not expected_ids:
+                raise RuntimeError("active Sluva sentence enforcement has no imprisonment actors")
+            release_times: list[int] = []
+            for actor_id in expected_ids:
+                sentence = self.runtime.legal.sentence_for(actor_id)
+                if (
+                    sentence is None
+                    or sentence.case_id != docket["case_id"]
+                    or sentence.kind is not SentenceKind.IMPRISONMENT
+                    or sentence.status is not SentenceStatus.ACTIVE
+                    or sentence.release_at_ms is None
+                ):
+                    raise RuntimeError(
+                        f"active Sluva docket disagrees with authoritative sentence state for {actor_id}"
+                    )
+                release_times.append(int(sentence.release_at_ms))
+            if self.runtime.world.now_ms >= max(release_times):
+                ready.append(f"{SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID}:{instance_id}")
+        return ready
+
+    def _resolve_imprisonment_completion_event(self, occurrence_id: str) -> dict:
+        instance_id = self._sentence_event_instance_id(occurrence_id)
+        state = self._complete_imprisonment_enforcement(instance_id)
+        return {
+            "instance_id": instance_id,
+            "stage": state["stage"],
+            "completed_at_ms": state["sluva_justice"]["sentence_enforcement"][
+                "imprisonment_completed_at_ms"
+            ],
+        }
+
+    def _complete_imprisonment_enforcement(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "sluva_sentence_enforcement_active":
             raise ValueError("there is no active Sluva imprisonment term to complete")
         docket = state["sluva_justice"]
-        if arbiter_actor_id != docket["arbiter_actor_id"]:
-            raise ValueError("only the authoritative Sluva arbiter can complete sentence enforcement")
-        arbiter = self.runtime.actors[arbiter_actor_id]
-        if not arbiter.alive or arbiter.location_id != SLUVA:
-            raise ValueError("the Sluva arbiter must remain alive and present")
         enforcement = docket["sentence_enforcement"]
-        imprisonment_actor_ids = [
-            actor_id
-            for actor_id in self._custody_ids(state)
+        imprisonment_actor_ids = list(enforcement["imprisonment_actor_ids"])
+        release_times: list[int] = []
+        for actor_id in imprisonment_actor_ids:
+            sentence = self.runtime.legal.sentence_for(actor_id)
             if (
-                (sentence := self.runtime.legal.sentence_for(actor_id)) is not None
-                and sentence.case_id == docket["case_id"]
-                and sentence.kind is SentenceKind.IMPRISONMENT
-                and sentence.status is SentenceStatus.ACTIVE
-            )
-        ]
-        if not imprisonment_actor_ids:
-            raise ValueError("there is no active Sluva imprisonment term to complete")
-        release_at_ms = max(
-            int(self.runtime.legal.sentence_for(actor_id).release_at_ms)
-            for actor_id in imprisonment_actor_ids
-        )
-        if self.runtime.world.now_ms < release_at_ms:
+                sentence is None
+                or sentence.case_id != docket["case_id"]
+                or sentence.kind is not SentenceKind.IMPRISONMENT
+                or sentence.status is not SentenceStatus.ACTIVE
+                or sentence.release_at_ms is None
+            ):
+                raise RuntimeError(
+                    f"active Sluva docket disagrees with authoritative sentence state for {actor_id}"
+                )
+            release_times.append(int(sentence.release_at_ms))
+        if not release_times or self.runtime.world.now_ms < max(release_times):
             raise ValueError("the active imprisonment term has not reached its release time")
         self._require_ids_at(imprisonment_actor_ids, SLUVA)
         self._require_custody(imprisonment_actor_ids)
@@ -612,4 +660,11 @@ def install_floor8_sluva_justice_scenario(runtime, emergency) -> Floor8SluvaJust
     for location_id in (SLUVA, FOREST_ELF_SACRED_WOODS):
         if location_id not in runtime.world_map.locations:
             raise RuntimeError(f"Floor 8 Sluva justice world corpus is missing {location_id}")
-    return Floor8SluvaJusticeScenario(runtime, emergency)
+    service = runtime.install_world_event_service(
+        "floor8.sluva_justice", lambda: Floor8SluvaJusticeScenario(runtime, emergency)
+    )
+    if not isinstance(service, Floor8SluvaJusticeScenario):
+        raise RuntimeError("floor8.sluva_justice service registry contains the wrong service type")
+    if service.emergency is not emergency:
+        raise RuntimeError("floor8.sluva_justice is already bound to a different emergency service")
+    return service
