@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sao_mcp.runtime.communications_runtime import CommunicatingAincradRuntime
+from sao_mcp.runtime.knowledge_runtime import KnowledgeAincradRuntime
 
 
 WorldAdvanceHook = Callable[[int, int], None]
 
 
-class WorldEventAincradRuntime(CommunicatingAincradRuntime):
-    """Full social runtime with callbacks driven by authoritative world-time changes."""
+class WorldEventAincradRuntime(KnowledgeAincradRuntime):
+    """Knowledge-aware runtime with callbacks driven by authoritative world-time changes."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
