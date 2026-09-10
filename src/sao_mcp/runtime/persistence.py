@@ -102,10 +102,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     payload = _upgrade_payload(json.loads(payload_json))
 
     if into is None:
-        from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+        from sao_mcp.runtime.full_runtime import FullAincradRuntime
         from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
-        runtime: GameRuntime = HousingAincradRuntime()
+        runtime: GameRuntime = FullAincradRuntime()
         install_floor22_witch_scenario(runtime)
     else:
         runtime = into
