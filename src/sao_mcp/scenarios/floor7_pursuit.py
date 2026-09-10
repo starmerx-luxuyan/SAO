@@ -395,13 +395,8 @@ class Floor7PursuitScenario:
             pursuit["travelling_actor_ids"],
             DRAGON_BONE,
         )
-        to_ant = travel_together(
-            self.runtime,
-            pursuit["travelling_actor_ids"],
-            ANT_TUNNEL_VALLEY,
-        )
-        for scout_id in pursuit["fallen_scout_ids"]:
-            self.runtime.actors[scout_id].location_id = ANT_TUNNEL_VALLEY
+        moving = list(pursuit["travelling_actor_ids"]) + list(pursuit["fallen_scout_ids"])
+        to_ant = travel_together(self.runtime, moving, ANT_TUNNEL_VALLEY)
         pursuit["tail_to_ant_route"] = [group_travel_record(to_dragon), group_travel_record(to_ant)]
         state["stage"] = "tracking_through_ant_tunnel_valley"
         return self.status(instance_id)
@@ -411,22 +406,11 @@ class Floor7PursuitScenario:
         if state["stage"] != "tracking_through_ant_tunnel_valley":
             raise ValueError("the Fallen Elf trail has not reached Ant Tunnel Valley")
         pursuit = state["pursuit"]
-        to_plateau = travel_together(
-            self.runtime,
-            pursuit["travelling_actor_ids"],
-            PLATEAU,
-        )
+        moving = list(pursuit["travelling_actor_ids"]) + list(pursuit["fallen_scout_ids"])
+        to_plateau = travel_together(self.runtime, moving, PLATEAU)
+        to_labyrinth = travel_together(self.runtime, moving, LABYRINTH)
         for scout_id in pursuit["fallen_scout_ids"]:
-            self.runtime.actors[scout_id].location_id = PLATEAU
-        to_labyrinth = travel_together(
-            self.runtime,
-            pursuit["travelling_actor_ids"],
-            LABYRINTH,
-        )
-        for scout_id in pursuit["fallen_scout_ids"]:
-            scout = self.runtime.actors[scout_id]
-            scout.location_id = LABYRINTH
-            scout.metadata["ahead_of_pursuers"] = True
+            self.runtime.actors[scout_id].metadata["ahead_of_pursuers"] = True
 
         self._resolve_ruby_key_loss(state)
         encounter, blockers = self._spawn_labyrinth_blockers(pursuit["travelling_actor_ids"])
