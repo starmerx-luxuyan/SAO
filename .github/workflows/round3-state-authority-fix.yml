@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply state authority repairs
-        run: python scripts/round3_state_authority_fix.py
+        run: |
+          python scripts/round3_state_authority_fix.py
+          python scripts/round3_state_authority_fix2.py
       - name: Verify before commit
         run: |
           python -m pip install -e ".[dev]"
