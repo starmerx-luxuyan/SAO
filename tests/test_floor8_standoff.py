@@ -189,11 +189,12 @@ def test_cave_standoff_can_transfer_only_local_representatives_to_sluva_custody(
     assert set(result["custody_actor_ids"]) == set(representative_ids)
     assert all(runtime.actors[actor_id].location_id == SLUVA for actor_id in representative_ids + forest_ids)
     assert all(
-        runtime.actors[actor_id].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
+        runtime.actor_custody_state(actor_id)["restriction_code"] == FOREST_ELF_CUSTODY_RESTRICTION
+        and runtime.actor_custody_state(actor_id)["case_id"] == f"floor8_sluva:{instance_id}"
         for actor_id in representative_ids
     )
     assert all(
-        "forest_elf_custody" not in runtime.actors[actor_id].metadata
+        AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in runtime.actors[actor_id].metadata
         and "forest_elf_custody_location_id" not in runtime.actors[actor_id].metadata
         for actor_id in representative_ids
     )

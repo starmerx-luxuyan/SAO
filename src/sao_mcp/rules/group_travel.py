@@ -62,6 +62,8 @@ def _group_context(runtime, actor_ids: list[str] | tuple[str, ...]):
         raise ValueError("group travel actor_ids must be unique")
 
     actors = [runtime.actors[actor_id] for actor_id in members]
+    for actor_id in members:
+        runtime.require_actor_autonomous_travel(actor_id)
     if any(not actor.alive for actor in actors):
         raise ValueError("all group travellers must be alive")
     if any(actor.location_id is None for actor in actors):
@@ -167,6 +169,64 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
     )
 
 
+def escorted_travel_together(
+    runtime,
+    detainee_ids: list[str] | tuple[str, ...],
+    escort_ids: list[str] | tuple[str, ...],
+    destination_id: str,
+) -> GroupTravelResolution:
+    detainees = tuple(detainee_ids)
+    escorts = tuple(escort_ids)
+    if not detainees or not escorts:
+        raise ValueError("escorted travel requires detainees and escorts")
+    if len(set(detainees)) != len(detainees) or len(set(escorts)) != len(escorts):
+        raise ValueError("escorted travel actor ids must be unique")
+    if set(detainees).intersection(escorts):
+        raise ValueError("an actor cannot be both detainee and escort")
+
+    members = detainees + escorts
+    actors = [runtime.actors[actor_id] for actor_id in members]
+    if any(not actor.alive for actor in actors):
+        raise ValueError("all escorted travellers must be alive")
+    if any(actor.location_id is None for actor in actors):
+        raise ValueError("all escorted travellers must have a current world location")
+    origins = {actor.location_id for actor in actors}
+    if len(origins) != 1:
+        raise ValueError("detainees and escorts must be colocated")
+    origin = str(actors[0].location_id)
+
+    for actor_id in detainees:
+        custody = runtime.legal.custody_for(actor_id)
+        if custody is None:
+            raise ValueError(f"escorted traveller {actor_id} is not in custody")
+    for actor_id in escorts:
+        runtime.require_actor_autonomous_travel(actor_id)
+    if any(actor.metadata.get("active_duel_id") for actor in actors):
+        raise ValueError("escorted travel is unavailable while a traveller has an active duel")
+
+    member_ids = set(members)
+    for encounter in runtime.encounters.values():
+        if not encounter.active or not member_ids.intersection(encounter.participants):
+            continue
+        if has_surviving_colocated_outsider(encounter, member_ids, origin):
+            raise ValueError("escorted travel is unavailable while a live encounter has surviving colocated outsiders")
+
+    if destination_id not in runtime.world_map.locations:
+        raise KeyError(destination_id)
+    _require_group_can_enter(runtime, actors, destination_id)
+    edge = _direct_edge(runtime, origin, destination_id)
+    runtime.advance_world(edge.travel_ms)
+    newly_discovered = _commit_group_destination(runtime, members, actors, destination_id)
+    return GroupTravelResolution(
+        actor_ids=members,
+        from_location_id=origin,
+        to_location_id=destination_id,
+        elapsed_ms=edge.travel_ms,
+        newly_discovered=newly_discovered,
+        traversal_tags=edge.traversal_tags,
+    )
+
+
 def exit_encounter_via_travel(
     runtime,
     encounter_id: str,
@@ -175,9 +235,7 @@ def exit_encounter_via_travel(
 ) -> GroupTravelResolution:
     """Leave a live encounter through one real adjacent world-graph edge."""
 
-    if encounter_id not in runtime.encounters:
-        raise KeyError(encounter_id)
-    encounter = runtime.encounters[encounter_id]
+    encounter = runtime.require_active_encounter(encounter_id)
     members = tuple(actor_ids)
     if not members or len(set(members)) != len(members):
         raise ValueError("encounter-exit travel requires unique actor ids")
@@ -200,14 +258,9 @@ def exit_encounter_via_travel(
 
     runtime.advance_encounter(encounter_id, edge.travel_ms)
     newly_discovered = _commit_group_destination(runtime, members, actors, destination_id)
-    for actor_id in members:
-        encounter.participants.pop(actor_id, None)
-        encounter.positions.pop(actor_id, None)
-        encounter.threat.pop(actor_id, None)
-        encounter.last_attacker_by_target.pop(actor_id, None)
-        encounter.last_attack_time_by_target.pop(actor_id, None)
-        for table in encounter.threat.values():
-            table.pop(actor_id, None)
+    runtime.remove_encounter_participants(
+        encounter_id, members, reason="world_graph_exit"
+    )
 
     return GroupTravelResolution(
         actor_ids=members,

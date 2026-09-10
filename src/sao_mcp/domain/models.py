@@ -293,15 +293,22 @@ class EncounterState:
     encounter_id: str
     participants: dict[str, CombatantState]
     zone_id: str
+    world_started_at_ms: int = 0
     time_ms: int = 0
     safe_zone: bool = False
     anti_crystal: bool = False
+    ended_at_world_ms: int | None = None
+    end_reason: str | None = None
     threat: dict[str, dict[str, float]] = field(default_factory=dict)
     last_attacker_by_target: dict[str, str] = field(default_factory=dict)
     last_attack_time_by_target: dict[str, int] = field(default_factory=dict)
     events: list[CombatEvent] = field(default_factory=list)
     positions: dict[str, tuple[float, float]] = field(default_factory=dict)
     arena_radius_m: float = 30.0
+
+    @property
+    def active(self) -> bool:
+        return self.ended_at_world_ms is None
 
 
 @dataclass(slots=True)

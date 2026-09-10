@@ -34,6 +34,7 @@ from sao_mcp.rules.inventory import (
     unequip,
 )
 from sao_mcp.rules.items import ConsumableResolution, tick_statuses, use_consumable
+from sao_mcp.rules.legal_state import LegalStateLedger, SentenceKind
 from sao_mcp.rules.loot import GrantedLoot, LootRoll, grant_loot, roll_loot
 from sao_mcp.rules.npcs import NPCInteraction, NPCRuntime
 from sao_mcp.rules.progression import (
@@ -67,6 +68,7 @@ class GameRuntime:
         self.world_map: WorldMapCatalog = build_world_map_catalog()
         self.quests = QuestRuntime(CORE_QUESTS)
         self.npcs = NPCRuntime()
+        self.legal = LegalStateLedger()
         self.actors: dict[str, CombatantState] = {}
         self.encounters: dict[str, EncounterState] = {}
         self.defeat_hooks: list[Callable[[EncounterState, CombatantState, str | None], None]] = []
@@ -229,6 +231,14 @@ class GameRuntime:
         missing = [actor_id for actor_id in actor_ids if actor_id not in self.actors]
         if missing:
             raise KeyError(f"unknown actors: {missing}")
+        for actor_id in actor_ids:
+            conflicts = [
+                encounter_id
+                for encounter_id, existing in self.encounters.items()
+                if existing.active and actor_id in existing.participants
+            ]
+            if conflicts:
+                raise ValueError(f"actor {actor_id} is already in active encounter {conflicts[0]}")
         location = self.world_map.locations.get(zone_id)
         resolved_safe = location.safe_zone if location and safe_zone is None else bool(safe_zone)
         resolved_anti = location.anti_crystal if location and anti_crystal is None else bool(anti_crystal)
@@ -236,17 +246,12 @@ class GameRuntime:
             encounter_id=_id("enc"),
             participants={actor_id: self.actors[actor_id] for actor_id in actor_ids},
             zone_id=zone_id,
+            world_started_at_ms=self.world.now_ms,
             safe_zone=resolved_safe,
             anti_crystal=resolved_anti,
         )
         self.encounters[encounter.encounter_id] = encounter
-        self._append(
-            encounter,
-            "encounter_started",
-            None,
-            None,
-            world_started_at_ms=self.world.now_ms,
-        )
+        self._append(encounter, "encounter_started", None, None)
         return encounter
 
     def _equipped_weapon(self, actor: CombatantState) -> tuple[ItemInstance, object]:
@@ -270,17 +275,7 @@ class GameRuntime:
 
     @staticmethod
     def _encounter_world_started_at_ms(encounter: EncounterState) -> int:
-        anchors = [event for event in encounter.events if event.event_type == "encounter_started"]
-        if len(anchors) != 1:
-            raise RuntimeError(
-                f"encounter {encounter.encounter_id} must contain exactly one encounter_started event"
-            )
-        anchor = anchors[0]
-        if anchor.time_ms != 0:
-            raise RuntimeError(
-                f"encounter {encounter.encounter_id} start event must be at encounter time zero"
-            )
-        value = anchor.payload.get("world_started_at_ms")
+        value = encounter.world_started_at_ms
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise RuntimeError(
                 f"encounter {encounter.encounter_id} has an invalid world_started_at_ms anchor"
@@ -289,7 +284,172 @@ class GameRuntime:
 
     def encounter_world_time_ms(self, encounter_id: str) -> int:
         encounter = self.encounters[encounter_id]
-        return self._encounter_world_started_at_ms(encounter) + encounter.time_ms
+        return encounter.world_started_at_ms + encounter.time_ms
+
+    def require_active_encounter(self, encounter_id: str) -> EncounterState:
+        encounter = self.encounters[encounter_id]
+        if not encounter.active:
+            raise ValueError(f"encounter {encounter_id} has ended")
+        return encounter
+
+    def add_encounter_participant(
+        self,
+        encounter_id: str,
+        actor_id: str,
+        *,
+        position: tuple[float, float] | None = None,
+    ) -> CombatantState:
+        encounter = self.require_active_encounter(encounter_id)
+        actor = self.actors[actor_id]
+        if actor_id in encounter.participants:
+            raise ValueError("actor is already an encounter participant")
+        for other_id, other in self.encounters.items():
+            if other_id != encounter_id and other.active and actor_id in other.participants:
+                raise ValueError(f"actor {actor_id} is already in active encounter {other_id}")
+        if actor.location_id != encounter.zone_id:
+            raise ValueError("encounter participant must be physically present in the encounter zone")
+        encounter.participants[actor_id] = actor
+        if position is not None:
+            encounter.positions[actor_id] = (float(position[0]), float(position[1]))
+        self._append(encounter, "participant_joined", actor_id, None)
+        return actor
+
+    def remove_encounter_participants(
+        self,
+        encounter_id: str,
+        actor_ids: list[str] | tuple[str, ...],
+        *,
+        reason: str,
+    ) -> None:
+        encounter = self.require_active_encounter(encounter_id)
+        members = tuple(dict.fromkeys(actor_ids))
+        if not members or len(members) != len(tuple(actor_ids)):
+            raise ValueError("encounter removal requires unique actor ids")
+        missing = [actor_id for actor_id in members if actor_id not in encounter.participants]
+        if missing:
+            raise ValueError(f"actors are not encounter participants: {missing}")
+        for actor_id in members:
+            encounter.participants.pop(actor_id)
+            encounter.positions.pop(actor_id, None)
+            encounter.threat.pop(actor_id, None)
+            encounter.last_attacker_by_target.pop(actor_id, None)
+            encounter.last_attack_time_by_target.pop(actor_id, None)
+            for table in encounter.threat.values():
+                table.pop(actor_id, None)
+        self._append(
+            encounter,
+            "participants_left",
+            None,
+            None,
+            actor_ids=list(members),
+            reason=reason,
+        )
+        if (
+            encounter.active
+            and not any(
+                actor.kind is EntityKind.PLAYER and actor.metadata.get("death_state") == "end_phase"
+                for actor in encounter.participants.values()
+            )
+            and sum(1 for actor in encounter.participants.values() if actor.alive) <= 1
+        ):
+            self.end_encounter(encounter_id, reason=f"{reason}:combat_resolved")
+
+    def end_encounter(self, encounter_id: str, *, reason: str) -> EncounterState:
+        if not reason:
+            raise ValueError("encounter end reason is required")
+        encounter = self.require_active_encounter(encounter_id)
+        absolute_ms = self.encounter_world_time_ms(encounter_id)
+        if self.world.now_ms < absolute_ms:
+            raise RuntimeError("world clock precedes encounter clock")
+        encounter.ended_at_world_ms = self.world.now_ms
+        encounter.end_reason = reason
+        self._append(encounter, "encounter_ended", None, None, reason=reason)
+        return encounter
+
+    def require_actor_autonomous_travel(self, actor_id: str) -> None:
+        actor = self.actors[actor_id]
+        custody = self.legal.custody_for(actor_id)
+        if custody is not None:
+            raise ValueError(f"autonomous travel is restricted by {custody.restriction_code}")
+        from sao_mcp.rules.travel import require_autonomous_travel
+
+        require_autonomous_travel(actor)
+
+    def take_actor_custody(
+        self,
+        actor_id: str,
+        *,
+        custody_id: str,
+        authority_id: str,
+        case_id: str,
+        restriction_code: str,
+        reason: str,
+    ):
+        actor = self.actors[actor_id]
+        if not actor.alive or actor.location_id is None:
+            raise ValueError("custody requires a living actor at a settled world location")
+        return self.legal.take_custody(
+            custody_id=custody_id,
+            actor_id=actor_id,
+            authority_id=authority_id,
+            case_id=case_id,
+            restriction_code=restriction_code,
+            reason=reason,
+            started_at_ms=self.world.now_ms,
+        )
+
+    def release_actor_custody(self, actor_id: str, *, resolution: str):
+        return self.legal.release_custody(
+            actor_id, resolution=resolution, released_at_ms=self.world.now_ms
+        )
+
+    def actor_custody_state(self, actor_id: str):
+        from dataclasses import asdict as _asdict
+
+        state = self.legal.custody_for(actor_id)
+        return _asdict(state) if state is not None else None
+
+    def issue_sentence_order(
+        self,
+        actor_id: str,
+        *,
+        sentence_id: str,
+        case_id: str,
+        authority_id: str,
+        kind: SentenceKind | str,
+    ):
+        custody = self.legal.custody_for(actor_id)
+        if custody is None or custody.case_id != case_id:
+            raise ValueError("sentence order requires custody in the same case")
+        return self.legal.issue_sentence(
+            sentence_id=sentence_id,
+            actor_id=actor_id,
+            case_id=case_id,
+            authority_id=authority_id,
+            kind=kind,
+            issued_at_ms=self.world.now_ms,
+        )
+
+    def begin_imprisonment_sentence(self, actor_id: str, *, duration_ms: int):
+        if self.legal.custody_for(actor_id) is None:
+            raise ValueError("imprisonment enforcement requires active custody")
+        return self.legal.begin_imprisonment(
+            actor_id, started_at_ms=self.world.now_ms, duration_ms=duration_ms
+        )
+
+    def complete_imprisonment_sentence(self, actor_id: str, *, resolution: str):
+        custody = self.legal.custody_for(actor_id)
+        if custody is None:
+            raise ValueError("imprisonment completion requires active custody")
+        sentence = self.legal.complete_imprisonment(actor_id, completed_at_ms=self.world.now_ms)
+        self.release_actor_custody(actor_id, resolution=resolution)
+        return sentence
+
+    def actor_sentence_state(self, actor_id: str):
+        from dataclasses import asdict as _asdict
+
+        state = self.legal.sentence_for(actor_id)
+        return _asdict(state) if state is not None else None
 
     def _reward_recipients(self, encounter: EncounterState, killer: CombatantState) -> list[CombatantState]:
         if not killer.party_id:
@@ -373,6 +533,16 @@ class GameRuntime:
                 self._grant_defeat_rewards(encounter, target, killer)
         for hook in tuple(self.defeat_hooks):
             hook(encounter, target, killer_id)
+        if (
+            target.kind in (EntityKind.MONSTER, EntityKind.BOSS)
+            and encounter.active
+            and not any(
+                actor.kind is EntityKind.PLAYER and actor.metadata.get("death_state") == "end_phase"
+                for actor in encounter.participants.values()
+            )
+            and sum(1 for actor in encounter.participants.values() if actor.alive) <= 1
+        ):
+            self.end_encounter(encounter.encounter_id, reason="combat_resolved")
 
     def _advance_encounter_to(self, encounter: EncounterState, new_time_ms: int) -> None:
         if new_time_ms <= encounter.time_ms:
@@ -404,7 +574,7 @@ class GameRuntime:
     def advance_encounter(self, encounter_id: str, elapsed_ms: int) -> EncounterState:
         if elapsed_ms < 0:
             raise ValueError("elapsed_ms must be >= 0")
-        encounter = self.encounters[encounter_id]
+        encounter = self.require_active_encounter(encounter_id)
         self._advance_encounter_to(encounter, encounter.time_ms + elapsed_ms)
         return encounter
 
@@ -419,7 +589,7 @@ class GameRuntime:
         distance_m: float = 1.0,
         seed: int | None = None,
     ) -> AttackResolution:
-        encounter = self.encounters[encounter_id]
+        encounter = self.require_active_encounter(encounter_id)
         attacker = encounter.participants[attacker_id]
         target = encounter.participants[target_id]
         if encounter.safe_zone:
@@ -498,7 +668,7 @@ class GameRuntime:
         return result
 
     def switch(self, encounter_id: str, outgoing_id: str, incoming_id: str, target_id: str) -> CombatEvent:
-        encounter = self.encounters[encounter_id]
+        encounter = self.require_active_encounter(encounter_id)
         outgoing = encounter.participants[outgoing_id]
         incoming = encounter.participants[incoming_id]
         target = encounter.participants[target_id]
@@ -528,7 +698,7 @@ class GameRuntime:
         )
 
     def monster_target(self, encounter_id: str, monster_id: str) -> str | None:
-        encounter = self.encounters[encounter_id]
+        encounter = self.require_active_encounter(encounter_id)
         monster = encounter.participants[monster_id]
         if monster.kind not in (EntityKind.MONSTER, EntityKind.BOSS):
             raise ValueError("actor is not a monster")
@@ -557,7 +727,9 @@ class GameRuntime:
         actor = self.actors[actor_id]
         item = actor.inventory[instance_id]
         template = self.catalog.consumables[item.template_id]
-        encounter = self.encounters.get(encounter_id) if encounter_id else None
+        encounter = self.require_active_encounter(encounter_id) if encounter_id else None
+        if encounter is not None and actor_id not in encounter.participants:
+            raise ValueError("item user is not an active encounter participant")
         now = encounter.time_ms if encounter else self.world.now_ms
         result = use_consumable(
             actor,
@@ -586,7 +758,7 @@ class GameRuntime:
             return False
         member_ids = {actor_id}
         for encounter in self.encounters.values():
-            if actor_id not in encounter.participants:
+            if not encounter.active or actor_id not in encounter.participants:
                 continue
             if has_surviving_colocated_outsider(
                 encounter,
@@ -598,6 +770,7 @@ class GameRuntime:
 
     def travel_actor(self, actor_id: str, destination_id: str) -> TravelResolution:
         actor = self.actors[actor_id]
+        self.require_actor_autonomous_travel(actor_id)
         if self._in_live_encounter(actor_id):
             raise ValueError("ordinary travel is unavailable during a live encounter")
         resolution = travel(self.world, actor, destination_id, self.world_map)
@@ -618,6 +791,10 @@ class GameRuntime:
         encounter_id: str | None = None,
     ) -> TravelResolution:
         actor = self.actors[actor_id]
+        self.require_actor_autonomous_travel(actor_id)
+        encounter = self.require_active_encounter(encounter_id) if encounter_id else None
+        if encounter is not None and actor_id not in encounter.participants:
+            raise ValueError("teleport escape requires an active encounter participant")
         destination = require_active_teleport_gate(
             self.world,
             actor,
@@ -631,10 +808,11 @@ class GameRuntime:
         if not used.consumed:
             raise ValueError(used.reason or "teleport crystal could not be used")
         resolution = apply_teleport_to_gate(self.world, actor, destination)
-        if encounter_id and actor_id in self.encounters[encounter_id].participants:
-            encounter = self.encounters[encounter_id]
+        if encounter is not None:
             self._append(encounter, "teleport_escape", actor_id, actor_id, destination_id=destination_id)
-            encounter.participants.pop(actor_id, None)
+            self.remove_encounter_participants(
+                encounter_id, [actor_id], reason="teleport_escape"
+            )
         return resolution
 
     def interact_npc(self, actor_id: str, npc_id: str) -> NPCInteraction:

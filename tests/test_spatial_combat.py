@@ -186,6 +186,7 @@ def test_spatial_state_round_trips_through_save():
     runtime = SpatialAincradRuntime(seed=1)
     player = runtime.create_character("Saver")
     monster = runtime.create_training_monster(level=1)
+    player.location_id = monster.location_id
     encounter = runtime.start_encounter([player.actor_id, monster.actor_id])
     encounter.positions[player.actor_id] = (-3.25, 1.5)
     encounter.positions[monster.actor_id] = (2.75, -0.5)

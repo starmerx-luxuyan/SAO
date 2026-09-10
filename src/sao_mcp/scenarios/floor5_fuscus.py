@@ -93,6 +93,8 @@ class Floor5FuscusScenario:
         state["flag_recipient_id"] = recipient_id
         state["flag_instance_id"] = item.instance_id
         state["stage"] = "post_boss_secret_drop"
+        if encounter.active:
+            self.runtime.end_encounter(encounter.encounter_id, reason="fuscus_defeated")
         return {"instance_id": instance_id, "resolved": True, "drop_created": True}
 
     def check_personal_flag_drop(self, actor_id: str, instance_id: str) -> dict:

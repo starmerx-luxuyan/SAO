@@ -475,6 +475,8 @@ class Floor7PursuitScenario:
         pursuit["blocker_combat_elapsed_ms"] = combat_elapsed_ms
         pursuit["trail_margin_ms"] = TRAIL_MARGIN_MS
         pursuit["trail_outcome"] = "maintained" if combat_elapsed_ms <= TRAIL_MARGIN_MS else "lost"
+        if encounter.active:
+            self.runtime.end_encounter(encounter.encounter_id, reason="labyrinth_blockers_defeated")
 
         for scout_id in pursuit["fallen_scout_ids"]:
             self.runtime.actors[scout_id].metadata["pursuit_trail_outcome"] = pursuit["trail_outcome"]

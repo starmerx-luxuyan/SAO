@@ -8,7 +8,9 @@ def test_standalone_import_restores_boss_aware_runtime_and_boss_phase_state():
     runtime = AincradRuntime(seed=4)
     runtime.economy = EconomyRuntime()
     player = runtime.create_character("Saver", level=8)
-    encounter, boss = runtime.start_floor_boss_encounter([player.actor_id], enforce_location=False)
+    runtime.world.floors[1].unlocked = True
+    player.location_id = "floor_1_boss_room"
+    encounter, boss = runtime.start_floor_boss_encounter([player.actor_id])
     boss.metadata["boss_depleted_bars"] = 2
     boss.hp = 3_601
     runtime.attack(encounter.encounter_id, player.actor_id, boss.actor_id, defense="none", seed=1)

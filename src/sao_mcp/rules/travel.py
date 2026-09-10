@@ -39,9 +39,11 @@ def has_surviving_colocated_outsider(
     member_ids: set[str] | frozenset[str],
     origin_location_id: str,
 ) -> bool:
+    if not encounter.active:
+        return False
     return any(
         actor_id not in member_ids
-        and participant.alive
+        and (participant.alive or participant.metadata.get("death_state") == "end_phase")
         and participant.location_id == origin_location_id
         for actor_id, participant in encounter.participants.items()
     )

@@ -50,6 +50,7 @@ def test_save_roundtrip_preserves_shared_actor_identity_world_quests_and_rng():
     rt = GameRuntime(seed=123)
     actor = rt.create_character("SavePlayer", level=4)
     monster = rt.create_training_monster(level=2)
+    actor.location_id = monster.location_id
     enc = rt.start_encounter([actor.actor_id, monster.actor_id])
     rt.npcs.adjust_relationship(actor.actor_id, "npc_tutorial_instructor", 17)
     payload = export_runtime(rt)

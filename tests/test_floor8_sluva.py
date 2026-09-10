@@ -5,7 +5,6 @@ from sao_mcp.corpus.floor8_world import ARBOREAL_ROUTE_TAGS, FOREST_ELF_SACRED_W
 from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, PartyState
-from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
@@ -73,7 +72,6 @@ def _setup_custody(seed=241):
     for index, guild_id in enumerate((ALS_GUILD_ID, ALS_GUILD_ID, DKB_GUILD_ID, DKB_GUILD_ID), start=1):
         actor = runtime.create_character(f"Sluva Custody {index}", level=26)
         actor.location_id = SLUVA
-        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = FOREST_ELF_CUSTODY_RESTRICTION
         guild = guilds[guild_id]
         invite = runtime.invite_to_guild(guild_id, guild.leader_id, actor.actor_id)
         runtime.accept_guild_invite(invite.invite_id, actor.actor_id)
@@ -90,12 +88,23 @@ def _setup_custody(seed=241):
     for actor in forest:
         actor.party_id = party.party_id
 
+    case_id = f"floor8_sluva:{INSTANCE_ID}"
+    for actor in players:
+        runtime.take_actor_custody(
+            actor.actor_id,
+            custody_id=f"custody:{case_id}:{actor.actor_id}",
+            authority_id=forest[0].actor_id,
+            case_id=case_id,
+            restriction_code=FOREST_ELF_CUSTODY_RESTRICTION,
+            reason="test_sluva_fixture",
+        )
     runtime.world.global_flags["floor8_forest_emergency_instances"] = {
         INSTANCE_ID: {
             "instance_id": INSTANCE_ID,
             "stage": "standoff_resolved_custody",
             "floor8_actor_ids": [players[0].actor_id],
             "custody_actor_ids": [actor.actor_id for actor in players],
+            "custody_case_id": case_id,
             "incident": {
                 "forest_elf_actor_ids": [actor.actor_id for actor in forest],
                 "forest_elf_party_id": party.party_id,
@@ -173,9 +182,9 @@ def test_sluva_strict_disposition_enforces_imprisonment_without_auto_executing_p
     assert completed["custody_active"][players[0].actor_id] is True
     assert all(completed["custody_active"][actor.actor_id] is False for actor in players[1:])
     assert players[0].alive is True and players[0].hp == principal_hp
-    assert players[0].metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] == FOREST_ELF_CUSTODY_RESTRICTION
-    assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players[1:])
-    assert all(actor.metadata["forest_elf_custody_resolution"] == "sluva_imprisonment_completed" for actor in players[1:])
+    assert runtime.actor_custody_state(players[0].actor_id)["restriction_code"] == FOREST_ELF_CUSTODY_RESTRICTION
+    assert all(runtime.actor_custody_state(actor.actor_id) is None for actor in players[1:])
+    assert all("autonomous_travel_restriction" not in actor.metadata for actor in players)
 
     saved = export_runtime(runtime)
     restored = import_runtime(saved)
@@ -223,7 +232,8 @@ def test_sluva_mitigation_can_precede_principal_finding_and_pardon_uses_that_fin
     assert pardoned["stage"] == "sluva_disposition_pardon"
     assert pardoned["sluva_justice"]["disposition"]["campaign_deviation"] is True
     assert all(pardoned["sentences"][actor.actor_id] == "pardoned" for actor in players)
-    assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players)
+    assert all(runtime.actor_custody_state(actor.actor_id) is None for actor in players)
+    assert all("autonomous_travel_restriction" not in actor.metadata for actor in players)
     assert all(pardoned["custody_active"][actor.actor_id] is False for actor in players)
 
 
@@ -249,5 +259,6 @@ def test_sluva_commuted_disposition_releases_all_imprisoned_actors_at_term_end()
     completed = sluva.complete_imprisonment_enforcement(INSTANCE_ID, arbiter_id)
     assert completed["stage"] == "sluva_sentence_enforcement_completed"
     assert all(completed["custody_active"][actor.actor_id] is False for actor in players)
-    assert all(AUTONOMOUS_TRAVEL_RESTRICTION_KEY not in actor.metadata for actor in players)
+    assert all(runtime.actor_custody_state(actor.actor_id) is None for actor in players)
+    assert all("autonomous_travel_restriction" not in actor.metadata for actor in players)
     assert all(actor.alive for actor in players)

@@ -97,8 +97,7 @@ class GuildAutonomyAincradRuntime(NPCAutonomyAincradRuntime):
         if self._operation_blocked_by_encounter(agenda.assigned_member_ids, origin):
             raise ValueError("guild operation cannot depart during a live colocated encounter")
         for actor in self._assigned_members(agenda.guild_id, agenda.assigned_member_ids):
-            if actor.metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY) is not None:
-                raise ValueError("an assigned guild member has restricted autonomous travel")
+            self.require_actor_autonomous_travel(actor.actor_id)
             if actor.metadata.get("active_duel_id"):
                 raise ValueError("an assigned guild member is in an active duel")
 

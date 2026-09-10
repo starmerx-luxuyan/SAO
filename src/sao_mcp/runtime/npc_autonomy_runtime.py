@@ -79,6 +79,8 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
             return False
         if not materialized.alive:
             return True
+        if self.legal.custody_for(materialized.actor_id) is not None:
+            return True
         if materialized.metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY) is not None:
             return True
         member_ids = {materialized.actor_id}
@@ -111,7 +113,7 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         if materialized is not None:
             if not materialized.alive:
                 raise ValueError("defeated NPC cannot start autonomous travel")
-            require_autonomous_travel(materialized)
+            self.require_actor_autonomous_travel(materialized.actor_id)
             member_ids = {materialized.actor_id}
             for encounter in self.encounters.values():
                 if materialized.actor_id not in encounter.participants:

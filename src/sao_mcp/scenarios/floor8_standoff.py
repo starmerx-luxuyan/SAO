@@ -7,8 +7,7 @@ from sao_mcp.corpus.floor8_world import (
     SLUVA,
 )
 from sao_mcp.domain.models import EntityKind
-from sao_mcp.rules.group_travel import group_travel_record, travel_together
-from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
+from sao_mcp.rules.group_travel import escorted_travel_together, group_travel_record, travel_together
 
 
 FOREST_ELF_CUSTODY_RESTRICTION = "forest_elf_custody"
@@ -146,17 +145,28 @@ class Floor8CaveStandoffScenario:
 
         representative_ids = self._frontline_ids(state)
         forest_ids = self._forest_ids(state)
+        approach = travel_together(self.runtime, representative_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH)
+        case_id = f"floor8_sluva:{instance_id}"
+        authority_id = self._forest_leader_id(state)
+        for actor_id in representative_ids:
+            self.runtime.take_actor_custody(
+                actor_id,
+                custody_id=f"custody:{case_id}:{actor_id}",
+                authority_id=authority_id,
+                case_id=case_id,
+                restriction_code=FOREST_ELF_CUSTODY_RESTRICTION,
+                reason="protected_tree_incident_local_representative_handoff",
+            )
         segments = [
-            travel_together(self.runtime, representative_ids, FOREST_ELF_ESCAPE_CAVE_MOUTH),
-            travel_together(self.runtime, representative_ids + forest_ids, FOREST_ELF_SACRED_WOODS),
-            travel_together(self.runtime, representative_ids + forest_ids, SLUVA),
+            approach,
+            escorted_travel_together(
+                self.runtime, representative_ids, forest_ids, FOREST_ELF_SACRED_WOODS
+            ),
+            escorted_travel_together(self.runtime, representative_ids, forest_ids, SLUVA),
         ]
         state["custody_transfer_route"] = [group_travel_record(segment) for segment in segments]
-        for actor_id in representative_ids:
-            actor = self.runtime.actors[actor_id]
-            actor.metadata["forest_elf_custody_started_at_ms"] = self.runtime.world.now_ms
-            actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = FOREST_ELF_CUSTODY_RESTRICTION
         state["custody_actor_ids"] = list(representative_ids)
+        state["custody_case_id"] = case_id
         state["custody_mediator_actor_id"] = mediator_actor_id
         state["custody_started_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "standoff_resolved_custody"

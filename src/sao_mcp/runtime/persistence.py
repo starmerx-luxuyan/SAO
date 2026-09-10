@@ -6,13 +6,15 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from sao_mcp.domain.models import CombatEvent, CombatantState, EncounterState, WorldState
+from sao_mcp.rules.live_state import assert_runtime_live_state
 from sao_mcp.rules.spatial import default_formation
 from sao_mcp.rules.state_authority import assert_runtime_state_authority
 from sao_mcp.runtime.engine import GameRuntime
 
 
 SAVE_SCHEMA_V1 = "sao.aincrad.save.v1"
-SAVE_SCHEMA = "sao.aincrad.save.v2"
+SAVE_SCHEMA_V2 = "sao.aincrad.save.v2"
+SAVE_SCHEMA = "sao.aincrad.save.v3"
 ACTORS_ADAPTER = TypeAdapter(dict[str, CombatantState])
 WORLD_ADAPTER = TypeAdapter(WorldState)
 EVENTS_ADAPTER = TypeAdapter(list[CombatEvent])
@@ -30,19 +32,22 @@ def _upgrade_payload(payload: dict[str, Any]) -> dict[str, Any]:
     schema = payload.get("schema")
     if schema == SAVE_SCHEMA:
         return payload
-    if schema == SAVE_SCHEMA_V1:
+    if schema in {SAVE_SCHEMA_V1, SAVE_SCHEMA_V2}:
         if payload.get("encounters"):
+            missing = "world-time anchors" if schema == SAVE_SCHEMA_V1 else "explicit encounter lifecycle"
             raise ValueError(
-                "sao.aincrad.save.v1 encounters cannot be migrated exactly because v1 did not record encounter world-time anchors"
+                f"{schema} encounters cannot be migrated exactly because the schema did not record {missing}"
             )
         upgraded = dict(payload)
         upgraded["schema"] = SAVE_SCHEMA
+        upgraded.setdefault("legal_state", {})
         return upgraded
     raise ValueError(f"unsupported save schema: {schema!r}")
 
 
 def export_runtime(runtime: GameRuntime) -> str:
     assert_runtime_state_authority(runtime)
+    assert_runtime_live_state(runtime)
     encounters: dict[str, dict[str, Any]] = {}
     for encounter_id, encounter in runtime.encounters.items():
         absolute_encounter_ms = runtime.encounter_world_time_ms(encounter_id)
@@ -54,8 +59,11 @@ def export_runtime(runtime: GameRuntime) -> str:
             "encounter_id": encounter.encounter_id,
             "participant_ids": list(encounter.participants),
             "zone_id": encounter.zone_id,
+            "world_started_at_ms": encounter.world_started_at_ms,
             "time_ms": encounter.time_ms,
             "safe_zone": encounter.safe_zone,
+            "ended_at_world_ms": encounter.ended_at_world_ms,
+            "end_reason": encounter.end_reason,
             "anti_crystal": encounter.anti_crystal,
             "threat": encounter.threat,
             "last_attacker_by_target": encounter.last_attacker_by_target,
@@ -87,6 +95,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "rng_state": runtime.rng.getstate(),
         "quest_state": runtime.quests.dump_state(),
         "npc_state": runtime.npcs.dump_state(),
+        "legal_state": runtime.legal.dump_state(),
         "economy_state": economy.dump_state() if economy is not None else {},
         "timeline_state": timeline_dump() if timeline_dump is not None else {},
         "duel_state": duel_dump() if duel_dump is not None else {},
@@ -134,9 +143,12 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
             encounter_id=value["encounter_id"],
             participants={actor_id: runtime.actors[actor_id] for actor_id in participant_ids},
             zone_id=value["zone_id"],
+            world_started_at_ms=int(value["world_started_at_ms"]),
             time_ms=int(value.get("time_ms", 0)),
             safe_zone=bool(value.get("safe_zone", False)),
             anti_crystal=bool(value.get("anti_crystal", False)),
+            ended_at_world_ms=value.get("ended_at_world_ms"),
+            end_reason=value.get("end_reason"),
             threat={
                 target_id: {actor_id: float(threat) for actor_id, threat in table.items()}
                 for target_id, table in value.get("threat", {}).items()
@@ -162,6 +174,7 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
+    runtime.legal.load_state(payload.get("legal_state", {}))
 
     population_load = getattr(runtime, "load_population_state", None)
     if population_load is not None:
@@ -205,4 +218,5 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
 
         attach_community_economy(runtime, economy)
     assert_runtime_state_authority(runtime)
+    assert_runtime_live_state(runtime)
     return runtime

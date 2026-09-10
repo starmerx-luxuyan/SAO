@@ -78,9 +78,15 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
 
     def _close_duel_encounters(self, duel_id: str) -> None:
         for encounter in self._duel_encounters(duel_id):
-            # Duel completion ends PvP authorization and threat, but the encounter remains the
-            # authoritative record for spatial state, End Phase timing, and revival actions.
             encounter.threat.clear()
+            if not encounter.active:
+                continue
+            if any(
+                actor.kind is EntityKind.PLAYER and actor.metadata.get("death_state") == "end_phase"
+                for actor in encounter.participants.values()
+            ):
+                continue
+            self.end_encounter(encounter.encounter_id, reason=f"duel_completed:{duel_id}")
 
     def _in_live_encounter(self, actor_id: str) -> bool:
         actor = self.actors[actor_id]
@@ -244,6 +250,9 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
                     actor.actor_id,
                     death_at_ms=actor.metadata.get("death_at_encounter_ms"),
                 )
+        for duel_id in self._duel_ids_for_encounter(encounter):
+            if self.duels.duels[duel_id].status is DuelStatus.COMPLETED:
+                self._close_duel_encounters(duel_id)
 
     def _advance_encounter_to(self, encounter, new_time_ms: int) -> None:
         before = encounter.time_ms
@@ -305,6 +314,9 @@ class SocialTimelineAincradRuntime(TimelineRaidAincradRuntime):
             hp_after=target.hp,
             recovery_until_ms=target.recovery_until_ms,
         )
+        for duel_id in self._duel_ids_for_encounter(encounter):
+            if self.duels.duels[duel_id].status is DuelStatus.COMPLETED:
+                self._close_duel_encounters(duel_id)
         return {
             "reviverId": reviver_id,
             "targetId": target_id,

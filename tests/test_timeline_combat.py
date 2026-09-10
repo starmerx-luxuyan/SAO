@@ -108,6 +108,7 @@ def test_timeline_round_trips_through_save():
     runtime = TimelineRaidAincradRuntime(seed=1)
     player = runtime.create_character("Saver")
     monster = runtime.create_training_monster(level=1)
+    player.location_id = monster.location_id
     encounter = runtime.start_encounter([player.actor_id, monster.actor_id])
     encounter.positions[player.actor_id] = (0.0, 0.0)
     encounter.positions[monster.actor_id] = (1.2, 0.0)

@@ -75,11 +75,17 @@ def test_first_strike_completion_removes_safe_area_pvp_authorization():
     assert runtime.duels.duels[duel.duel_id].status is DuelStatus.COMPLETED
     assert b.actor_id not in a.metadata.get("authorized_duel_opponents", ())
 
-    # Advance through the first attack's post-motion; safe-zone protection should now block more damage.
-    runtime.advance_encounter(encounter.encounter_id, max(0, a.recovery_until_ms - encounter.time_ms))
+    assert encounter.active is False
+    assert encounter.end_reason == f"duel_completed:{duel.duel_id}"
+    a.recovery_until_ms = 0
+    b.recovery_until_ms = 0
+    later = runtime.start_encounter(
+        [a.actor_id, b.actor_id],
+        zone_id="floor_1_town_of_beginnings",
+    )
     hp_before = b.hp
     second, _ = runtime.attack_authoritative(
-        encounter.encounter_id,
+        later.encounter_id,
         a.actor_id,
         b.actor_id,
         defense=DefenseMode.NONE,

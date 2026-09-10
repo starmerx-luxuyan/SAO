@@ -399,8 +399,11 @@ class Floor6ElfWarScenario:
         theano_key.metadata["consumed_into_combined_iron_key"] = combined.instance_id
 
         kysarah.metadata["retreated_with_stolen_keys"] = True
-        encounter.participants = {actor_id: actor}
-        encounter.positions = {actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))}
+        self.runtime.remove_encounter_participants(
+            encounter.encounter_id,
+            [myia.actor_id, gindo.actor_id, kizmel.actor_id, kysarah.actor_id],
+            reason="kysarah_escape_after_theft",
+        )
         kizmel_route = travel_route_together(self.runtime, [kizmel.actor_id], CASTLE_GALEY)
         state["kizmel_return_route"] = [group_travel_record(segment) for segment in kizmel_route]
         gindo.metadata["qusack_departing_floor6"] = True
