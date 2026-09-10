@@ -72,6 +72,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     relationship_dump = getattr(runtime, "dump_relationship_state", None)
     family_dump = getattr(runtime, "dump_family_state", None)
     communications_dump = getattr(runtime, "dump_communications_state", None)
+    npc_autonomy_dump = getattr(runtime, "dump_npc_autonomy_state", None)
     housing_dump = getattr(runtime, "dump_housing_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
@@ -87,6 +88,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "relationship_state": relationship_dump() if relationship_dump is not None else {},
         "family_state": family_dump() if family_dump is not None else {},
         "communications_state": communications_dump() if communications_dump is not None else {},
+        "npc_autonomy_state": npc_autonomy_dump() if npc_autonomy_dump is not None else {},
         "housing_state": housing_dump() if housing_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -152,6 +154,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
+
+    autonomy_load = getattr(runtime, "load_npc_autonomy_state", None)
+    if autonomy_load is not None:
+        autonomy_load(payload.get("npc_autonomy_state", {}))
 
     from sao_mcp.runtime.property_economy import make_runtime_economy
 
