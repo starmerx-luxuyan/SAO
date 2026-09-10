@@ -29,6 +29,9 @@ def _materialized_npc(runtime, npc_id: str):
 
 
 def _npc_location(runtime, npc_id: str) -> str | None:
+    resolver = getattr(runtime, "npc_location_id", None)
+    if resolver is not None:
+        return resolver(npc_id)
     materialized = _materialized_npc(runtime, npc_id)
     if materialized is not None:
         return materialized.location_id
