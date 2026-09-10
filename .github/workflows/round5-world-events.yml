@@ -4,32 +4,32 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
-  audit:
-    if: github.event.head_commit.message == 'Run round5 scenario event audit'
+  apply:
+    if: github.event.head_commit.message == 'Run round5 post-defeat event migration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: List scenario transition methods
+      - name: Apply post-defeat event migration
+        run: python scripts/round5_more_events_c1.py
+      - name: Verify migration
         run: |
-          python - <<'PY'
-          import ast
-          from pathlib import Path
-          root = Path('src/sao_mcp/scenarios')
-          prefixes = ('trigger_', 'advance_', 'resolve_', 'finish_', 'complete_')
-          for path in sorted(root.glob('*.py')):
-              text = path.read_text(encoding='utf-8')
-              tree = ast.parse(text)
-              lines = text.splitlines()
-              for node in ast.walk(tree):
-                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                      continue
-                  if not node.name.startswith(prefixes):
-                      continue
-                  end = min(len(lines), node.lineno + 7)
-                  preview = ' | '.join(line.strip() for line in lines[node.lineno-1:end] if line.strip())
-                  print(f'{path.name}:{node.lineno}:{node.name} :: {preview}')
-          PY
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified migration
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/runtime/world_event_runtime.py src/sao_mcp/scenarios/floor6_buxum.py src/sao_mcp/scenarios/floor6_stachion.py src/sao_mcp/scenarios/floor5_fuscus.py src/sao_mcp/scenarios/floor7_pursuit.py src/sao_mcp/server_floor5.py src/sao_mcp/server_floor7.py tests/test_floor5_fuscus_flag.py tests/test_floor7_pursuit.py tests/test_world_event_authority.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Resolve defeat-driven scene transitions as world events"
+          git push origin HEAD:main
