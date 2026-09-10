@@ -16,6 +16,7 @@ from sao_mcp.corpus.location_access import FOREST_ELVES
 from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
+from sao_mcp.rules.spawn import create_character_at
 from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 
 
@@ -54,6 +55,8 @@ class Floor8ForestEmergencyScenario:
                 raise RuntimeError("the materialized Argo actor is not a player character")
             if not argo.alive:
                 raise ValueError("Argo is not alive to send the Floor 8 emergency message")
+            if argo.location_id != ACORN_SHOP:
+                raise RuntimeError("materialized Argo is not at the authoritative Acorn Shop rendezvous")
         else:
             actor_id = f"pc_argo_{uuid.uuid4().hex[:12]}"
             argo = CombatantState(
@@ -78,8 +81,6 @@ class Floor8ForestEmergencyScenario:
                 },
             )
             self.runtime.actors[actor_id] = argo
-        argo.location_id = ACORN_SHOP
-        self.runtime.npcs.states[ARGO_ID].location_id = ACORN_SHOP
         return argo
 
     def _klein_actor(self) -> CombatantState:
@@ -96,6 +97,8 @@ class Floor8ForestEmergencyScenario:
                 raise RuntimeError("the materialized Klein actor is not a player character")
             if not klein.alive:
                 raise ValueError("Klein is not alive for the Floor 8 rendezvous")
+            if klein.location_id != ACORN_SHOP:
+                raise RuntimeError("materialized Klein is not at the authoritative Acorn Shop rendezvous")
         else:
             actor_id = f"pc_klein_{uuid.uuid4().hex[:12]}"
             klein = CombatantState(
@@ -121,9 +124,7 @@ class Floor8ForestEmergencyScenario:
                 },
             )
             self.runtime.actors[actor_id] = klein
-        klein.location_id = ACORN_SHOP
         klein.metadata["progressive9_acorn_shop_rendezvous"] = True
-        self.runtime.npcs.states[KLEIN_ID].location_id = ACORN_SHOP
         return klein
 
     def _ensure_friend_contact(self, argo_id: str, recipient_id: str) -> None:
@@ -136,8 +137,12 @@ class Floor8ForestEmergencyScenario:
 
     def _make_incident_player(self, name: str, guild_id: str, level: int) -> CombatantState:
         guild = self.clearing_guilds[guild_id]
-        actor = self.runtime.create_character(name, level=level)
-        actor.location_id = FOREST_ELF_ESCAPE_CAVE
+        actor = create_character_at(
+            self.runtime,
+            name,
+            level=level,
+            location_id=FOREST_ELF_ESCAPE_CAVE,
+        )
         actor.metadata.update(
             {
                 "floor8_protected_tree_incident": True,
@@ -385,9 +390,7 @@ class Floor8ForestEmergencyScenario:
             travel_together(self.runtime, responders, MANAGED_FOREST_OUTER),
             travel_together(self.runtime, responders, FOREST_ELF_SACRED_WOODS),
         ]
-        state["acorn_shop_to_sacred_woods_route"] = [
-            group_travel_record(resolution) for resolution in segments
-        ]
+        state["acorn_shop_to_sacred_woods_route"] = [group_travel_record(resolution) for resolution in segments]
         state["stage"] = "responders_at_sacred_woods"
         return self.status(instance_id)
 
@@ -483,12 +486,8 @@ class Floor8ForestEmergencyScenario:
         }
         return {
             **state,
-            "frieben_to_acorn_shop_ms": sum(
-                segment["elapsed_ms"] for segment in state["frieben_to_acorn_shop_route"]
-            ),
-            "acorn_shop_to_sacred_woods_ms": sum(
-                segment["elapsed_ms"] for segment in state["acorn_shop_to_sacred_woods_route"]
-            ),
+            "frieben_to_acorn_shop_ms": sum(segment["elapsed_ms"] for segment in state["frieben_to_acorn_shop_route"]),
+            "acorn_shop_to_sacred_woods_ms": sum(segment["elapsed_ms"] for segment in state["acorn_shop_to_sacred_woods_route"]),
             "guild_crisis_report": self._guild_crisis_report(),
             "local_materialization": {
                 "representation_scope": LOCAL_REPRESENTATION_SCOPE,
@@ -506,12 +505,10 @@ class Floor8ForestEmergencyScenario:
             "argo_location_id": self.runtime.actors[state["argo_actor_id"]].location_id,
             "klein_location_id": self.runtime.actors[state["klein_actor_id"]].location_id,
             "floor8_responder_locations": {
-                actor_id: self.runtime.actors[actor_id].location_id
-                for actor_id in state["floor8_actor_ids"]
+                actor_id: self.runtime.actors[actor_id].location_id for actor_id in state["floor8_actor_ids"]
             },
             "hideout_responder_locations": {
-                actor_id: self.runtime.actors[actor_id].location_id
-                for actor_id in state["hideout_actor_ids"]
+                actor_id: self.runtime.actors[actor_id].location_id for actor_id in state["hideout_actor_ids"]
             },
             "frontline_actors": frontline_actors,
             "forest_elf_actors": forest_elf_actors,
