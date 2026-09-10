@@ -15,6 +15,11 @@ from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemI
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.inventory import add_item, recompute_equipment_stats
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.transport import (
+    authorized_transport,
+    authorized_transport_record,
+    authorized_transport_within_window,
+)
 
 
 PALACE = "floor_7_harin_tree_palace"
@@ -84,9 +89,6 @@ class Floor7ElfWarScenario:
             location_id=WEAPON_STORE,
             metadata={"noncombatant": True, "harin_confiscated_storage": True},
         )
-        # These two are independent canon weapons found in Harin's store. Kizmel's currently
-        # equipped weapon is handled separately so a continuous Floor-6 -> Floor-7 campaign
-        # does not silently duplicate her equipment.
         self._put_generated_weapon_in_cache(cache, ELVEN_STOUT_SWORD_ID)
         self._put_generated_weapon_in_cache(cache, LAVIK_SABER_ID)
         self.runtime.actors[cache.actor_id] = cache
@@ -99,6 +101,8 @@ class Floor7ElfWarScenario:
             saber = self._put_generated_weapon_in_cache(cache, KIZMEL_SABER_ID)
             saber.metadata["standalone_kizmel_weapon_seed"] = True
             return None, [saber.instance_id]
+        if kizmel.location_id != PALACE:
+            raise RuntimeError("preexisting Kizmel is not at Harin Tree Palace when the arrest begins")
 
         for slot in ("weapon", "offhand"):
             item_id = kizmel.equipment.pop(slot, None)
@@ -111,7 +115,6 @@ class Floor7ElfWarScenario:
             cache.inventory[item_id] = item
             confiscated_ids.append(item_id)
         recompute_equipment_stats(kizmel, self.runtime.catalog)
-        kizmel.location_id = SEVENTH_PRISON
         kizmel.metadata["harin_prisoner"] = True
         kizmel.metadata["accused_of_fallen_elf_treachery"] = True
         if not confiscated_ids:
@@ -133,10 +136,8 @@ class Floor7ElfWarScenario:
         preexisting_kizmel_id, kizmel_confiscated_ids = self._confiscate_kizmel_weapon(cache)
         instance_id = f"harin7_{uuid.uuid4().hex[:12]}"
         confiscated: dict[str, dict[str, str]] = {}
-        self.runtime.advance_world(ARREST_PROCESSING_MS)
         for actor_id in players:
             actor = self.runtime.actors[actor_id]
-            self.runtime.quests.accept(actor_id, QUEST_ID, now_ms=self.runtime.world.now_ms)
             slots: dict[str, str] = {}
             for slot in ("weapon", "offhand"):
                 item_id = actor.equipment.pop(slot, None)
@@ -149,9 +150,36 @@ class Floor7ElfWarScenario:
                 cache.inventory[item_id] = item
                 slots[slot] = item_id
             recompute_equipment_stats(actor, self.runtime.catalog)
-            actor.location_id = B2_CELL
             actor.metadata["harin_prisoner"] = True
             confiscated[actor_id] = slots
+
+        arrest_started_at_ms = self.runtime.world.now_ms
+        player_transport = authorized_transport(
+            self.runtime,
+            transport_id=f"harin_arrest_players:{instance_id}",
+            actor_ids=players,
+            carrier_actor_id=None,
+            from_location_id=PALACE,
+            to_location_id=B2_CELL,
+            elapsed_ms=ARREST_PROCESSING_MS,
+            transport_tags=("custody", "harin_arrest", "escorted_prison_transfer"),
+        )
+        kizmel_transport = None
+        if preexisting_kizmel_id is not None:
+            kizmel_transport = authorized_transport_within_window(
+                self.runtime,
+                transport_id=f"harin_arrest_kizmel:{instance_id}",
+                actor_ids=[preexisting_kizmel_id],
+                carrier_actor_id=None,
+                from_location_id=PALACE,
+                to_location_id=SEVENTH_PRISON,
+                elapsed_ms=ARREST_PROCESSING_MS,
+                started_at_ms=arrest_started_at_ms,
+                completed_at_ms=self.runtime.world.now_ms,
+                transport_tags=("custody", "harin_arrest", "clergy_prison_transfer"),
+            )
+        for actor_id in players:
+            self.runtime.quests.accept(actor_id, QUEST_ID, now_ms=self.runtime.world.now_ms)
 
         state = {
             "instance_id": instance_id,
@@ -160,6 +188,8 @@ class Floor7ElfWarScenario:
             "started_at_ms": self.runtime.world.now_ms,
             "storage_actor_id": cache.actor_id,
             "confiscated_slots": confiscated,
+            "player_arrest_transport": authorized_transport_record(player_transport),
+            "kizmel_arrest_transport": authorized_transport_record(kizmel_transport) if kizmel_transport else None,
             "cell_lock_burns": 0,
             "weapon_recovery_route": [],
             "lavik_search_route": [],
@@ -257,18 +287,15 @@ class Floor7ElfWarScenario:
                 },
             )
             self.runtime.actors[lavik.actor_id] = lavik
-        else:
-            lavik.location_id = LAVIK_CELL
+        elif lavik.location_id != LAVIK_CELL:
+            raise RuntimeError("materialized Lavik is not in the authoritative Harin prison cell")
 
         self.runtime.interact_npc(state["player_ids"][0], LAVIK_ID)
         for actor_id in state["player_ids"][1:]:
             self.runtime.quests.record_event(actor_id, kind=QuestObjectiveKind.TALK, target_id=LAVIK_ID)
 
         cache = self.runtime.actors[state["storage_actor_id"]]
-        lavik_saber = next(
-            (item for item in cache.inventory.values() if item.template_id == LAVIK_SABER_ID),
-            None,
-        )
+        lavik_saber = next((item for item in cache.inventory.values() if item.template_id == LAVIK_SABER_ID), None)
         if lavik_saber is not None:
             cache.inventory.pop(lavik_saber.instance_id)
             lavik_saber.owner_id = lavik.actor_id
@@ -326,8 +353,8 @@ class Floor7ElfWarScenario:
                 },
             )
             self.runtime.actors[kizmel.actor_id] = kizmel
-        else:
-            kizmel.location_id = SEVENTH_PRISON
+        elif kizmel.location_id != SEVENTH_PRISON:
+            raise RuntimeError("materialized Kizmel is not in the authoritative seventh-story prison")
 
         self.runtime.interact_npc(state["player_ids"][0], KIZMEL_ID)
         for actor_id in state["player_ids"][1:]:
@@ -402,7 +429,6 @@ class Floor7ElfWarScenario:
                 kind=QuestObjectiveKind.DISCOVER,
                 target_id="harin_tree_palace_escaped",
             )
-
         for actor_id in state["player_ids"]:
             if self.runtime.quests.ready_to_claim(self.runtime.actors[actor_id], QUEST_ID):
                 self.runtime.claim_quest(actor_id, QUEST_ID)
@@ -438,9 +464,11 @@ class Floor7ElfWarScenario:
             )
         state["narsos_gathered"] = NARSOS_REQUIRED
         lavik = self.runtime.actors[state["lavik_actor_id"]]
+        if lavik.location_id != LOOSEROCK_FOREST:
+            raise RuntimeError("Lavik is no longer in Looserock Forest when he leaves the escape party")
         lavik.metadata["left_escape_party"] = True
         lavik.metadata["destination_unknown"] = True
-        lavik.location_id = "floor_7_field"
+        lavik.metadata["last_confirmed_location_id"] = LOOSEROCK_FOREST
         state["lavik_departed"] = True
         state["lavik_departed_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "return_to_volupta_with_kizmel"
