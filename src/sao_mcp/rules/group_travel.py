@@ -98,6 +98,17 @@ def _can_group_enter(runtime, actors, location_id: str) -> bool:
     return True
 
 
+def _require_group_can_enter(runtime, actors, location_id: str) -> None:
+    destination = runtime.world_map.locations[location_id]
+    if not runtime.world.floors[destination.floor_number].unlocked:
+        raise ValueError("destination floor is not unlocked")
+    if destination.safe_zone and any(actor.cursor is CursorColor.ORANGE for actor in actors):
+        raise ValueError("Anti-Criminal Code settlement access is blocked for Orange Players")
+    # Preserve the concrete faction/location access reason for direct movement attempts.
+    for actor in actors:
+        require_location_access(actor, location_id)
+
+
 def _next_group_hop(runtime, actors, origin: str, destination_id: str) -> str | None:
     return shortest_next_hop(
         runtime.world,
@@ -140,8 +151,7 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
 
     if destination_id not in runtime.world_map.locations:
         raise KeyError(destination_id)
-    if not _can_group_enter(runtime, actors, destination_id):
-        raise ValueError("group travellers cannot enter the destination")
+    _require_group_can_enter(runtime, actors, destination_id)
 
     edge = _direct_edge(runtime, origin, destination_id)
     runtime.advance_world(edge.travel_ms)
@@ -185,8 +195,7 @@ def exit_encounter_via_travel(
     origin = str(actors[0].location_id)
     if destination_id not in runtime.world_map.locations:
         raise KeyError(destination_id)
-    if not _can_group_enter(runtime, actors, destination_id):
-        raise ValueError("encounter-exit travellers cannot enter the destination")
+    _require_group_can_enter(runtime, actors, destination_id)
     edge = _direct_edge(runtime, origin, destination_id)
 
     runtime.advance_encounter(encounter_id, edge.travel_ms)
