@@ -79,3 +79,13 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
             if event.knower_id == knower_id
         ]
         return _json({"knower_id": knower_id, "events": rows})
+
+    @mcp.tool()
+    def get_world_event_state(occurrence_id: str | None = None) -> str:
+        """Inspect registered event rules and already-resolved persistent world-event occurrences."""
+        return _json(gm_turn_executor.runtime.world_event_state(occurrence_id))
+
+    @mcp.tool()
+    def get_world_event_history(rule_id: str | None = None) -> str:
+        """Inspect resolved world-event history, optionally filtered by one rule id."""
+        return _json({"events": gm_turn_executor.runtime.world_event_history(rule_id)})

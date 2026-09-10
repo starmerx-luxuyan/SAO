@@ -87,6 +87,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     guild_autonomy_dump = getattr(runtime, "dump_guild_autonomy_state", None)
     housing_dump = getattr(runtime, "dump_housing_state", None)
     population_dump = getattr(runtime, "dump_population_state", None)
+    world_event_dump = getattr(runtime, "dump_world_event_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -96,6 +97,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "quest_state": runtime.quests.dump_state(),
         "npc_state": runtime.npcs.dump_state(),
         "legal_state": runtime.legal.dump_state(),
+        "world_event_state": world_event_dump() if world_event_dump is not None else {},
         "economy_state": economy.dump_state() if economy is not None else {},
         "timeline_state": timeline_dump() if timeline_dump is not None else {},
         "duel_state": duel_dump() if duel_dump is not None else {},
@@ -175,6 +177,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
     runtime.legal.load_state(payload.get("legal_state", {}))
+    world_event_load = getattr(runtime, "load_world_event_state", None)
+    if world_event_load is not None:
+        world_event_load(payload.get("world_event_state", {}))
 
     population_load = getattr(runtime, "load_population_state", None)
     if population_load is not None:
