@@ -7,6 +7,7 @@ from pydantic import TypeAdapter
 
 from sao_mcp.domain.models import CombatEvent, CombatantState, EncounterState, WorldState
 from sao_mcp.rules.spatial import default_formation
+from sao_mcp.rules.state_authority import assert_runtime_state_authority
 from sao_mcp.runtime.engine import GameRuntime
 
 
@@ -41,6 +42,7 @@ def _upgrade_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def export_runtime(runtime: GameRuntime) -> str:
+    assert_runtime_state_authority(runtime)
     encounters: dict[str, dict[str, Any]] = {}
     for encounter_id, encounter in runtime.encounters.items():
         absolute_encounter_ms = runtime.encounter_world_time_ms(encounter_id)
@@ -202,4 +204,5 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         from sao_mcp.runtime.community_hooks import attach_community_economy
 
         attach_community_economy(runtime, economy)
+    assert_runtime_state_authority(runtime)
     return runtime
