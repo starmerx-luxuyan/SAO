@@ -1,0 +1,35 @@
+name: Round 4 Live State Core
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round4 live state core'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply live-state core
+        run: python scripts/round4_live_state_core.py
+      - name: Verify core
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified core
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/domain/models.py src/sao_mcp/runtime/engine.py src/sao_mcp/rules/travel.py src/sao_mcp/rules/group_travel.py src/sao_mcp/runtime/npc_autonomy_runtime.py src/sao_mcp/runtime/guild_autonomy_runtime.py src/sao_mcp/runtime/persistence.py tests/test_encounter_world_clock.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Make encounter lifecycle and clock state authoritative"
+          git push origin HEAD:main
