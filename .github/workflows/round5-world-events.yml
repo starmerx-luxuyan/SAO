@@ -1,0 +1,35 @@
+name: Round 5 World Events
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round5 world event core'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply world event core
+        run: python scripts/round5_world_event_core.py
+      - name: Verify core
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified core
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/rules/world_events.py src/sao_mcp/runtime/world_event_runtime.py src/sao_mcp/runtime/persistence.py src/sao_mcp/server_gm.py tests/test_world_event_runtime.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Add persistent conditional world event core"
+          git push origin HEAD:main
