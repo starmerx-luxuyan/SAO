@@ -6,7 +6,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "sao_mcp"
 
-# These modules are the only places allowed to commit world-location mutation.
+# These modules are the only places allowed to commit live world-location mutation.
 # Scenario/services must call one of these authorities rather than editing location_id directly.
 LOCATION_AUTHORITY_FILES = {
     Path("rules/travel.py"),
@@ -27,6 +27,11 @@ def _stored_location_target(target: ast.expr) -> bool:
 
 def _direct_location_writes(path: Path) -> list[int]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    parent: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+
     rows: list[int] = []
     for node in ast.walk(tree):
         targets: list[ast.expr] = []
@@ -36,8 +41,16 @@ def _direct_location_writes(path: Path) -> list[int]:
             targets = [node.target]
         elif isinstance(node, ast.AugAssign):
             targets = [node.target]
-        if any(_stored_location_target(target) for target in targets):
-            rows.append(node.lineno)
+        if not any(_stored_location_target(target) for target in targets):
+            continue
+
+        owner = parent.get(node)
+        while owner is not None and not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            owner = parent.get(owner)
+        if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)) and owner.name.startswith("load"):
+            # Save restoration rehydrates already-committed state; it is not a live movement path.
+            continue
+        rows.append(node.lineno)
     return sorted(rows)
 
 
@@ -51,6 +64,6 @@ def test_runtime_location_mutation_is_confined_to_movement_authorities():
             violations.append(f"{relative.as_posix()}:{line}")
 
     assert violations == [], (
-        "Direct world-location mutation bypasses travel/transport authority:\n"
+        "Direct live world-location mutation bypasses travel/transport authority:\n"
         + "\n".join(violations)
     )
