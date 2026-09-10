@@ -28,7 +28,7 @@ class Floor2TaurusRaidScenario:
     def _enter_asterius(self, instance: dict) -> None:
         encounter = self.runtime.encounters[instance["encounter_id"]]
         boss = self.runtime.actors[instance["asterius_id"]]
-        encounter.participants[boss.actor_id] = boss
+        self.runtime.add_encounter_participant(encounter.encounter_id, boss.actor_id)
         self.runtime._arrange_raid_formation(encounter, boss)
         self.runtime._append(
             encounter,

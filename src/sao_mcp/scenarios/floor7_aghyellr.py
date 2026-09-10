@@ -290,8 +290,9 @@ class Floor7AghyellrScenario:
             nirrnir = self.runtime.actors[nirrnir_id]
             if nirrnir.location_id != BOSS_ROOM:
                 raise RuntimeError("Nirrnir movement authority did not reach the Aghyellr Boss Room")
-            encounter.participants[nirrnir.actor_id] = nirrnir
-            encounter.positions[nirrnir.actor_id] = (-8.0, 0.0)
+            self.runtime.add_encounter_participant(
+                encounter.encounter_id, nirrnir.actor_id, position=(-8.0, 0.0)
+            )
 
         instance_id = f"aghyellr7_{uuid.uuid4().hex[:12]}"
         state = {

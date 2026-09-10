@@ -113,9 +113,15 @@ def _reset_boss_after_disengage(runtime, encounter: EncounterState, boss: Combat
     encounter.threat.clear()
     encounter.last_attacker_by_target.clear()
     encounter.last_attack_time_by_target.clear()
-    for actor_id, actor in list(encounter.participants.items()):
-        if actor.metadata.get("boss_parent_id") == boss.actor_id:
-            encounter.participants.pop(actor_id, None)
+    minion_ids = [
+        actor_id
+        for actor_id, actor in encounter.participants.items()
+        if actor.metadata.get("boss_parent_id") == boss.actor_id
+    ]
+    if minion_ids:
+        runtime.remove_encounter_participants(
+            encounter.encounter_id, minion_ids, reason="boss_disengage_minion_reset"
+        )
     runtime._append(
         encounter,
         "boss_disengaged_reset",

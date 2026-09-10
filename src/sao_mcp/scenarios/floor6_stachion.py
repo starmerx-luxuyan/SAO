@@ -329,11 +329,17 @@ class Floor6StachionScenario:
         cylon = self.runtime.actors[state["cylon_actor_id"]]
         morte = self._create_hostile_player("Morte", MORTE_HATCHET_ID, level=24, strength=52, agility=47)
         joe = self._create_hostile_player("Joe", JOE_DAGGER_ID, level=22, strength=38, agility=56)
-        encounter.participants[morte.actor_id] = morte
-        encounter.participants[joe.actor_id] = joe
         player_position = encounter.positions.get(actor_id, (-1.15, 0.0))
-        encounter.positions[morte.actor_id] = (player_position[0] + 3.0, player_position[1] + 1.2)
-        encounter.positions[joe.actor_id] = (player_position[0] + 3.2, player_position[1] - 1.2)
+        self.runtime.add_encounter_participant(
+            encounter.encounter_id,
+            morte.actor_id,
+            position=(player_position[0] + 3.0, player_position[1] + 1.2),
+        )
+        self.runtime.add_encounter_participant(
+            encounter.encounter_id,
+            joe.actor_id,
+            position=(player_position[0] + 3.2, player_position[1] - 1.2),
+        )
         self.runtime._append(encounter, "morte_joe_ambush", morte.actor_id, cylon.actor_id, joe_actor_id=joe.actor_id)
         cylon.hp = 0
         cylon.alive = False

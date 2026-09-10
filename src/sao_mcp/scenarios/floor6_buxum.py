@@ -121,9 +121,12 @@ class Floor6BuxumScenario:
         kysarah, combined_key = self._take_kysarah_combined_key()
         buxum = self._create_buxum(combined_key)
         encounter = self.runtime.encounters[cube_state["encounter_id"]]
-        encounter.participants[buxum.actor_id] = buxum
         boss_position = encounter.positions.get(boss.actor_id, (1.15, 0.0))
-        encounter.positions[buxum.actor_id] = (boss_position[0] + 1.65, boss_position[1] + 0.75)
+        self.runtime.add_encounter_participant(
+            encounter.encounter_id,
+            buxum.actor_id,
+            position=(boss_position[0] + 1.65, boss_position[1] + 0.75),
+        )
         self.runtime._append(
             encounter,
             "buxum_revealed",
@@ -231,8 +234,9 @@ class Floor6BuxumScenario:
         if buxum.alive:
             buxum.metadata["retreated"] = True
             buxum.metadata["retreat_reason"] = "overpowered_after_golden_cube_bind"
-        encounter.participants.pop(buxum.actor_id, None)
-        encounter.positions.pop(buxum.actor_id, None)
+        self.runtime.remove_encounter_participants(
+            encounter.encounter_id, [buxum.actor_id], reason="buxum_retreat"
+        )
         state["stage"] = "golden_cube_dropped"
         state["cube_ground_cache_actor_id"] = cache.actor_id
         state["buxum_retreat_at_ms"] = self.runtime.world.now_ms

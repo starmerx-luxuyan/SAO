@@ -76,8 +76,9 @@ class Floor6IrrationalCubeScenario:
             boss_definition_id=IRRATIONAL_CUBE_ID,
         )
         if golden_cube_holder_id not in encounter.participants:
-            encounter.participants[golden_cube_holder_id] = holder
-            encounter.positions[golden_cube_holder_id] = (-2.6, 0.0)
+            self.runtime.add_encounter_participant(
+                encounter.encounter_id, golden_cube_holder_id, position=(-2.6, 0.0)
+            )
 
         holder.inventory.pop(golden_cube_instance_id)
         cube_item.owner_id = boss.actor_id

@@ -214,8 +214,12 @@ class Floor6SouthScenario:
             raise ValueError("Basalt Morpha must be defeated by ordinary combat before the route advances")
         theano = self.runtime.actors[state["theano_actor_id"]]
         encounter = self.runtime.encounters[state["basalt_encounter_id"]]
-        encounter.participants = {actor_id: self.runtime.actors[actor_id]}
-        encounter.positions = {actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))}
+        if encounter.active:
+            leaving = [member_id for member_id in encounter.participants if member_id != actor_id]
+            if leaving:
+                self.runtime.remove_encounter_participants(
+                    encounter.encounter_id, leaving, reason="basalt_morpha_defeated"
+                )
         route = travel_route_together(self.runtime, [theano.actor_id], MURUTSUKI)
         state["theano_murutsuki_route"] = [group_travel_record(segment) for segment in route]
         state["stage"] = "theano_passed_murutsuki"

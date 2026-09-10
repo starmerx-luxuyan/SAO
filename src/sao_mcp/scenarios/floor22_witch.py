@@ -333,13 +333,14 @@ class Floor22WitchScenario:
         if not returning_ids:
             raise ValueError("the Witch quest has no living player to return")
         encounter = runtime.encounters.get(state.get("witch_encounter_id"))
-        if encounter is not None:
-            for actor_id in returning_ids:
-                encounter.participants.pop(actor_id, None)
-                encounter.positions.pop(actor_id, None)
-                encounter.threat.pop(actor_id, None)
-                for table in encounter.threat.values():
-                    table.pop(actor_id, None)
+        if encounter is not None and encounter.active:
+            active_returners = [actor_id for actor_id in returning_ids if actor_id in encounter.participants]
+            if active_returners:
+                runtime.remove_encounter_participants(
+                    encounter.encounter_id,
+                    active_returners,
+                    reason="witch_defeated_log_house_return",
+                )
 
         return_started_at_ms = runtime.world.now_ms
         return_flight = authorized_transport(

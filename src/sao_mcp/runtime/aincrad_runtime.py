@@ -205,7 +205,7 @@ class AincradRuntime(GameRuntime):
         spawned = []
         for _ in range(count):
             minion = self._create_boss_minion(definition.initial_minion_template_id, boss_id=boss.actor_id)
-            encounter.participants[minion.actor_id] = minion
+            self.add_encounter_participant(encounter.encounter_id, minion.actor_id)
             spawned.append(minion.actor_id)
         boss.metadata["boss_minions_spawned"] = int(boss.metadata.get("boss_minions_spawned", 0)) + len(spawned)
         self._append(
