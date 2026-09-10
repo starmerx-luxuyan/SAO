@@ -20,6 +20,7 @@ class Floor6BuxumScenario:
     def __init__(self, runtime, cube) -> None:
         self.runtime = runtime
         self.cube = cube
+        runtime.register_defeat_hook(self._on_defeat)
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_buxum_states", {})
@@ -29,6 +30,15 @@ class Floor6BuxumScenario:
             return self._states()[cube_instance_id]
         except KeyError as exc:
             raise ValueError("Buxum's Floor 6 betrayal has not been triggered for this boss instance") from exc
+
+    def _on_defeat(self, encounter, target, killer_id: str | None) -> None:
+        for cube_instance_id, state in self._states().items():
+            if state["stage"] != "golden_cube_recovered":
+                continue
+            cube_state = self.cube._instance(cube_instance_id)
+            if cube_state["boss_id"] != target.actor_id or cube_state["stage"] != "cleared":
+                continue
+            state["stage"] = "floor_cleared"
 
     def _combined_key_location(self) -> tuple[CombatantState, ItemInstance] | None:
         key_id = self.runtime.world.global_flags.get("floor6_combined_iron_key_instance_id")
@@ -271,8 +281,6 @@ class Floor6BuxumScenario:
             for actor_id, actor in encounter.participants.items()
             if any(status.stack_key == "golden_cube_bind" for status in actor.statuses)
         ]
-        if state["stage"] == "golden_cube_recovered" and cube_state["stage"] == "cleared":
-            state["stage"] = "floor_cleared"
         located = self._combined_key_location()
         combined_key_holder_id = located[1].owner_id if located is not None else None
         return {
