@@ -72,7 +72,7 @@ def test_named_npc_knowledge_identity_survives_materialization_and_travel_blocks
     first_report = runtime.share_known_fact(AGIL, listener.actor_id, fact_id)
     assert first_report.source_id == AGIL
 
-    runtime.schedule_npc_travel(AGIL, ALGADE)
+    runtime.set_npc_goal(AGIL, "visit_algade_market", ALGADE)
     assert runtime.npc_location_id(AGIL) is None
     with pytest.raises(ValueError, match="colocated conversation"):
         runtime.share_known_fact(AGIL, listener.actor_id, fact_id)
@@ -80,6 +80,7 @@ def test_named_npc_knowledge_identity_survives_materialization_and_travel_blocks
     runtime.advance_world(2 * 60_000)
     assert runtime.npc_location_id(AGIL) == ALGADE
     assert agil_actor.location_id == ALGADE
+    assert runtime.npc_agenda_state(AGIL)["goal_reached"] is True
     assert runtime.belief(agil_actor.actor_id, fact_id).value is True
 
     agil_actor.hp = 0
