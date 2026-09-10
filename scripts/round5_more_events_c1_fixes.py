@@ -12,6 +12,26 @@ def replace_once(path: str, old: str, new: str) -> None:
     file.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def replace_in_method(path: str, method_name: str, old: str, new: str) -> None:
+    file = Path(path)
+    text = file.read_text(encoding="utf-8")
+    marker = f"    def {method_name}("
+    start = text.find(marker)
+    if start < 0:
+        raise RuntimeError(f"method {method_name} not found in {path}")
+    end = text.find("\n    def ", start + len(marker))
+    if end < 0:
+        end = len(text)
+    block = text[start:end]
+    count = block.count(old)
+    if count != 1:
+        raise RuntimeError(
+            f"expected one exact match inside {path}:{method_name}, found {count}"
+        )
+    rewritten = block.replace(old, new, 1)
+    file.write_text(text[:start] + rewritten + text[end:], encoding="utf-8")
+
+
 # Event rule identity remains strict; scenario/event services themselves are the idempotent unit.
 replace_once(
     "src/sao_mcp/runtime/world_event_runtime.py",
@@ -31,15 +51,16 @@ replace_once(
 )
 
 # No Harin instance yet means there are zero eligible event occurrences; operational APIs remain strict.
-replace_once(
+replace_in_method(
     "src/sao_mcp/scenarios/floor7_pursuit.py",
-    '''        for instance_id, state in self._harin_states().items():\n            if state["stage"] != "labyrinth_blocker_battle":\n''',
-    '''        states = self.runtime.world.global_flags.get("floor7_harin_escape_instances", {})\n        for instance_id, state in states.items():\n            if state["stage"] != "labyrinth_blocker_battle":\n''',
+    "_discover_labyrinth_pursuit_events",
+    '''        for instance_id, state in self._harin_states().items():\n''',
+    '''        states = self.runtime.world.global_flags.get("floor7_harin_escape_instances", {})\n        for instance_id, state in states.items():\n''',
 )
 replace_once(
     "src/sao_mcp/scenarios/floor7_pursuit.py",
-    '''def install_floor7_pursuit_scenario(runtime) -> Floor7PursuitScenario:\n    return Floor7PursuitScenario(runtime)\n''',
-    '''def install_floor7_pursuit_scenario(runtime) -> Floor7PursuitScenario:\n    service = runtime.install_world_event_service(\n        "floor7.pursuit", lambda: Floor7PursuitScenario(runtime)\n    )\n    if not isinstance(service, Floor7PursuitScenario):\n        raise RuntimeError("floor7.pursuit service registry contains the wrong service type")\n    return service\n''',
+    '''    return Floor7PursuitScenario(runtime)\n''',
+    '''    service = runtime.install_world_event_service(\n        "floor7.pursuit", lambda: Floor7PursuitScenario(runtime)\n    )\n    if not isinstance(service, Floor7PursuitScenario):\n        raise RuntimeError("floor7.pursuit service registry contains the wrong service type")\n    return service\n''',
 )
 
 # Existing Phase-B event services use the same installation authority so repeated composition cannot
