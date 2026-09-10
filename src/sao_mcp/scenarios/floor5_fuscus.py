@@ -13,6 +13,7 @@ FUSCUS_ID = "fuscus_the_vacant_colossus"
 BOSS_ROOM = "floor_5_boss_room"
 FLAG_AURA_RANGE_M = 12.0  # Simulation; canon only establishes a limited area of effect.
 FLAG_STAT_BONUS = 0.08  # Simulation magnitude applied to the existing all-stat combat path.
+FUSCUS_FLAG_DROP_EVENT_RULE_ID = "floor5.fuscus_hidden_flag_drop"
 
 
 class Floor5FuscusScenario:
@@ -20,6 +21,12 @@ class Floor5FuscusScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        runtime.register_world_event_rule(
+            FUSCUS_FLAG_DROP_EVENT_RULE_ID,
+            self._discover_hidden_flag_drop_events,
+            self._resolve_hidden_flag_drop_event,
+        )
+        runtime.evaluate_world_events()
 
     def _instances(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor5_fuscus_instances", {})
@@ -60,13 +67,40 @@ class Floor5FuscusScenario:
         self._instances()[instance_id] = state
         return self.status(instance_id)
 
-    def resolve_hidden_flag_drop(self, instance_id: str) -> dict:
+    @staticmethod
+    def _event_instance_id(occurrence_id: str) -> str:
+        prefix = f"{FUSCUS_FLAG_DROP_EVENT_RULE_ID}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid Fuscus flag-drop occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_hidden_flag_drop_events(self) -> list[str]:
+        ready: list[str] = []
+        for instance_id, state in self._instances().items():
+            if state["stage"] != "battle" or state["flag_drop_resolved"]:
+                continue
+            boss = self.runtime.actors[state["boss_id"]]
+            if not boss.alive and boss.metadata.get("defeat_resolved") is True:
+                ready.append(f"{FUSCUS_FLAG_DROP_EVENT_RULE_ID}:{instance_id}")
+        return ready
+
+    def _resolve_hidden_flag_drop_event(self, occurrence_id: str) -> dict:
+        instance_id = self._event_instance_id(occurrence_id)
+        result = self._resolve_hidden_flag_drop(instance_id)
+        state = self._instance(instance_id)
+        return {
+            **result,
+            "flag_instance_id": state["flag_instance_id"],
+            "recipient_hidden_from_public_status": True,
+        }
+
+    def _resolve_hidden_flag_drop(self, instance_id: str) -> dict:
         state = self._instance(instance_id)
         boss = self.runtime.actors[state["boss_id"]]
-        if boss.alive:
-            raise ValueError("Fuscus must be defeated before the Flag of Valor drop resolves")
+        if boss.alive or boss.metadata.get("defeat_resolved") is not True:
+            raise ValueError("Fuscus defeat must be fully resolved before the Flag of Valor drop resolves")
         if state["flag_drop_resolved"]:
-            return {"instance_id": instance_id, "resolved": True, "drop_created": True}
+            raise RuntimeError("Fuscus hidden flag-drop occurrence attempted to resolve twice")
 
         encounter = self.runtime.encounters[state["encounter_id"]]
         candidates = sorted(
@@ -232,4 +266,9 @@ class Floor5FuscusScenario:
 
 
 def install_floor5_fuscus_scenario(runtime) -> Floor5FuscusScenario:
-    return Floor5FuscusScenario(runtime)
+    service = runtime.install_world_event_service(
+        "floor5.fuscus", lambda: Floor5FuscusScenario(runtime)
+    )
+    if not isinstance(service, Floor5FuscusScenario):
+        raise RuntimeError("floor5.fuscus service registry contains the wrong service type")
+    return service

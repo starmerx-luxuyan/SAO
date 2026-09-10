@@ -189,11 +189,6 @@ def register_floor7_tools(mcp, volupta, aghyellr, intrigue, elfwar, pursuit) -> 
         return _json(pursuit.follow_through_valley_into_labyrinth(instance_id))
 
     @mcp.tool()
-    def resolve_floor7_labyrinth_pursuit(instance_id: str) -> str:
-        """After ordinary combat kills the Labyrinth blockers, synchronize actual encounter time and determine whether the Fallen trail was maintained or lost."""
-        return _json(pursuit.resolve_labyrinth_pursuit(instance_id))
-
-    @mcp.tool()
     def advance_floor7_pursuit_to_boss_room(instance_id: str) -> str:
         """Advance the surviving pursuit group from the Labyrinth to the Floor 7 Boss Room for the existing Aghyellr raid."""
         return _json(pursuit.advance_to_boss_room(instance_id))

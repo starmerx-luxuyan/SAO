@@ -27,11 +27,23 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
         super().__init__(seed=seed, catalog=catalog)
         self.world_advance_hooks: list[WorldAdvanceHook] = []
         self.world_event_rules: dict[str, WorldEventRule] = {}
+        self.world_event_services: dict[str, object] = {}
         self.world_events = WorldEventLedger()
         self._evaluating_world_events = False
 
     def register_world_advance_hook(self, hook: WorldAdvanceHook) -> None:
         self.world_advance_hooks.append(hook)
+
+    def install_world_event_service(self, service_id: str, factory: Callable[[], object]) -> object:
+        clean_service_id = service_id.strip()
+        if not clean_service_id:
+            raise ValueError("world-event service id is required")
+        existing = self.world_event_services.get(clean_service_id)
+        if existing is not None:
+            return existing
+        service = factory()
+        self.world_event_services[clean_service_id] = service
+        return service
 
     def register_world_event_rule(
         self,
@@ -132,6 +144,10 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
         activated = super().advance_world(elapsed_ms)
         self._emit_world_advance(before_ms)
         return activated
+
+    def _resolve_defeat(self, encounter, target, killer_id: str | None) -> None:
+        super()._resolve_defeat(encounter, target, killer_id)
+        self.evaluate_world_events()
 
     def travel_actor(self, actor_id: str, destination_id: str):
         # GameRuntime.travel_actor delegates to the data-only travel rule, which advances

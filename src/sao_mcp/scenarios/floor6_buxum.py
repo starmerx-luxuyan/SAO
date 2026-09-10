@@ -275,7 +275,8 @@ class Floor6BuxumScenario:
                 or buxum.inventory[weapon_id].broken
             )
             low_hp = buxum.hp <= max(1, int(round(buxum.max_hp * BUXUM_RETREAT_HP_RATIO)))
-            if not buxum.alive or low_hp or weapon_broken:
+            defeat_committed = not buxum.alive and buxum.metadata.get("defeat_resolved") is True
+            if defeat_committed or (buxum.alive and (low_hp or weapon_broken)):
                 ready.append(f"{BUXUM_RETREAT_EVENT_RULE_ID}:{cube_instance_id}")
         return ready
 
@@ -390,4 +391,11 @@ def install_floor6_buxum_scenario(runtime, cube) -> Floor6BuxumScenario:
         raise RuntimeError("Floor 6 Buxum corpus was not loaded")
     if COMBINED_IRON_KEY_ID not in runtime.catalog.items or GOLDEN_CUBE_ID not in runtime.catalog.items:
         raise RuntimeError("Floor 6 finale item corpus was not loaded")
-    return Floor6BuxumScenario(runtime, cube)
+    service = runtime.install_world_event_service(
+        "floor6.buxum", lambda: Floor6BuxumScenario(runtime, cube)
+    )
+    if not isinstance(service, Floor6BuxumScenario):
+        raise RuntimeError("floor6.buxum service registry contains the wrong service type")
+    if service.cube is not cube:
+        raise RuntimeError("floor6.buxum service is already bound to a different Cube service")
+    return service

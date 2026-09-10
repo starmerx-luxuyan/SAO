@@ -504,7 +504,10 @@ class Floor6StachionScenario:
             hostiles = [self.runtime.actors[hostile_id] for hostile_id in self._ambusher_ids(state)]
             if not hostiles:
                 continue
-            trigger = any(not hostile.alive for hostile in hostiles) or any(
+            trigger = any(
+                not hostile.alive and hostile.metadata.get("defeat_resolved") is True
+                for hostile in hostiles
+            ) or any(
                 hostile.alive and hostile.max_hp > 0 and hostile.hp / hostile.max_hp <= AMBUSH_RETREAT_HP_RATIO
                 for hostile in hostiles
             )
@@ -528,7 +531,10 @@ class Floor6StachionScenario:
             raise ValueError("Morte/Joe retreat can only resolve after the paralysis handoff to ordinary PvP")
         encounter = self.runtime.encounters[state["transport_encounter_id"]]
         hostiles = [self.runtime.actors[hostile_id] for hostile_id in self._ambusher_ids(state)]
-        trigger = any(not hostile.alive for hostile in hostiles) or any(
+        trigger = any(
+            not hostile.alive and hostile.metadata.get("defeat_resolved") is True
+            for hostile in hostiles
+        ) or any(
             hostile.alive and hostile.max_hp > 0 and hostile.hp / hostile.max_hp <= AMBUSH_RETREAT_HP_RATIO
             for hostile in hostiles
         )
@@ -654,4 +660,9 @@ def install_floor6_stachion_scenario(runtime) -> Floor6StachionScenario:
         raise RuntimeError("Floor 6 Stachion quest-item corpus was not loaded")
     if MORTE_HATCHET_ID not in runtime.catalog.weapons or JOE_DAGGER_ID not in runtime.catalog.weapons:
         raise RuntimeError("Floor 6 ambush weapon corpus was not loaded")
-    return Floor6StachionScenario(runtime)
+    service = runtime.install_world_event_service(
+        "floor6.stachion", lambda: Floor6StachionScenario(runtime)
+    )
+    if not isinstance(service, Floor6StachionScenario):
+        raise RuntimeError("floor6.stachion service registry contains the wrong service type")
+    return service

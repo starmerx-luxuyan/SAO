@@ -19,8 +19,12 @@ def test_fuscus_flag_drop_is_personal_and_deployed_aura_buffs_nearby_guildmates(
     boss.alive = False
     runtime._resolve_defeat(encounter, boss, players[0].actor_id)
 
-    public = fuscus.resolve_hidden_flag_drop(state["instance_id"])
-    assert public == {"instance_id": state["instance_id"], "resolved": True, "drop_created": True}
+    assert fuscus.status(state["instance_id"])["flag_drop_resolved"] is True
+    occurrence = runtime.world_event_state(
+        f"floor5.fuscus_hidden_flag_drop:{state['instance_id']}"
+    )
+    assert occurrence["status"] == "resolved"
+    assert occurrence["payload"]["recipient_hidden_from_public_status"] is True
     personal = [
         fuscus.check_personal_flag_drop(player.actor_id, state["instance_id"])
         for player in players

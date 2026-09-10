@@ -104,11 +104,6 @@ def register_floor5_tools(mcp, karluin, fuscus, shortcut) -> None:
         return _json(fuscus.start_raid(player_ids))
 
     @mcp.tool()
-    def resolve_floor5_hidden_flag_drop(instance_id: str) -> str:
-        """After Fuscus dies, resolve the hidden personal Flag of Valor drop without revealing its recipient."""
-        return _json(fuscus.resolve_hidden_flag_drop(instance_id))
-
-    @mcp.tool()
     def check_floor5_personal_flag_drop(actor_id: str, instance_id: str) -> str:
         """Check only this raid participant's personal Fuscus drop result."""
         return _json(fuscus.check_personal_flag_drop(actor_id, instance_id))

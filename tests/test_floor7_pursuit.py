@@ -183,12 +183,18 @@ def _reach_blocker_encounter(seed=83):
 def _defeat_blockers(runtime, pursuit, instance_id, encounter_id, elapsed_ms):
     encounter = runtime.encounters[encounter_id]
     state = pursuit.status(instance_id)
-    for blocker_id in state["pursuit"]["blocker_actor_ids"]:
+    runtime.advance_encounter(encounter_id, elapsed_ms)
+    blocker_ids = list(state["pursuit"]["blocker_actor_ids"])
+    for blocker_id in blocker_ids:
         blocker = encounter.participants[blocker_id]
         blocker.hp = 0
         blocker.alive = False
-    runtime.advance_encounter(encounter_id, elapsed_ms)
-    return pursuit.resolve_labyrinth_pursuit(instance_id)
+        runtime._resolve_defeat(encounter, blocker, state["pursuit"]["travelling_actor_ids"][0])
+    resolved = pursuit.status(instance_id)
+    assert runtime.world_event_state(
+        f"floor7.labyrinth_pursuit_resolution:{instance_id}"
+    )["status"] == "resolved"
+    return resolved
 
 
 def test_floor7_pursuit_uses_corpus_route_real_keys_and_shared_travel_time():

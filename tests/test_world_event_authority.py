@@ -1,6 +1,16 @@
 from pathlib import Path
 
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.scenarios.floor5_fuscus import (
+    FUSCUS_FLAG_DROP_EVENT_RULE_ID,
+    Floor5FuscusScenario,
+    install_floor5_fuscus_scenario,
+)
+from sao_mcp.scenarios.floor7_pursuit import (
+    LABYRINTH_PURSUIT_EVENT_RULE_ID,
+    Floor7PursuitScenario,
+    install_floor7_pursuit_scenario,
+)
 from sao_mcp.scenarios.floor6_buxum import (
     BUXUM_BETRAYAL_EVENT_RULE_ID,
     BUXUM_RETREAT_EVENT_RULE_ID,
@@ -20,11 +30,18 @@ from sao_mcp.scenarios.floor6_stachion import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_floor6_conditional_scene_transitions_are_registered_world_event_rules():
+def test_conditional_scene_transitions_are_registered_world_event_rules():
     runtime = HousingAincradRuntime(seed=811)
     cube = install_floor6_irrational_cube_scenario(runtime)
-    install_floor6_buxum_scenario(runtime, cube)
-    install_floor6_stachion_scenario(runtime)
+    buxum = install_floor6_buxum_scenario(runtime, cube)
+    stachion = install_floor6_stachion_scenario(runtime)
+    fuscus = install_floor5_fuscus_scenario(runtime)
+    pursuit = install_floor7_pursuit_scenario(runtime)
+
+    assert install_floor6_buxum_scenario(runtime, cube) is buxum
+    assert install_floor6_stachion_scenario(runtime) is stachion
+    assert install_floor5_fuscus_scenario(runtime) is fuscus
+    assert install_floor7_pursuit_scenario(runtime) is pursuit
 
     assert set(runtime.world_event_rules).issuperset(
         {
@@ -33,6 +50,8 @@ def test_floor6_conditional_scene_transitions_are_registered_world_event_rules()
             MORTE_JOE_AMBUSH_EVENT_RULE_ID,
             PARALYSIS_RELEASE_EVENT_RULE_ID,
             AMBUSHER_RETREAT_EVENT_RULE_ID,
+            FUSCUS_FLAG_DROP_EVENT_RULE_ID,
+            LABYRINTH_PURSUIT_EVENT_RULE_ID,
         }
     )
 
@@ -44,6 +63,8 @@ def test_migrated_conditional_events_have_no_public_manual_scenario_trigger_meth
     assert not hasattr(Floor6StachionScenario, "advance_to_paralysis_release")
     assert not hasattr(Floor6StachionScenario, "resolve_ambusher_retreat")
     assert hasattr(Floor6StachionScenario, "wait_for_paralysis_release")
+    assert not hasattr(Floor5FuscusScenario, "resolve_hidden_flag_drop")
+    assert not hasattr(Floor7PursuitScenario, "resolve_labyrinth_pursuit")
 
 
 def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
@@ -55,6 +76,8 @@ def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
         "resolve_floor6_ambusher_retreat",
         "trigger_floor6_buxum_betrayal",
         "resolve_floor6_buxum_retreat",
+        "resolve_floor5_hidden_flag_drop",
+        "resolve_floor7_labyrinth_pursuit",
     )
     joined = floor6 + "\n" + buxum
     assert all(name not in joined for name in forbidden)

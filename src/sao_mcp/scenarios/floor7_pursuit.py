@@ -35,6 +35,7 @@ MAP_CONFIRM_WAIT_MS = 5 * 60_000
 RENDEZVOUS_PREPARATION_MS = 30 * 60_000
 FALLEN_RENDEZVOUS_OBSERVE_MS = 5 * 60_000
 TRAIL_MARGIN_MS = 3 * 60_000
+LABYRINTH_PURSUIT_EVENT_RULE_ID = "floor7.labyrinth_pursuit_resolution"
 
 
 class Floor7PursuitScenario:
@@ -42,6 +43,12 @@ class Floor7PursuitScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        runtime.register_world_event_rule(
+            LABYRINTH_PURSUIT_EVENT_RULE_ID,
+            self._discover_labyrinth_pursuit_events,
+            self._resolve_labyrinth_pursuit_event,
+        )
+        runtime.evaluate_world_events()
 
     def _harin_states(self) -> dict:
         try:
@@ -451,18 +458,53 @@ class Floor7PursuitScenario:
         state["stage"] = "labyrinth_blocker_battle"
         return self.status(instance_id)
 
-    def resolve_labyrinth_pursuit(self, instance_id: str) -> dict:
+    @staticmethod
+    def _pursuit_event_instance_id(occurrence_id: str) -> str:
+        prefix = f"{LABYRINTH_PURSUIT_EVENT_RULE_ID}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid Labyrinth pursuit occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_labyrinth_pursuit_events(self) -> list[str]:
+        ready: list[str] = []
+        states = self.runtime.world.global_flags.get("floor7_harin_escape_instances", {})
+        for instance_id, state in states.items():
+            if state["stage"] != "labyrinth_blocker_battle":
+                continue
+            pursuit = state["pursuit"]
+            blockers = [self.runtime.actors[actor_id] for actor_id in pursuit["blocker_actor_ids"]]
+            if not blockers or any(
+                blocker.alive or blocker.hp > 0 or blocker.metadata.get("defeat_resolved") is not True
+                for blocker in blockers
+            ):
+                continue
+            if any(not self.runtime.actors[actor_id].alive for actor_id in pursuit["travelling_actor_ids"]):
+                continue
+            ready.append(f"{LABYRINTH_PURSUIT_EVENT_RULE_ID}:{instance_id}")
+        return ready
+
+    def _resolve_labyrinth_pursuit_event(self, occurrence_id: str) -> dict:
+        instance_id = self._pursuit_event_instance_id(occurrence_id)
+        state = self._resolve_labyrinth_pursuit(instance_id)
+        return {
+            "instance_id": instance_id,
+            "trail_outcome": state["trail_outcome"],
+            "stage": state["stage"],
+        }
+
+    def _resolve_labyrinth_pursuit(self, instance_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "labyrinth_blocker_battle":
             raise ValueError("the pursuit is not waiting on the Labyrinth blocker encounter")
         pursuit = state["pursuit"]
         encounter = self.runtime.encounters[pursuit["blocker_encounter_id"]]
 
+        blockers = [self.runtime.actors[actor_id] for actor_id in pursuit["blocker_actor_ids"]]
         if any(
-            encounter.participants[actor_id].alive or encounter.participants[actor_id].hp > 0
-            for actor_id in pursuit["blocker_actor_ids"]
+            blocker.alive or blocker.hp > 0 or blocker.metadata.get("defeat_resolved") is not True
+            for blocker in blockers
         ):
-            raise ValueError("the Labyrinth blockers are still alive")
+            raise ValueError("the Labyrinth blockers have not completed defeat resolution")
         if any(
             not self.runtime.actors[actor_id].alive
             for actor_id in pursuit["travelling_actor_ids"]
@@ -599,4 +641,9 @@ def install_floor7_pursuit_scenario(runtime) -> Floor7PursuitScenario:
         raise RuntimeError("Floor 7 pursuit item corpus was not loaded")
     if SACRED_KEY_BAG_ID not in runtime.catalog.items:
         raise RuntimeError("Floor 6 sacred-key bag corpus was not loaded")
-    return Floor7PursuitScenario(runtime)
+    service = runtime.install_world_event_service(
+        "floor7.pursuit", lambda: Floor7PursuitScenario(runtime)
+    )
+    if not isinstance(service, Floor7PursuitScenario):
+        raise RuntimeError("floor7.pursuit service registry contains the wrong service type")
+    return service
