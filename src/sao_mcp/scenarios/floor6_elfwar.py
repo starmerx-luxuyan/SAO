@@ -24,6 +24,12 @@ from sao_mcp.domain.models import (
     StatusEffectState,
     StatusType,
 )
+from sao_mcp.rules.group_travel import (
+    complete_routed_travel_within_window,
+    group_travel_record,
+    routed_travel_window_record,
+    travel_route_together,
+)
 from sao_mcp.rules.inventory import add_item, locate_item_container
 
 
@@ -68,7 +74,10 @@ class Floor6ElfWarScenario:
                 "agate_key_returned": False,
                 "bouhroum_trial_complete": False,
                 "gindo_actor_id": None,
+                "gindo_qusack_route": None,
+                "myia_qusack_route": None,
                 "kizmel_actor_id": None,
+                "kizmel_return_route": [],
                 "kysarah_actor_id": None,
                 "sacred_key_bag_instance_id": None,
                 "combined_iron_key_instance_id": None,
@@ -251,7 +260,13 @@ class Floor6ElfWarScenario:
         if state["stage"] != "rescue_qusack" or actor.location_id != QUSACK_RESCUE_CAVE:
             raise ValueError("the Qusack rescue occurs at the hostage cave")
         gindo = self.runtime.actors[state["gindo_actor_id"]]
-        gindo.location_id = QUSACK_RESCUE_CAVE
+        gindo_route = complete_routed_travel_within_window(
+            self.runtime,
+            [gindo.actor_id],
+            QUSACK_RESCUE_CAVE,
+            started_at_ms=int(state["spring_purified_at_ms"]),
+        )
+        state["gindo_qusack_route"] = routed_travel_window_record(gindo_route)
         kizmel = self._create_kizmel_actor()
         state["kizmel_actor_id"] = kizmel.actor_id
         state["stage"] = "qusack_released_kysarah_pending"
@@ -313,7 +328,16 @@ class Floor6ElfWarScenario:
         theano_key = next((item for item in myia.inventory.values() if item.template_id == THEANO_IRON_KEY_ID), None)
         if theano_key is None:
             raise ValueError("Myia is no longer carrying Theano's paired iron key")
-        myia.location_id = QUSACK_RESCUE_CAVE
+        myia_started_at_ms = stachion_state.get("myia_met_at_ms")
+        if myia_started_at_ms is None:
+            raise RuntimeError("Myia release-route state has no authoritative meeting time")
+        myia_route = complete_routed_travel_within_window(
+            self.runtime,
+            [myia.actor_id],
+            QUSACK_RESCUE_CAVE,
+            started_at_ms=int(myia_started_at_ms),
+        )
+        state["myia_qusack_route"] = routed_travel_window_record(myia_route)
 
         kysarah = self._create_kysarah_actor()
         gindo = self.runtime.actors[state["gindo_actor_id"]]
@@ -375,10 +399,9 @@ class Floor6ElfWarScenario:
 
         kysarah.metadata["retreated_with_stolen_keys"] = True
         encounter.participants = {actor_id: actor}
-        encounter.positions = {
-            actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))
-        }
-        kizmel.location_id = CASTLE_GALEY
+        encounter.positions = {actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))}
+        kizmel_route = travel_route_together(self.runtime, [kizmel.actor_id], CASTLE_GALEY)
+        state["kizmel_return_route"] = [group_travel_record(segment) for segment in kizmel_route]
         gindo.metadata["qusack_departing_floor6"] = True
         state["stage"] = "kysarah_stole_and_combined_keys"
         state["combined_iron_key_instance_id"] = combined.instance_id
