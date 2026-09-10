@@ -157,6 +157,59 @@ def travel_together(runtime, actor_ids: list[str] | tuple[str, ...], destination
     )
 
 
+def exit_encounter_via_travel(
+    runtime,
+    encounter_id: str,
+    actor_ids: list[str] | tuple[str, ...],
+    destination_id: str,
+) -> GroupTravelResolution:
+    """Leave a live encounter through one real adjacent world-graph edge."""
+
+    if encounter_id not in runtime.encounters:
+        raise KeyError(encounter_id)
+    encounter = runtime.encounters[encounter_id]
+    members = tuple(actor_ids)
+    if not members or len(set(members)) != len(members):
+        raise ValueError("encounter-exit travel requires unique actor ids")
+    actors = []
+    for actor_id in members:
+        actor = encounter.participants.get(actor_id)
+        if actor is None or runtime.actors.get(actor_id) is not actor:
+            raise ValueError("encounter-exit traveller must be an authoritative encounter participant")
+        if not actor.alive or actor.location_id is None:
+            raise ValueError("encounter-exit traveller must be alive at a settled world location")
+        actors.append(actor)
+    origins = {actor.location_id for actor in actors}
+    if len(origins) != 1:
+        raise ValueError("encounter-exit travellers must share one world location")
+    origin = str(actors[0].location_id)
+    if destination_id not in runtime.world_map.locations:
+        raise KeyError(destination_id)
+    if not _can_group_enter(runtime, actors, destination_id):
+        raise ValueError("encounter-exit travellers cannot enter the destination")
+    edge = _direct_edge(runtime, origin, destination_id)
+
+    runtime.advance_encounter(encounter_id, edge.travel_ms)
+    newly_discovered = _commit_group_destination(runtime, members, actors, destination_id)
+    for actor_id in members:
+        encounter.participants.pop(actor_id, None)
+        encounter.positions.pop(actor_id, None)
+        encounter.threat.pop(actor_id, None)
+        encounter.last_attacker_by_target.pop(actor_id, None)
+        encounter.last_attack_time_by_target.pop(actor_id, None)
+        for table in encounter.threat.values():
+            table.pop(actor_id, None)
+
+    return GroupTravelResolution(
+        actor_ids=members,
+        from_location_id=origin,
+        to_location_id=destination_id,
+        elapsed_ms=edge.travel_ms,
+        newly_discovered=newly_discovered,
+        traversal_tags=edge.traversal_tags,
+    )
+
+
 def travel_route_together(
     runtime,
     actor_ids: list[str] | tuple[str, ...],
