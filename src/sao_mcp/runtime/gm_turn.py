@@ -44,6 +44,18 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"npc_id", "destination_id"}),
         frozenset(),
     ),
+    "observe_fact": (
+        frozenset({"entity_id", "fact_id", "value"}),
+        frozenset({"source_id"}),
+    ),
+    "infer_fact": (
+        frozenset({"entity_id", "fact_id", "value"}),
+        frozenset({"source_id"}),
+    ),
+    "share_fact": (
+        frozenset({"sender_id", "recipient_id", "fact_id"}),
+        frozenset(),
+    ),
     "advance_world": (frozenset({"elapsed_ms"}), frozenset()),
     "advance_encounter": (
         frozenset({"encounter_id", "elapsed_ms"}),
@@ -88,7 +100,7 @@ class GMTurnExecutor:
 
     This component does not interpret natural language or resolve mechanics itself. The host model
     supplies an already-decided structured action plan. Each action calls the same runtime method
-    used by the dedicated MCP tools; no alternative combat/travel/item rules exist here.
+    used by the dedicated MCP tools; no alternative combat/travel/item/knowledge rules exist here.
     """
 
     def __init__(self, runtime) -> None:
@@ -195,6 +207,26 @@ class GMTurnExecutor:
                 action["npc_id"],
                 action["destination_id"],
             )
+        if op == "observe_fact":
+            return runtime.record_observation(
+                action["entity_id"],
+                action["fact_id"],
+                action["value"],
+                source_id=action.get("source_id"),
+            )
+        if op == "infer_fact":
+            return runtime.record_inference(
+                action["entity_id"],
+                action["fact_id"],
+                action["value"],
+                source_id=action.get("source_id"),
+            )
+        if op == "share_fact":
+            return runtime.share_known_fact(
+                action["sender_id"],
+                action["recipient_id"],
+                action["fact_id"],
+            )
         if op == "advance_world":
             return {"activated_floor_gates": runtime.advance_world(int(action["elapsed_ms"]))}
         if op == "advance_encounter":
@@ -233,6 +265,16 @@ class GMTurnExecutor:
             if key == "encounter_id" and isinstance(value, str)
         }
 
+    @staticmethod
+    def _knowledge_entity_ids(actions: list[dict[str, Any]]) -> set[str]:
+        fields = {"entity_id", "sender_id", "recipient_id"}
+        return {
+            value
+            for action in actions
+            for key, value in action.items()
+            if key in fields and isinstance(value, str)
+        }
+
     def execute(self, actions: list[dict[str, Any]], *, world_tick_ms: int = 0) -> dict:
         self._validate_plan(actions, world_tick_ms)
         runtime = self.runtime
@@ -256,6 +298,7 @@ class GMTurnExecutor:
         activated = runtime.advance_world(world_tick_ms) if world_tick_ms else []
         actor_ids = self._actor_ids(actions)
         encounter_ids = self._encounter_ids(actions)
+        knowledge_entity_ids = self._knowledge_entity_ids(actions)
         new_events = {}
         for encounter_id, encounter in runtime.encounters.items():
             start = event_counts.get(encounter_id, 0)
@@ -302,6 +345,10 @@ class GMTurnExecutor:
             "npc_agendas": {
                 npc_id: runtime.npc_agenda_state(npc_id)
                 for npc_id in sorted(npc_ids)
+            },
+            "knowledge": {
+                entity_id: runtime.knowledge_state(entity_id)
+                for entity_id in sorted(knowledge_entity_ids)
             },
             "encounters": encounters,
         }
