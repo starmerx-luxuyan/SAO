@@ -6,70 +6,19 @@ from sao_mcp.corpus.housing import CORE_PROPERTY_LISTINGS, PropertyKind
 from sao_mcp.corpus.world import LocationDefinition, TravelConnection
 from sao_mcp.domain.models import Provenance, ProvenanceKind, ZoneKind
 from sao_mcp.rules.housing import HousingState
-from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.relationships import SharedStorage
-from sao_mcp.runtime.world_event_runtime import WorldEventAincradRuntime
+from sao_mcp.runtime.npc_autonomy_runtime import NPCAutonomyAincradRuntime
 
 
 PROPERTY_ENTRY_TIME_MS = 15_000  # Simulation transition time.
 
 
-class HousingAincradRuntime(WorldEventAincradRuntime):
-    """Full communicating runtime plus persistent property ownership and interior world nodes."""
+class HousingAincradRuntime(NPCAutonomyAincradRuntime):
+    """Autonomous-NPC runtime plus persistent property ownership and interior world nodes."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
         self.housing = HousingState()
-
-    def _materialized_npc_actor(self, npc_id: str):
-        matches = [
-            actor
-            for actor in self.actors.values()
-            if actor.metadata.get("npc_definition_id") == npc_id
-        ]
-        if len(matches) > 1:
-            raise RuntimeError(f"multiple materialized actors exist for NPC {npc_id}")
-        return matches[0] if matches else None
-
-    def npc_location_id(self, npc_id: str) -> str:
-        if npc_id not in self.npcs.states:
-            raise KeyError(npc_id)
-        materialized = self._materialized_npc_actor(npc_id)
-        if materialized is None:
-            return self.npcs.states[npc_id].location_id
-        if materialized.location_id is None:
-            raise RuntimeError(f"materialized NPC {npc_id} has no world location")
-        return materialized.location_id
-
-    def interact_npc(self, actor_id: str, npc_id: str):
-        materialized = self._materialized_npc_actor(npc_id)
-        if materialized is not None and not materialized.alive:
-            raise ValueError("materialized NPC is not alive for interaction")
-        actor = self.actors[actor_id]
-        interaction = self.npcs.interact_at(
-            actor_id,
-            npc_id,
-            actor_location_id=actor.location_id,
-            npc_location_id=self.npc_location_id(npc_id),
-            now_ms=self.world.now_ms,
-            quests=self.quests,
-        )
-        self.quests.record_event(
-            actor_id,
-            kind=QuestObjectiveKind.TALK,
-            target_id=npc_id,
-        )
-        return interaction
-
-    def claim_quest(self, actor_id: str, quest_id: str):
-        actor = self.actors[actor_id]
-        definition = self.quests.definitions[quest_id]
-        materialized = self._materialized_npc_actor(definition.turn_in_id)
-        if materialized is not None and not materialized.alive:
-            raise ValueError("materialized quest turn-in NPC is not alive")
-        if actor.location_id != self.npc_location_id(definition.turn_in_id):
-            raise ValueError("quest must be turned in to the designated NPC")
-        return self.quests.claim(actor, quest_id, self.catalog, now_ms=self.world.now_ms)
 
     def _register_property_location(self, state) -> None:
         if state.interior_location_id in self.world_map.locations:
