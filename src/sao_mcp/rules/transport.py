@@ -19,21 +19,42 @@ class AuthorizedTransportResolution:
     elapsed_ms: int
     newly_discovered: bool
     transport_tags: tuple[str, ...] = ()
+    started_at_ms: int | None = None
+    completed_at_ms: int | None = None
 
 
-def authorized_transport(
+def _materialized_npc(runtime, npc_id: str):
+    resolver = getattr(runtime, "_materialized_npc_actor", None)
+    return resolver(npc_id) if resolver is not None else None
+
+
+def _npc_location(runtime, npc_id: str) -> str | None:
+    materialized = _materialized_npc(runtime, npc_id)
+    if materialized is not None:
+        return materialized.location_id
+    return runtime.npcs.states[npc_id].location_id
+
+
+def _set_npc_location(runtime, npc_id: str, location_id: str) -> None:
+    materialized = _materialized_npc(runtime, npc_id)
+    if materialized is not None:
+        materialized.location_id = location_id
+    else:
+        runtime.npcs.states[npc_id].location_id = location_id
+
+
+def _prepare_transport(
     runtime,
     *,
     transport_id: str,
     actor_ids: list[str] | tuple[str, ...],
-    npc_ids: list[str] | tuple[str, ...] = (),
+    npc_ids: list[str] | tuple[str, ...],
     carrier_actor_id: str | None,
     from_location_id: str,
     to_location_id: str,
     elapsed_ms: int,
-    carrier_to_location_id: str | None = None,
-    transport_tags: tuple[str, ...] = (),
-) -> AuthorizedTransportResolution:
+    carrier_to_location_id: str | None,
+):
     clean_transport_id = transport_id.strip()
     if not clean_transport_id:
         raise ValueError("authorized transport requires a transport_id")
@@ -74,7 +95,7 @@ def authorized_transport(
     for npc_id in npcs:
         if npc_id not in runtime.npcs.states:
             raise KeyError(npc_id)
-        if runtime.npcs.states[npc_id].location_id != from_location_id:
+        if _npc_location(runtime, npc_id) != from_location_id:
             raise ValueError("authorized transport NPCs are not all at the required origin")
 
     carrier = None
@@ -85,9 +106,36 @@ def authorized_transport(
         if carrier.location_id != from_location_id:
             raise ValueError("authorized transport carrier is not at the required origin")
 
+    return (
+        clean_transport_id,
+        actors,
+        npcs,
+        moving_actors,
+        carrier,
+        carrier_destination_id,
+        destination,
+    )
+
+
+def _commit_transport(
+    runtime,
+    *,
+    clean_transport_id: str,
+    actors: tuple[str, ...],
+    npcs: tuple[str, ...],
+    moving_actors,
+    carrier,
+    carrier_actor_id: str | None,
+    carrier_destination_id: str,
+    from_location_id: str,
+    destination,
+    elapsed_ms: int,
+    transport_tags: tuple[str, ...],
+    started_at_ms: int | None,
+    completed_at_ms: int | None,
+) -> AuthorizedTransportResolution:
     floor = runtime.world.floors[destination.floor_number]
     newly_discovered = destination.location_id not in floor.discovered_locations
-    runtime.advance_world(elapsed_ms)
     floor.discovered_locations.add(destination.location_id)
     for actor in moving_actors:
         actor.location_id = destination.location_id
@@ -98,7 +146,7 @@ def authorized_transport(
                 target_id=destination.location_id,
             )
     for npc_id in npcs:
-        runtime.npcs.states[npc_id].location_id = destination.location_id
+        _set_npc_location(runtime, npc_id, destination.location_id)
     if carrier is not None:
         carrier.location_id = carrier_destination_id
 
@@ -108,11 +156,112 @@ def authorized_transport(
         npc_ids=npcs,
         carrier_actor_id=carrier_actor_id,
         from_location_id=from_location_id,
-        to_location_id=to_location_id,
+        to_location_id=destination.location_id,
         carrier_to_location_id=carrier_destination_id if carrier_actor_id is not None else None,
         elapsed_ms=elapsed_ms,
         newly_discovered=newly_discovered,
         transport_tags=tuple(transport_tags),
+        started_at_ms=started_at_ms,
+        completed_at_ms=completed_at_ms,
+    )
+
+
+def authorized_transport(
+    runtime,
+    *,
+    transport_id: str,
+    actor_ids: list[str] | tuple[str, ...],
+    npc_ids: list[str] | tuple[str, ...] = (),
+    carrier_actor_id: str | None,
+    from_location_id: str,
+    to_location_id: str,
+    elapsed_ms: int,
+    carrier_to_location_id: str | None = None,
+    transport_tags: tuple[str, ...] = (),
+) -> AuthorizedTransportResolution:
+    prepared = _prepare_transport(
+        runtime,
+        transport_id=transport_id,
+        actor_ids=actor_ids,
+        npc_ids=npc_ids,
+        carrier_actor_id=carrier_actor_id,
+        from_location_id=from_location_id,
+        to_location_id=to_location_id,
+        elapsed_ms=elapsed_ms,
+        carrier_to_location_id=carrier_to_location_id,
+    )
+    started_at_ms = runtime.world.now_ms
+    runtime.advance_world(elapsed_ms)
+    return _commit_transport(
+        runtime,
+        clean_transport_id=prepared[0],
+        actors=prepared[1],
+        npcs=prepared[2],
+        moving_actors=prepared[3],
+        carrier=prepared[4],
+        carrier_actor_id=carrier_actor_id,
+        carrier_destination_id=prepared[5],
+        from_location_id=from_location_id,
+        destination=prepared[6],
+        elapsed_ms=elapsed_ms,
+        transport_tags=transport_tags,
+        started_at_ms=started_at_ms,
+        completed_at_ms=runtime.world.now_ms,
+    )
+
+
+def authorized_transport_within_window(
+    runtime,
+    *,
+    transport_id: str,
+    actor_ids: list[str] | tuple[str, ...],
+    npc_ids: list[str] | tuple[str, ...] = (),
+    carrier_actor_id: str | None,
+    from_location_id: str,
+    to_location_id: str,
+    elapsed_ms: int,
+    started_at_ms: int,
+    completed_at_ms: int | None = None,
+    carrier_to_location_id: str | None = None,
+    transport_tags: tuple[str, ...] = (),
+) -> AuthorizedTransportResolution:
+    """Commit a special transport that ran concurrently during an already elapsed world-time window."""
+
+    end_ms = runtime.world.now_ms if completed_at_ms is None else completed_at_ms
+    if started_at_ms < 0 or end_ms < started_at_ms:
+        raise ValueError("authorized transport window is invalid")
+    if end_ms > runtime.world.now_ms:
+        raise ValueError("authorized transport cannot complete after current world time")
+    if elapsed_ms > end_ms - started_at_ms:
+        raise ValueError(
+            f"authorized transport needs {elapsed_ms} ms but only {end_ms - started_at_ms} ms elapsed"
+        )
+    prepared = _prepare_transport(
+        runtime,
+        transport_id=transport_id,
+        actor_ids=actor_ids,
+        npc_ids=npc_ids,
+        carrier_actor_id=carrier_actor_id,
+        from_location_id=from_location_id,
+        to_location_id=to_location_id,
+        elapsed_ms=elapsed_ms,
+        carrier_to_location_id=carrier_to_location_id,
+    )
+    return _commit_transport(
+        runtime,
+        clean_transport_id=prepared[0],
+        actors=prepared[1],
+        npcs=prepared[2],
+        moving_actors=prepared[3],
+        carrier=prepared[4],
+        carrier_actor_id=carrier_actor_id,
+        carrier_destination_id=prepared[5],
+        from_location_id=from_location_id,
+        destination=prepared[6],
+        elapsed_ms=elapsed_ms,
+        transport_tags=transport_tags,
+        started_at_ms=started_at_ms,
+        completed_at_ms=end_ms,
     )
 
 
@@ -128,4 +277,6 @@ def authorized_transport_record(resolution: AuthorizedTransportResolution) -> di
         "elapsed_ms": resolution.elapsed_ms,
         "newly_discovered": resolution.newly_discovered,
         "transport_tags": list(resolution.transport_tags),
+        "started_at_ms": resolution.started_at_ms,
+        "completed_at_ms": resolution.completed_at_ms,
     }
