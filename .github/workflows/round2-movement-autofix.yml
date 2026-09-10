@@ -1,0 +1,35 @@
+name: Round 2 Movement Autofix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  autofix:
+    if: github.event.head_commit.message == 'Run round2 movement regression autofix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply movement regression repairs
+        run: python scripts/round2_movement_regression_fix.py
+      - name: Verify before commit
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified repairs
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/scenarios/floor7_pursuit.py tests/test_raids.py tests/test_floor7_elfwar.py tests/test_floor4_nocturne.py tests/test_floor8_emergency.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Repair movement authority behavior regressions"
+          git push origin HEAD:main
