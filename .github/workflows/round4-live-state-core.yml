@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply encounter co-location authority
-        run: python scripts/round4_live_state_phasec.py
+        run: |
+          python scripts/round4_live_state_phasec.py
+          python scripts/round4_live_state_phasec2.py
       - name: Verify core
         run: |
           python -m pip install -e ".[dev]"
@@ -29,7 +31,7 @@ jobs:
         run: |
           git config user.name "starmerx-luxuyan"
           git config user.email "luxuyan@starmerx.com"
-          git add src/sao_mcp/runtime/engine.py src/sao_mcp/runtime/spatial_runtime.py src/sao_mcp/runtime/raid_spatial_runtime.py tests/test_duels_death.py
+          git add src/sao_mcp/runtime/engine.py src/sao_mcp/runtime/spatial_runtime.py src/sao_mcp/runtime/raid_spatial_runtime.py src/sao_mcp/corpus/monsters.py tests/test_duels_death.py tests/test_boss_runtime.py tests/test_family_divorce.py tests/test_inventory_loot.py tests/test_relationships_community.py tests/test_runtime.py tests/test_spatial_combat.py tests/test_timeline_combat.py
           git diff --cached --quiet && exit 1
           git commit -m "Require encounter participants to share the encounter location"
           git push origin HEAD:main
