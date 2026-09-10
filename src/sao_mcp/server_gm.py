@@ -27,9 +27,9 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
         This tool does not interpret natural language, select fallback actions, or roll separate outcomes.
         Action shapes are validated before execution; mechanical failures are raised by the authoritative
-        runtime and already-completed mechanical actions are not rolled back. NPC travel actions schedule
-        concurrent activity; they do not advance the world clock by themselves. Dynamic facts enter an
-        entity's knowledge only through explicit observation, inference, or an actual colocated report.
+        runtime and already-completed mechanical actions are not rolled back. NPC and guild travel actions
+        schedule concurrent activity; they do not advance the world clock by themselves. Dynamic facts enter
+        an entity's knowledge only through explicit observation, inference, or an actual colocated report.
         """
         return _json(gm_turn_executor.execute(actions, world_tick_ms=world_tick_ms))
 
@@ -49,6 +49,19 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
         rows = gm_turn_executor.runtime.npc_activity_history
         if npc_id is not None:
             rows = [row for row in rows if row["npc_id"] == npc_id]
+        return _json({"activities": rows})
+
+    @mcp.tool()
+    def get_guild_agenda(guild_id: str) -> str:
+        """Inspect one guild's current strategic goal, assigned real members and concurrent travel leg."""
+        return _json(gm_turn_executor.runtime.guild_agenda_state(guild_id))
+
+    @mcp.tool()
+    def get_guild_activity_history(guild_id: str | None = None) -> str:
+        """Inspect completed and issued guild-operation history without mutating the world."""
+        rows = gm_turn_executor.runtime.guild_activity_history
+        if guild_id is not None:
+            rows = [row for row in rows if row["guild_id"] == guild_id]
         return _json({"activities": rows})
 
     @mcp.tool()
