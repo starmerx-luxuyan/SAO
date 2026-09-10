@@ -58,10 +58,12 @@ def test_floor6_release_finale_preserves_cube_and_combined_key_instances_through
     assert state["black_core_exposed"] is True
     assert state["hp_floor"] == 1
 
-    # Generic combat reaches the last pixel; the finale mechanic decides what happens next.
+    # Generic combat reaches the last pixel; the world event, not a GM trigger, resolves Buxum's move.
     boss.hp = 1
     boss.alive = True
-    betrayal = buxum_scene.trigger_betrayal(state["instance_id"])
+    resolved = runtime.evaluate_world_events()
+    assert [row.rule_id for row in resolved] == ["floor6.buxum_betrayal"]
+    betrayal = buxum_scene.status(state["instance_id"])
     buxum = runtime.actors[betrayal["buxum_actor_id"]]
 
     assert combined_key.instance_id not in kysarah.inventory
@@ -82,7 +84,9 @@ def test_floor6_release_finale_preserves_cube_and_combined_key_instances_through
     # The actual duel can use ordinary PvP. This test only crosses the simulation retreat threshold.
     buxum.hp = max(1, int(buxum.max_hp * 0.20))
     buxum.alive = True
-    retreat = buxum_scene.resolve_buxum_retreat(state["instance_id"])
+    resolved = runtime.evaluate_world_events()
+    assert [row.rule_id for row in resolved] == ["floor6.buxum_retreat"]
+    retreat = buxum_scene.status(state["instance_id"])
     assert retreat["stage"] == "golden_cube_dropped"
     assert buxum.actor_id not in encounter.participants
 

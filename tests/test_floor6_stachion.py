@@ -90,8 +90,11 @@ def test_floor6_release_route_merges_stachion_elfwar_and_golden_cube_trail():
     with pytest.raises(ValueError, match="ordinary travel is unavailable during a live encounter"):
         runtime.travel_actor(player.actor_id, SURIBUS)
 
-    stachion.advance_transport_to_ambush_site(player.actor_id)
-    state = stachion.trigger_morte_joe_ambush(player.actor_id)
+    state = stachion.advance_transport_to_ambush_site(player.actor_id)
+    assert state["stage"] == "ambush_cylon_dead"
+    assert runtime.world_event_state(
+        f"floor6.morte_joe_ambush:{player.actor_id}"
+    )["status"] == "resolved"
     morte = runtime.actors[state["morte_actor_id"]]
     joe = runtime.actors[state["joe_actor_id"]]
     assert not cylon.alive
@@ -100,8 +103,11 @@ def test_floor6_release_route_merges_stachion_elfwar_and_golden_cube_trail():
 
     state = stachion.topple_poison_jar(player.actor_id)
     assert state["poison_cloud_active"] and state["paralysed"]
-    state = stachion.advance_to_paralysis_release(player.actor_id)
+    state = stachion.wait_for_paralysis_release(player.actor_id)
     assert state["stage"] == "morte_joe_pvp_active"
+    assert runtime.world_event_state(
+        f"floor6.paralysis_release:{player.actor_id}"
+    )["status"] == "resolved"
     assert not state["paralysed"]
 
     hostile_strike = runtime.attack(encounter.encounter_id, morte.actor_id, player.actor_id, seed=3)
@@ -113,8 +119,12 @@ def test_floor6_release_route_merges_stachion_elfwar_and_golden_cube_trail():
 
     morte.hp = max(1, int(morte.max_hp * 0.20))
     morte.alive = True
-    state = stachion.resolve_ambusher_retreat(player.actor_id)
+    runtime.evaluate_world_events()
+    state = stachion.status(player.actor_id)
     assert state["ambushers_neutralized"]
+    assert runtime.world_event_state(
+        f"floor6.ambusher_retreat:{player.actor_id}"
+    )["status"] == "resolved"
     assert morte.metadata["retreated"] is True and joe.metadata["retreated"] is True
 
     recovery = stachion.recover_cylon_ground_loot(player.actor_id)

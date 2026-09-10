@@ -146,6 +146,7 @@ class Floor6IrrationalCubeScenario:
                 outer_armor_cube_count=26,
                 hp_floor=1,
             )
+            self.runtime.evaluate_world_events()
         return self.status(state["instance_id"])
 
     def rotate_row(self, instance_id: str, row: int, direction: str) -> dict:

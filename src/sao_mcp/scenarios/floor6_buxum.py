@@ -13,6 +13,8 @@ from sao_mcp.rules.state_authority import locate_runtime_item
 BOSS_ROOM = "floor_6_boss_room"
 BUXUM_RETREAT_HP_RATIO = 0.35  # Simulation trigger; canon retreat follows loss of his sword and both forearms.
 AWAKENING_BURST_MS = 12_000  # Simulation marker window; canon only establishes a short superhuman burst.
+BUXUM_BETRAYAL_EVENT_RULE_ID = "floor6.buxum_betrayal"
+BUXUM_RETREAT_EVENT_RULE_ID = "floor6.buxum_retreat"
 
 
 class Floor6BuxumScenario:
@@ -22,6 +24,17 @@ class Floor6BuxumScenario:
         self.runtime = runtime
         self.cube = cube
         runtime.register_defeat_hook(self._on_defeat)
+        runtime.register_world_event_rule(
+            BUXUM_BETRAYAL_EVENT_RULE_ID,
+            self._discover_betrayal_events,
+            self._resolve_betrayal_event,
+        )
+        runtime.register_world_event_rule(
+            BUXUM_RETREAT_EVENT_RULE_ID,
+            self._discover_retreat_events,
+            self._resolve_retreat_event,
+        )
+        runtime.evaluate_world_events()
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_buxum_states", {})
@@ -108,7 +121,42 @@ class Floor6BuxumScenario:
         self.runtime.actors[actor_id] = buxum
         return buxum
 
-    def trigger_betrayal(self, cube_instance_id: str) -> dict:
+    @staticmethod
+    def _event_instance_id(occurrence_id: str, rule_id: str) -> str:
+        prefix = f"{rule_id}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid {rule_id} occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_betrayal_events(self) -> list[str]:
+        located = self._combined_key_location()
+        if located is None or located.sole_actor_id is None:
+            return []
+        holder = self.runtime.actors[located.sole_actor_id]
+        if holder.metadata.get("npc_definition_id") != KYSARAH_ID:
+            return []
+
+        ready: list[str] = []
+        for cube_instance_id, cube_state in self.cube._instances().items():
+            if cube_instance_id in self._states() or cube_state["stage"] != "black_core_battle":
+                continue
+            boss = self.runtime.actors[cube_state["boss_id"]]
+            encounter = self.runtime.encounters[cube_state["encounter_id"]]
+            if boss.alive and boss.hp == 1 and encounter.active and boss.actor_id in encounter.participants:
+                ready.append(f"{BUXUM_BETRAYAL_EVENT_RULE_ID}:{cube_instance_id}")
+        return ready
+
+    def _resolve_betrayal_event(self, occurrence_id: str) -> dict:
+        cube_instance_id = self._event_instance_id(occurrence_id, BUXUM_BETRAYAL_EVENT_RULE_ID)
+        state = self._trigger_betrayal(cube_instance_id)
+        return {
+            "cube_instance_id": cube_instance_id,
+            "encounter_id": state["encounter_id"],
+            "buxum_actor_id": state["buxum_actor_id"],
+            "golden_cube_instance_id": state["golden_cube_instance_id"],
+        }
+
+    def _trigger_betrayal(self, cube_instance_id: str) -> dict:
         cube_state = self.cube._instance(cube_instance_id)
         if cube_state["stage"] != "black_core_battle":
             raise ValueError("Buxum acts only after the numbered armor is broken and the black core is exposed")
@@ -116,7 +164,7 @@ class Floor6BuxumScenario:
         if boss.hp != 1:
             raise ValueError("Buxum waits until The Irrational Cube is at its final HP pixel")
         if cube_instance_id in self._states():
-            return self.status(cube_instance_id)
+            raise RuntimeError("Buxum betrayal occurrence attempted to resolve twice")
 
         kysarah, combined_key = self._take_kysarah_combined_key()
         buxum = self._create_buxum(combined_key)
@@ -214,7 +262,34 @@ class Floor6BuxumScenario:
         self.runtime.actors[cache_id] = cache
         return cache
 
-    def resolve_buxum_retreat(self, cube_instance_id: str) -> dict:
+    def _discover_retreat_events(self) -> list[str]:
+        ready: list[str] = []
+        for cube_instance_id, state in self._states().items():
+            if state["stage"] not in {"bind_active", "awakening_counterattack"}:
+                continue
+            buxum = self.runtime.actors[state["buxum_actor_id"]]
+            weapon_id = buxum.equipment.get("weapon")
+            weapon_broken = bool(
+                not weapon_id
+                or weapon_id not in buxum.inventory
+                or buxum.inventory[weapon_id].broken
+            )
+            low_hp = buxum.hp <= max(1, int(round(buxum.max_hp * BUXUM_RETREAT_HP_RATIO)))
+            if not buxum.alive or low_hp or weapon_broken:
+                ready.append(f"{BUXUM_RETREAT_EVENT_RULE_ID}:{cube_instance_id}")
+        return ready
+
+    def _resolve_retreat_event(self, occurrence_id: str) -> dict:
+        cube_instance_id = self._event_instance_id(occurrence_id, BUXUM_RETREAT_EVENT_RULE_ID)
+        state = self._resolve_buxum_retreat(cube_instance_id)
+        return {
+            "cube_instance_id": cube_instance_id,
+            "buxum_actor_id": state["buxum_actor_id"],
+            "golden_cube_instance_id": state["golden_cube_instance_id"],
+            "stage": state["stage"],
+        }
+
+    def _resolve_buxum_retreat(self, cube_instance_id: str) -> dict:
         state = self._state(cube_instance_id)
         if state["stage"] not in {"bind_active", "awakening_counterattack"}:
             raise ValueError("Buxum is not in the active betrayal phase")

@@ -19,19 +19,9 @@ def _json(value: Any) -> str:
 
 def register_floor6_buxum_tools(mcp, buxum, cube) -> None:
     @mcp.tool()
-    def trigger_floor6_buxum_betrayal(cube_instance_id: str) -> str:
-        """At The Irrational Cube's final HP pixel, reveal Buxum, pass him Kysarah's same combined-key instance, eject the Golden Cube and Bind the room."""
-        return _json(buxum.trigger_betrayal(cube_instance_id))
-
-    @mcp.tool()
     def break_floor6_bind_with_awakening(cube_instance_id: str, actor_id: str) -> str:
         """Use Meditation 500 + Awakening to break this actor free from Buxum's Golden Cube Bind and return control to ordinary PvP."""
         return _json(buxum.break_bind_with_awakening(cube_instance_id, actor_id))
-
-    @mcp.tool()
-    def resolve_floor6_buxum_retreat(cube_instance_id: str) -> str:
-        """When Buxum is defeated, his weapon breaks, or the simulation low-HP retreat threshold is crossed, make him drop the Golden Cube and leave the encounter."""
-        return _json(buxum.resolve_buxum_retreat(cube_instance_id))
 
     @mcp.tool()
     def recover_floor6_golden_cube_after_buxum(cube_instance_id: str, actor_id: str) -> str:

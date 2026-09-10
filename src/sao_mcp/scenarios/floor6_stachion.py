@@ -34,6 +34,9 @@ TRANSPORT_TO_AMBUSH_MS = 18 * 60_000
 SCRIPTED_PARALYSIS_MS = 2 * 60 * 60_000
 POST_CYLON_DEATH_PARALYSIS_MS = 90_000
 AMBUSH_RETREAT_HP_RATIO = 0.25  # Simulation threshold; canon only establishes that the pair eventually retreat.
+MORTE_JOE_AMBUSH_EVENT_RULE_ID = "floor6.morte_joe_ambush"
+PARALYSIS_RELEASE_EVENT_RULE_ID = "floor6.paralysis_release"
+AMBUSHER_RETREAT_EVENT_RULE_ID = "floor6.ambusher_retreat"
 
 
 class Floor6StachionScenario:
@@ -41,6 +44,22 @@ class Floor6StachionScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        runtime.register_world_event_rule(
+            MORTE_JOE_AMBUSH_EVENT_RULE_ID,
+            self._discover_morte_joe_ambush_events,
+            self._resolve_morte_joe_ambush_event,
+        )
+        runtime.register_world_event_rule(
+            PARALYSIS_RELEASE_EVENT_RULE_ID,
+            self._discover_paralysis_release_events,
+            self._resolve_paralysis_release_event,
+        )
+        runtime.register_world_event_rule(
+            AMBUSHER_RETREAT_EVENT_RULE_ID,
+            self._discover_ambusher_retreat_events,
+            self._resolve_ambusher_retreat_event,
+        )
+        runtime.evaluate_world_events()
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor6_stachion_quest_states", {})
@@ -246,6 +265,7 @@ class Floor6StachionScenario:
         self.runtime._append(
             self.runtime.encounters[encounter_id], "transport_reaches_ambush_site", state["cylon_actor_id"], actor_id
         )
+        self.runtime.evaluate_world_events()
         return self.status(actor_id)
 
     def _create_hostile_player(
@@ -321,7 +341,32 @@ class Floor6StachionScenario:
         self.runtime.actors[cache_id] = cache
         return cache
 
-    def trigger_morte_joe_ambush(self, actor_id: str) -> dict:
+    @staticmethod
+    def _event_actor_id(occurrence_id: str, rule_id: str) -> str:
+        prefix = f"{rule_id}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid {rule_id} occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_morte_joe_ambush_events(self) -> list[str]:
+        return [
+            f"{MORTE_JOE_AMBUSH_EVENT_RULE_ID}:{actor_id}"
+            for actor_id, state in self._states().items()
+            if state["stage"] == "morte_joe_ambush_pending"
+        ]
+
+    def _resolve_morte_joe_ambush_event(self, occurrence_id: str) -> dict:
+        actor_id = self._event_actor_id(occurrence_id, MORTE_JOE_AMBUSH_EVENT_RULE_ID)
+        state = self._trigger_morte_joe_ambush(actor_id)
+        return {
+            "actor_id": actor_id,
+            "encounter_id": state["transport_encounter_id"],
+            "morte_actor_id": state["morte_actor_id"],
+            "joe_actor_id": state["joe_actor_id"],
+            "cylon_actor_id": state["cylon_actor_id"],
+        }
+
+    def _trigger_morte_joe_ambush(self, actor_id: str) -> dict:
         state = self._state(actor_id)
         if state["stage"] != "morte_joe_ambush_pending":
             raise ValueError("the carriage has not reached the Morte/Joe ambush point")
@@ -384,7 +429,41 @@ class Floor6StachionScenario:
         )
         return self.status(actor_id)
 
-    def advance_to_paralysis_release(self, actor_id: str) -> dict:
+    def _discover_paralysis_release_events(self) -> list[str]:
+        ready: list[str] = []
+        for actor_id, state in self._states().items():
+            if state["stage"] != "poison_cloud_deployed":
+                continue
+            actor = self.runtime.actors[actor_id]
+            still_paralysed = any(
+                status.stack_key == "scripted_cylon_paralysis" and status.remaining_ms > 0
+                for status in actor.statuses
+            )
+            if not still_paralysed:
+                ready.append(f"{PARALYSIS_RELEASE_EVENT_RULE_ID}:{actor_id}")
+        return ready
+
+    def _resolve_paralysis_release_event(self, occurrence_id: str) -> dict:
+        actor_id = self._event_actor_id(occurrence_id, PARALYSIS_RELEASE_EVENT_RULE_ID)
+        state = self._state(actor_id)
+        if state["stage"] != "poison_cloud_deployed":
+            raise RuntimeError("paralysis-release event resolved outside the poison-cloud stage")
+        actor = self.runtime.actors[actor_id]
+        if any(
+            status.stack_key == "scripted_cylon_paralysis" and status.remaining_ms > 0
+            for status in actor.statuses
+        ):
+            raise RuntimeError("paralysis-release event resolved while paralysis is still active")
+        actor.metadata.pop("scripted_capture", None)
+        state["stage"] = "morte_joe_pvp_active"
+        state["paralysis_released_at_ms"] = self.runtime.world.now_ms
+        return {
+            "actor_id": actor_id,
+            "encounter_id": state["transport_encounter_id"],
+            "paralysis_released_at_ms": state["paralysis_released_at_ms"],
+        }
+
+    def wait_for_paralysis_release(self, actor_id: str) -> dict:
         state = self._state(actor_id)
         if state["stage"] != "poison_cloud_deployed":
             raise ValueError("the poison-cloud diversion has not been created")
@@ -395,8 +474,11 @@ class Floor6StachionScenario:
         )
         if remaining:
             self.runtime.advance_encounter(state["transport_encounter_id"], remaining)
-        actor.metadata.pop("scripted_capture", None)
-        state["stage"] = "morte_joe_pvp_active"
+        else:
+            self.runtime.evaluate_world_events()
+        occurrence_id = f"{PARALYSIS_RELEASE_EVENT_RULE_ID}:{actor_id}"
+        if occurrence_id not in self.runtime.world_events.occurrences:
+            raise RuntimeError("paralysis elapsed but the world event did not resolve")
         return self.status(actor_id)
 
     def _ambusher_ids(self, state: dict) -> tuple[str, ...]:
@@ -414,7 +496,33 @@ class Floor6StachionScenario:
                 return False
         return True
 
-    def resolve_ambusher_retreat(self, actor_id: str) -> dict:
+    def _discover_ambusher_retreat_events(self) -> list[str]:
+        ready: list[str] = []
+        for actor_id, state in self._states().items():
+            if state["stage"] != "morte_joe_pvp_active":
+                continue
+            hostiles = [self.runtime.actors[hostile_id] for hostile_id in self._ambusher_ids(state)]
+            if not hostiles:
+                continue
+            trigger = any(not hostile.alive for hostile in hostiles) or any(
+                hostile.alive and hostile.max_hp > 0 and hostile.hp / hostile.max_hp <= AMBUSH_RETREAT_HP_RATIO
+                for hostile in hostiles
+            )
+            if trigger:
+                ready.append(f"{AMBUSHER_RETREAT_EVENT_RULE_ID}:{actor_id}")
+        return ready
+
+    def _resolve_ambusher_retreat_event(self, occurrence_id: str) -> dict:
+        actor_id = self._event_actor_id(occurrence_id, AMBUSHER_RETREAT_EVENT_RULE_ID)
+        state = self._resolve_ambusher_retreat(actor_id)
+        return {
+            "actor_id": actor_id,
+            "encounter_id": state["transport_encounter_id"],
+            "retreated_actor_ids": list(state.get("ambusher_retreat_ids", [])),
+            "stage": state["stage"],
+        }
+
+    def _resolve_ambusher_retreat(self, actor_id: str) -> dict:
         state = self._state(actor_id)
         if state["stage"] != "morte_joe_pvp_active":
             raise ValueError("Morte/Joe retreat can only resolve after the paralysis handoff to ordinary PvP")
@@ -463,8 +571,6 @@ class Floor6StachionScenario:
 
     def recover_cylon_ground_loot(self, actor_id: str) -> dict:
         state = self._state(actor_id)
-        if state["stage"] == "morte_joe_pvp_active" and self._ambushers_neutralized(state):
-            state["stage"] = "ambushers_neutralized_ground_loot"
         if state["stage"] != "ambushers_neutralized_ground_loot":
             raise ValueError("Cylon's valuables cannot be recovered while a living ambusher still controls the road")
         actor = self.runtime.actors[actor_id]

@@ -44,24 +44,14 @@ def register_floor6_tools(mcp, cube, stachion, trials, south) -> None:
         return _json(stachion.advance_transport_to_ambush_site(actor_id))
 
     @mcp.tool()
-    def trigger_floor6_morte_joe_ambush(actor_id: str) -> str:
-        """Start the carriage ambush: Morte kills Cylon and his key/jar/mask valuables become real ground-loot instances."""
-        return _json(stachion.trigger_morte_joe_ambush(actor_id))
-
-    @mcp.tool()
     def topple_floor6_paralysis_jar(actor_id: str) -> str:
         """While still paralysed, blow Cylon's dropped Namnepenth poison jar over to create the paralysis-cloud diversion."""
         return _json(stachion.topple_poison_jar(actor_id))
 
     @mcp.tool()
-    def advance_floor6_to_paralysis_release(actor_id: str) -> str:
-        """Advance the remaining scripted paralysis after the poison-cloud diversion, returning the scene to ordinary PvP rules."""
-        return _json(stachion.advance_to_paralysis_release(actor_id))
-
-    @mcp.tool()
-    def resolve_floor6_ambusher_retreat(actor_id: str) -> str:
-        """After ordinary PvP begins, let living ambushers retreat once one is defeated or the simulation low-HP retreat condition is reached."""
-        return _json(stachion.resolve_ambusher_retreat(actor_id))
+    def wait_floor6_for_paralysis_release(actor_id: str) -> str:
+        """Pass the remaining paralysis time; the actual release and PvP handoff are resolved by the world-event runtime."""
+        return _json(stachion.wait_for_paralysis_release(actor_id))
 
     @mcp.tool()
     def recover_floor6_cylon_ground_loot(actor_id: str) -> str:
