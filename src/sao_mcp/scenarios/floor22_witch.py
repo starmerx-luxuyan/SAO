@@ -25,6 +25,7 @@ from sao_mcp.rules.transport import (
 
 
 LOG_HOUSE_FLIGHT_MS = 15 * 60_000
+WITCH_RETURN_EVENT_RULE_ID = "floor22.witch_return"
 
 
 class Floor22WitchScenario:
@@ -38,6 +39,12 @@ class Floor22WitchScenario:
         apply_floor22_world_seed(runtime.world_map)
         runtime.quests.definitions.setdefault(QUEST_ID, floor22_quest_definition())
         install_floor22_npc(runtime)
+        runtime.register_world_event_rule(
+            WITCH_RETURN_EVENT_RULE_ID,
+            self._discover_witch_return_events,
+            self._resolve_witch_return_event,
+        )
+        runtime.evaluate_world_events()
 
     def instances(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor22_witch_instances", {})
@@ -320,10 +327,52 @@ class Floor22WitchScenario:
                 toto_present=True,
             )
 
-    def finish_return(self, instance_id: str) -> dict:
-        runtime = self.runtime
+    @staticmethod
+    def _witch_return_instance_id(occurrence_id: str) -> str:
+        prefix = f"{WITCH_RETURN_EVENT_RULE_ID}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid Witch return occurrence id: {occurrence_id}")
+        return occurrence_id[len(prefix):]
+
+    def _discover_witch_return_events(self) -> list[str]:
+        states = self.runtime.world.global_flags.get("floor22_witch_instances", {})
+        ready: list[str] = []
+        for instance_id, state in states.items():
+            if state["stage"] not in {"witch_battle", "witch_defeated"}:
+                continue
+            witch_id = state.get("witch_id")
+            witch = self.runtime.actors.get(witch_id) if witch_id else None
+            if (
+                witch is None
+                or witch.alive
+                or witch.metadata.get("defeat_resolved") is not True
+            ):
+                continue
+            returning_ids = [
+                actor_id for actor_id in state["player_ids"]
+                if actor_id in self.runtime.actors and self.runtime.actors[actor_id].alive
+            ]
+            if not returning_ids:
+                continue
+            if any(self.runtime.actors[actor_id].location_id != WITCH_CASTLE for actor_id in returning_ids):
+                raise RuntimeError("Witch return candidates are no longer colocated at the Witch Castle")
+            ready.append(f"{WITCH_RETURN_EVENT_RULE_ID}:{instance_id}")
+        return ready
+
+    def _resolve_witch_return_event(self, occurrence_id: str) -> dict:
+        instance_id = self._witch_return_instance_id(occurrence_id)
         state = self.instance(instance_id)
         self._sync_witch_defeat(state)
+        result = self._finish_return(instance_id)
+        return {
+            "instance_id": instance_id,
+            "completed_player_ids": list(result["completedPlayerIds"]),
+            "stage": result["stage"],
+        }
+
+    def _finish_return(self, instance_id: str) -> dict:
+        runtime = self.runtime
+        state = self.instance(instance_id)
         if state["stage"] != "witch_defeated":
             raise ValueError("the Witch must be defeated before the Log House can return")
         returning_ids = [

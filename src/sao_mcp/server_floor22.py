@@ -58,11 +58,6 @@ def register_floor22_tools(mcp, scenario) -> None:
         )
 
     @mcp.tool()
-    def finish_floor22_witch_quest_return(instance_id: str) -> str:
-        """Return the Log House to its Floor 22 site after the Witch is defeated and unlock property eligibility."""
-        return _json(scenario.finish_return(instance_id))
-
-    @mcp.tool()
     def get_floor22_witch_instance(instance_id: str) -> str:
         """Inspect the persistent stage and actors of one Floor 22 Witch quest instance."""
         return _json(scenario.instance(instance_id))

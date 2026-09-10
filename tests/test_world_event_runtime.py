@@ -51,7 +51,7 @@ def test_world_event_occurrences_persist_but_executable_rules_do_not():
     assert persisted["rule_id"] == "test.persist"
     assert persisted["status"] == "resolved"
     assert persisted["payload"]["value"] == 7
-    assert restored.world_event_state()["registered_rule_ids"] == []
+    assert restored.world_event_state()["registered_rule_ids"] == ["floor22.witch_return"]
 
     fired = []
     restored.register_world_event_rule(

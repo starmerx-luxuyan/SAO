@@ -13,6 +13,7 @@ from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
+from sao_mcp.runtime.social_runtime import REVIVAL_WINDOW_MS
 from sao_mcp.scenarios.floor8_emergency import install_floor8_forest_emergency_scenario
 from sao_mcp.scenarios.floor8_standoff import (
     FOREST_ELF_CUSTODY_RESTRICTION,
@@ -276,3 +277,32 @@ def test_cave_standoff_can_escalate_into_ordinary_combat_and_resolve_only_local_
     assert resolved["guild_crisis_report"]["affected_member_scope"] == "majority_of_each_guild"
     assert all(runtime.actors[actor_id].alive is False for actor_id in forest_ids)
     assert responder.cursor is CursorColor.GREEN
+
+def test_cave_mouth_player_defeat_waits_for_revival_end_phase_before_world_event_resolution():
+    runtime, nocturne, emergency, standoff, instance_id, responder = _make_live_standoff(seed=229)
+    state = emergency._state(instance_id)
+    forest_ids = list(state["incident"]["forest_elf_actor_ids"])
+    combat = standoff.start_cave_mouth_combat(instance_id, [responder.actor_id])
+    encounter_id = combat["cave_combat_encounter_id"]
+    encounter = runtime.encounters[encounter_id]
+    occurrence_id = f"floor8.cave_mouth_combat_resolution:{instance_id}"
+
+    responder.hp = 0
+    responder.alive = False
+    runtime._resolve_defeat(encounter, responder, forest_ids[0])
+    assert responder.metadata["death_state"] == "end_phase"
+    assert occurrence_id not in runtime.world_events.occurrences
+    assert standoff.status(instance_id)["stage"] == "cave_mouth_combat"
+
+    runtime.advance_encounter(encounter_id, REVIVAL_WINDOW_MS - 1)
+    assert responder.metadata["death_state"] == "end_phase"
+    assert occurrence_id not in runtime.world_events.occurrences
+
+    runtime.advance_encounter(encounter_id, 1)
+    assert responder.metadata["death_state"] == "permanent"
+    assert runtime.world_event_state(occurrence_id)["status"] == "resolved"
+    resolved = standoff.status(instance_id)
+    assert resolved["stage"] == "cave_mouth_combat_player_side_defeated"
+    assert resolved["cave_combat_outcome"] == "selected_player_combatants_defeated"
+    assert encounter.active is False
+

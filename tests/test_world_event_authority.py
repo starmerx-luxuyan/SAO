@@ -1,6 +1,12 @@
+import ast
 from pathlib import Path
 
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.scenarios.floor22_witch import (
+    WITCH_RETURN_EVENT_RULE_ID,
+    Floor22WitchScenario,
+    install_floor22_witch_scenario,
+)
 from sao_mcp.scenarios.floor5_fuscus import (
     FUSCUS_FLAG_DROP_EVENT_RULE_ID,
     Floor5FuscusScenario,
@@ -59,6 +65,7 @@ def test_conditional_scene_transitions_are_registered_world_event_rules():
     fuscus = install_floor5_fuscus_scenario(runtime)
     pursuit = install_floor7_pursuit_scenario(runtime)
     elfwar = install_floor6_elfwar_scenario(runtime)
+    witch = install_floor22_witch_scenario(runtime)
     emergency = _EmergencyNoState(runtime)
     standoff = install_floor8_cave_standoff_scenario(runtime, emergency)
     sluva = install_floor8_sluva_justice_scenario(runtime, emergency)
@@ -68,6 +75,7 @@ def test_conditional_scene_transitions_are_registered_world_event_rules():
     assert install_floor5_fuscus_scenario(runtime) is fuscus
     assert install_floor7_pursuit_scenario(runtime) is pursuit
     assert install_floor6_elfwar_scenario(runtime) is elfwar
+    assert install_floor22_witch_scenario(runtime) is witch
     assert install_floor8_cave_standoff_scenario(runtime, emergency) is standoff
     assert install_floor8_sluva_justice_scenario(runtime, emergency) is sluva
 
@@ -84,6 +92,7 @@ def test_conditional_scene_transitions_are_registered_world_event_rules():
             KYSARAH_KEY_THEFT_EVENT_RULE_ID,
             CAVE_MOUTH_COMBAT_EVENT_RULE_ID,
             SLUVA_IMPRISONMENT_COMPLETE_EVENT_RULE_ID,
+            WITCH_RETURN_EVENT_RULE_ID,
         }
     )
 
@@ -101,6 +110,7 @@ def test_migrated_conditional_events_have_no_public_manual_scenario_trigger_meth
     assert not hasattr(Floor6ElfWarScenario, "trigger_kysarah_key_theft")
     assert not hasattr(Floor8CaveStandoffScenario, "resolve_cave_mouth_combat")
     assert not hasattr(Floor8SluvaJusticeScenario, "complete_imprisonment_enforcement")
+    assert not hasattr(Floor22WitchScenario, "finish_return")
 
 
 def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
@@ -111,6 +121,7 @@ def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
         "src/sao_mcp/server_floor6_elfwar.py",
         "src/sao_mcp/server_floor7.py",
         "src/sao_mcp/server_floor8.py",
+        "src/sao_mcp/server_floor22.py",
     )
     joined = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in server_paths)
     forbidden = (
@@ -125,6 +136,34 @@ def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
         "trigger_floor6_kysarah_key_theft",
         "resolve_progressive9_cave_mouth_combat",
         "complete_progressive9_sluva_imprisonment_enforcement",
+        "finish_floor22_witch_quest_return",
     )
     assert all(name not in joined for name in forbidden)
     assert "wait_floor6_for_paralysis_release" in joined
+
+
+ACTION_DRIVEN_TRANSITIONS = {
+    ("floor4_nocturne.py", "trigger_kysarah_interception"),
+    ("floor4_nocturne.py", "resolve_kysarah_falhari_truce"),
+    ("floor5_karluin.py", "trigger_shrewman_robbery"),
+    ("floor6_elfwar.py", "complete_bouhroum_trial"),
+    ("floor6_stachion.py", "trigger_cylon_capture"),
+    ("floor6_stachion.py", "advance_transport_to_ambush_site"),
+    ("floor7_aghyellr.py", "resolve_intimidating_gaze"),
+    ("floor7_aghyellr.py", "trigger_nirrnir_poisoning"),
+    ("floor7_pursuit.py", "advance_to_boss_room"),
+    ("floor7_volupta.py", "resolve_arena_match"),
+    ("floor8_emergency.py", "trigger_from_nocturne"),
+}
+
+
+def test_remaining_public_transition_methods_are_explicitly_action_driven():
+    scenario_root = ROOT / "src/sao_mcp/scenarios"
+    prefixes = ("trigger_", "advance_", "resolve_", "finish_", "complete_")
+    found = set()
+    for path in scenario_root.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(prefixes):
+                found.add((path.name, node.name))
+    assert found == ACTION_DRIVEN_TRANSITIONS

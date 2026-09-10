@@ -1,4 +1,5 @@
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
 
@@ -27,11 +28,22 @@ def test_floor22_witch_quest_completion_unlocks_forest_house_purchase():
     witch.alive = False
     runtime._resolve_defeat(witch_encounter, witch, player.actor_id)
 
-    result = scenario.finish_return(instance["instance_id"])
-    assert player.actor_id in result["completedPlayerIds"]
+    state = scenario.instance(instance["instance_id"])
+    occurrence = runtime.world_event_state(
+        f"floor22.witch_return:{instance['instance_id']}"
+    )
+    assert occurrence["status"] == "resolved"
+    assert player.actor_id in occurrence["payload"]["completed_player_ids"]
+    assert state["stage"] == "completed"
     assert "witch_of_the_west_and_three_treasures" in runtime.quests.completed_by_actor[player.actor_id]
     assert player.location_id == "floor_22_forest_house_site"
 
     house = runtime.purchase_residence(player.actor_id, "floor22_forest_house_k4")
     assert house.listing_id == "floor22_forest_house_k4"
     assert house.parent_location_id == "floor_22_forest_house_site"
+
+    restored = import_runtime(export_runtime(runtime))
+    assert "floor22.witch_return" in restored.world_event_rules
+    restored.evaluate_world_events()
+    assert len(restored.world_event_history("floor22.witch_return")) == 1
+    assert restored.scenarios["floor22_witch"].instance(instance["instance_id"])["stage"] == "completed"
