@@ -68,8 +68,8 @@ def _prepare_transport(
         raise ValueError("authorized transport carrier must not be duplicated in actor_ids")
     if not actors and not npcs and carrier_actor_id is None:
         raise ValueError("authorized transport requires at least one mover")
-    if elapsed_ms < 1:
-        raise ValueError("authorized transport elapsed_ms must be positive")
+    if elapsed_ms < 0:
+        raise ValueError("authorized transport elapsed_ms cannot be negative")
     if from_location_id not in runtime.world_map.locations:
         raise KeyError(from_location_id)
     if to_location_id not in runtime.world_map.locations:
@@ -166,6 +166,52 @@ def _commit_transport(
     )
 
 
+def authorized_boarding(
+    runtime,
+    *,
+    transport_id: str,
+    actor_ids: list[str] | tuple[str, ...],
+    npc_ids: list[str] | tuple[str, ...] = (),
+    from_location_id: str,
+    transport_location_id: str,
+    transport_tags: tuple[str, ...] = (),
+) -> AuthorizedTransportResolution:
+    """Move actors into a registered vehicle/interior node without inventing travel time.
+
+    Boarding represents a discrete scene transition at one place. It never substitutes for a journey:
+    subsequent movement of the vehicle must use authorized_transport or encounter/world-time travel.
+    """
+
+    prepared = _prepare_transport(
+        runtime,
+        transport_id=transport_id,
+        actor_ids=actor_ids,
+        npc_ids=npc_ids,
+        carrier_actor_id=None,
+        from_location_id=from_location_id,
+        to_location_id=transport_location_id,
+        elapsed_ms=0,
+        carrier_to_location_id=None,
+    )
+    now = runtime.world.now_ms
+    return _commit_transport(
+        runtime,
+        clean_transport_id=prepared[0],
+        actors=prepared[1],
+        npcs=prepared[2],
+        moving_actors=prepared[3],
+        carrier=prepared[4],
+        carrier_actor_id=None,
+        carrier_destination_id=prepared[5],
+        from_location_id=from_location_id,
+        destination=prepared[6],
+        elapsed_ms=0,
+        transport_tags=("boarding",) + tuple(transport_tags),
+        started_at_ms=now,
+        completed_at_ms=now,
+    )
+
+
 def authorized_transport(
     runtime,
     *,
@@ -179,6 +225,8 @@ def authorized_transport(
     carrier_to_location_id: str | None = None,
     transport_tags: tuple[str, ...] = (),
 ) -> AuthorizedTransportResolution:
+    if elapsed_ms < 1:
+        raise ValueError("authorized transport elapsed_ms must be positive")
     prepared = _prepare_transport(
         runtime,
         transport_id=transport_id,
@@ -227,6 +275,8 @@ def authorized_transport_within_window(
 ) -> AuthorizedTransportResolution:
     """Commit a special transport that ran concurrently during an already elapsed world-time window."""
 
+    if elapsed_ms < 1:
+        raise ValueError("authorized transport elapsed_ms must be positive")
     end_ms = runtime.world.now_ms if completed_at_ms is None else completed_at_ms
     if started_at_ms < 0 or end_ms < started_at_ms:
         raise ValueError("authorized transport window is invalid")
