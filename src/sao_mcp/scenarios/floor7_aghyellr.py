@@ -17,6 +17,7 @@ from sao_mcp.domain.models import (
     StatusType,
     ZoneKind,
 )
+from sao_mcp.rules.group_travel import complete_routed_travel_within_window, routed_travel_window_record
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, DOMINUS_NOCTE, become_civis_nocte, night_rank, nightfolk_state
 
@@ -259,22 +260,38 @@ class Floor7AghyellrScenario:
         players = list(dict.fromkeys(player_ids))
         if not players:
             raise ValueError("Aghyellr raid needs at least one player")
-        encounter, boss = self.runtime.start_floor_boss_encounter(
-            players,
-            boss_definition_id=AGHYELLR_ID,
-        )
         story = self._story_view()
         nirrnir_id = story["nirrnir_actor_id"] if story["stage"] != "not_started" else None
+        nirrnir_route = None
         if bring_nirrnir:
             if nirrnir_id is None:
                 raise ValueError("Nirrnir poisoning must exist before she can be carried into the Aghyellr raid")
             nirrnir = self.runtime.actors[nirrnir_id]
             if not nirrnir.alive:
                 raise ValueError("Nirrnir did not survive long enough to reach the Floor 7 Boss Room")
-            nirrnir.location_id = BOSS_ROOM
+            stabilized_at_ms = story.get("stabilized_at_ms")
+            if stabilized_at_ms is None:
+                raise RuntimeError("Nirrnir poison story has no authoritative stabilization time")
+            if nirrnir.location_id != BOSS_ROOM:
+                nirrnir_route = complete_routed_travel_within_window(
+                    self.runtime,
+                    [nirrnir.actor_id],
+                    BOSS_ROOM,
+                    started_at_ms=int(stabilized_at_ms),
+                    completed_at_ms=self.runtime.world.now_ms,
+                )
+            nirrnir.metadata["carried_to_aghyellr_raid"] = True
+
+        encounter, boss = self.runtime.start_floor_boss_encounter(
+            players,
+            boss_definition_id=AGHYELLR_ID,
+        )
+        if bring_nirrnir:
+            nirrnir = self.runtime.actors[nirrnir_id]
+            if nirrnir.location_id != BOSS_ROOM:
+                raise RuntimeError("Nirrnir movement authority did not reach the Aghyellr Boss Room")
             encounter.participants[nirrnir.actor_id] = nirrnir
             encounter.positions[nirrnir.actor_id] = (-8.0, 0.0)
-            nirrnir.metadata["carried_to_aghyellr_raid"] = True
 
         instance_id = f"aghyellr7_{uuid.uuid4().hex[:12]}"
         state = {
@@ -285,6 +302,7 @@ class Floor7AghyellrScenario:
             "stage": "battle",
             "pending_gaze": None,
             "nirrnir_actor_id": nirrnir_id if bring_nirrnir else None,
+            "nirrnir_raid_route": routed_travel_window_record(nirrnir_route) if nirrnir_route else None,
             "civis_actor_ids": [],
             "doleful_nocturne_revealed_instance_ids": [],
             "blood_jar_instance_ids": [],
