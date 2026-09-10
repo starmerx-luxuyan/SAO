@@ -14,6 +14,7 @@ class Floor2TaurusRaidScenario:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        runtime.register_defeat_hook(self._on_defeat)
 
     def _instances(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor2_taurus_raid_instances", {})
@@ -23,6 +24,33 @@ class Floor2TaurusRaidScenario:
             return self._instances()[instance_id]
         except KeyError as exc:
             raise KeyError(f"unknown Floor 2 Taurus raid instance: {instance_id}") from exc
+
+    def _enter_asterius(self, instance: dict) -> None:
+        encounter = self.runtime.encounters[instance["encounter_id"]]
+        boss = self.runtime.actors[instance["asterius_id"]]
+        encounter.participants[boss.actor_id] = boss
+        self.runtime._arrange_raid_formation(encounter, boss)
+        self.runtime._append(
+            encounter,
+            "floor2_asterius_entered",
+            boss.actor_id,
+            None,
+            boss_definition_id=BOSS_DEFINITION_ID,
+            hp_bars=self.runtime.boss_definition(boss).hp_bars,
+        )
+        instance["stage"] = "asterius"
+        instance["asterius_entered_at_ms"] = self.runtime.world.now_ms
+
+    def _on_defeat(self, encounter, target, killer_id: str | None) -> None:
+        for instance in self._instances().values():
+            if instance["stage"] != "nato_and_baran" or instance["encounter_id"] != encounter.encounter_id:
+                continue
+            if target.actor_id not in {instance["nato_id"], instance["baran_id"]}:
+                continue
+            nato = self.runtime.actors[instance["nato_id"]]
+            baran = self.runtime.actors[instance["baran_id"]]
+            if not nato.alive and not baran.alive:
+                self._enter_asterius(instance)
 
     def start_raid(self, player_ids: list[str]) -> dict:
         players = list(dict.fromkeys(player_ids))
@@ -68,31 +96,6 @@ class Floor2TaurusRaidScenario:
             "asterius_entered_at_ms": None,
         }
         self._instances()[instance_id] = instance
-        return dict(instance)
-
-    def unleash_asterius(self, instance_id: str) -> dict:
-        instance = self._instance(instance_id)
-        if instance["stage"] == "asterius":
-            return dict(instance)
-        encounter = self.runtime.encounters[instance["encounter_id"]]
-        nato = self.runtime.actors[instance["nato_id"]]
-        baran = self.runtime.actors[instance["baran_id"]]
-        if nato.alive or baran.alive:
-            raise ValueError("Nato and Baran must both be defeated before Asterius enters")
-
-        boss = self.runtime.actors[instance["asterius_id"]]
-        encounter.participants[boss.actor_id] = boss
-        self.runtime._arrange_raid_formation(encounter, boss)
-        self.runtime._append(
-            encounter,
-            "floor2_asterius_entered",
-            boss.actor_id,
-            None,
-            boss_definition_id=BOSS_DEFINITION_ID,
-            hp_bars=self.runtime.boss_definition(boss).hp_bars,
-        )
-        instance["stage"] = "asterius"
-        instance["asterius_entered_at_ms"] = self.runtime.world.now_ms
         return dict(instance)
 
     def status(self, instance_id: str) -> dict:
