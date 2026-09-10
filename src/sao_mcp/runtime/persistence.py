@@ -75,6 +75,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     knowledge_dump = getattr(runtime, "dump_knowledge_state", None)
     npc_autonomy_dump = getattr(runtime, "dump_npc_autonomy_state", None)
     guild_autonomy_dump = getattr(runtime, "dump_guild_autonomy_state", None)
+    population_dump = getattr(runtime, "dump_population_state", None)
     housing_dump = getattr(runtime, "dump_housing_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
@@ -93,6 +94,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "knowledge_state": knowledge_dump() if knowledge_dump is not None else {},
         "npc_autonomy_state": npc_autonomy_dump() if npc_autonomy_dump is not None else {},
         "guild_autonomy_state": guild_autonomy_dump() if guild_autonomy_dump is not None else {},
+        "population_state": population_dump() if population_dump is not None else {},
         "housing_state": housing_dump() if housing_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -184,6 +186,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     guild_autonomy_load = getattr(runtime, "load_guild_autonomy_state", None)
     if guild_autonomy_load is not None:
         guild_autonomy_load(payload.get("guild_autonomy_state", {}))
+    population_load = getattr(runtime, "load_population_state", None)
+    if population_load is not None:
+        population_load(payload.get("population_state", {}))
     family_load = getattr(runtime, "load_family_state", None)
     if family_load is not None:
         family_load(payload.get("family_state", {}))

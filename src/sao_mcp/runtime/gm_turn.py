@@ -52,6 +52,26 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"guild_id", "leader_id"}),
         frozenset(),
     ),
+    "initialize_population": (
+        frozenset({"cohorts"}),
+        frozenset(),
+    ),
+    "split_population_cohort": (
+        frozenset({"cohort_id", "new_cohort_id", "count"}),
+        frozenset({"band", "provenance_kind", "source_ref"}),
+    ),
+    "schedule_population_travel": (
+        frozenset({"cohort_id", "destination_id"}),
+        frozenset(),
+    ),
+    "apply_population_losses": (
+        frozenset({"cohort_id", "deaths", "cause"}),
+        frozenset(),
+    ),
+    "materialize_population_member": (
+        frozenset({"cohort_id", "actor_id"}),
+        frozenset(),
+    ),
     "observe_fact": (
         frozenset({"entity_id", "fact_id", "value"}),
         frozenset({"source_id"}),
@@ -234,6 +254,30 @@ class GMTurnExecutor:
             )
         if op == "clear_guild_goal":
             return runtime.clear_guild_goal(action["guild_id"], action["leader_id"])
+        if op == "initialize_population":
+            return runtime.initialize_player_population(action["cohorts"])
+        if op == "split_population_cohort":
+            return runtime.split_population_cohort(
+                action["cohort_id"],
+                action["new_cohort_id"],
+                int(action["count"]),
+                band=action.get("band"),
+                provenance_kind=action.get("provenance_kind", "simulation"),
+                source_ref=action.get("source_ref"),
+            )
+        if op == "schedule_population_travel":
+            return runtime.schedule_population_travel(
+                action["cohort_id"],
+                action["destination_id"],
+            )
+        if op == "apply_population_losses":
+            return runtime.apply_population_losses(
+                action["cohort_id"],
+                int(action["deaths"]),
+                cause=action["cause"],
+            )
+        if op == "materialize_population_member":
+            return runtime.materialize_population_member(action["cohort_id"], action["actor_id"])
         if op == "observe_fact":
             return runtime.record_observation(
                 action["entity_id"],
@@ -316,6 +360,19 @@ class GMTurnExecutor:
             if isinstance(action.get("guild_id"), str)
         }
 
+    @staticmethod
+    def _has_population_actions(actions: list[dict[str, Any]]) -> bool:
+        return any(
+            action.get("op") in {
+                "initialize_population",
+                "split_population_cohort",
+                "schedule_population_travel",
+                "apply_population_losses",
+                "materialize_population_member",
+            }
+            for action in actions
+        )
+
     def execute(self, actions: list[dict[str, Any]], *, world_tick_ms: int = 0) -> dict:
         self._validate_plan(actions, world_tick_ms)
         runtime = self.runtime
@@ -392,6 +449,7 @@ class GMTurnExecutor:
                 guild_id: runtime.guild_agenda_state(guild_id)
                 for guild_id in sorted(guild_ids)
             },
+            "population": runtime.population_state() if self._has_population_actions(actions) else None,
             "knowledge": {
                 entity_id: runtime.knowledge_state(entity_id)
                 for entity_id in sorted(knowledge_entity_ids)
