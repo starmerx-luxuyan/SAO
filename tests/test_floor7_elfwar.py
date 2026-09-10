@@ -198,7 +198,9 @@ def test_harin_tree_palace_escape_preserves_player_and_existing_kizmel_weapons()
     assert state["lavik_departed_at_ms"] == runtime.world.now_ms
     assert state["kizmel_location_id"] == LOOSEROCK_FOREST
     assert runtime.npcs.states[LAVIK_ID].location_id == lavik_npc_state_location
-    assert runtime.npc_location_id(LAVIK_ID) == "floor_7_field"
+    assert runtime.npc_location_id(LAVIK_ID) == LOOSEROCK_FOREST
+    assert lavik.metadata["destination_unknown"] is True
+    assert lavik.metadata["last_confirmed_location_id"] == LOOSEROCK_FOREST
 
     before_return = runtime.world.now_ms
     state = elfwar.return_to_volupta_with_kizmel(instance_id)

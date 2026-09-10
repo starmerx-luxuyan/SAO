@@ -1,5 +1,6 @@
 import pytest
 
+from sao_mcp.rules.spawn import create_character_at
 from sao_mcp.rules.raids import (
     assign_raid_role,
     boss_raid_status,
@@ -11,11 +12,16 @@ from sao_mcp.runtime.aincrad_runtime import AincradRuntime
 
 def _raid(player_count=1):
     runtime = AincradRuntime(seed=2)
-    players = [runtime.create_character(f"P{i+1}", level=8) for i in range(player_count)]
-    encounter, boss = runtime.start_floor_boss_encounter(
-        [player.actor_id for player in players],
-        enforce_location=False,
-    )
+    players = [
+        create_character_at(
+            runtime,
+            f"P{i+1}",
+            level=8,
+            location_id="floor_1_boss_room",
+        )
+        for i in range(player_count)
+    ]
+    encounter, boss = runtime.start_floor_boss_encounter([player.actor_id for player in players])
     return runtime, players, encounter, boss
 
 

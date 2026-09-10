@@ -69,6 +69,7 @@ def _setup_branch_state():
     runtime.world.floors[4].main_town_gate_active = True
     runtime.world.floors[8].unlocked = True
     runtime.world.floors[8].main_town_gate_active = True
+    runtime.advance_world(2 * 60 * 60_000)
 
     a = runtime.create_character("Floor8Responder", level=28)
     b = runtime.create_character("HideoutResponder", level=28)
@@ -115,6 +116,7 @@ def _setup_branch_state():
         "harin8_fixture": {
             "instance_id": "harin8_fixture",
             "stage": "boss_room_reached",
+            "lavik_departed_at_ms": 0,
             "player_ids": [a.actor_id, b.actor_id],
             "kizmel_actor_id": kizmel.actor_id,
             "pursuit": {
@@ -207,7 +209,8 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
     assert truce["kysarah_interception_outcome"] == "falhari_truce"
     assert truce["kysarah"]["location_id"] == KYSARAH_TRANSFER_ROOM
     assert truce["kysarah_requested_item_template_id"] == ICHTHYOID_TUBER_ID
-    assert set(encounter.participants) == {a.actor_id, kysarah.actor_id}
+    assert set(encounter.participants) == {a.actor_id}
+    assert kysarah.actor_id not in encounter.participants
     assert runtime._in_live_encounter(a.actor_id) is False
 
     definition = AINCRAD_MONSTERS[ICHTHYOID_CULTIVATOR_ID]

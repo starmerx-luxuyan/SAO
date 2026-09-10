@@ -15,7 +15,11 @@ from sao_mcp.corpus.location_access import DARK_ELVES, FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.duels import DuelMode
-from sao_mcp.rules.group_travel import group_travel_record, travel_together
+from sao_mcp.rules.group_travel import (
+    complete_routed_travel_within_window,
+    group_travel_record,
+    travel_together,
+)
 from sao_mcp.rules.inventory import add_item, transfer_item
 
 
@@ -395,8 +399,19 @@ class Floor7PursuitScenario:
             pursuit["travelling_actor_ids"],
             DRAGON_BONE,
         )
-        moving = list(pursuit["travelling_actor_ids"]) + list(pursuit["fallen_scout_ids"])
-        to_ant = travel_together(self.runtime, moving, ANT_TUNNEL_VALLEY)
+        concurrent_started_at_ms = self.runtime.world.now_ms
+        to_ant = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            ANT_TUNNEL_VALLEY,
+        )
+        complete_routed_travel_within_window(
+            self.runtime,
+            pursuit["fallen_scout_ids"],
+            ANT_TUNNEL_VALLEY,
+            started_at_ms=concurrent_started_at_ms,
+            completed_at_ms=self.runtime.world.now_ms,
+        )
         pursuit["tail_to_ant_route"] = [group_travel_record(to_dragon), group_travel_record(to_ant)]
         state["stage"] = "tracking_through_ant_tunnel_valley"
         return self.status(instance_id)
@@ -406,9 +421,24 @@ class Floor7PursuitScenario:
         if state["stage"] != "tracking_through_ant_tunnel_valley":
             raise ValueError("the Fallen Elf trail has not reached Ant Tunnel Valley")
         pursuit = state["pursuit"]
-        moving = list(pursuit["travelling_actor_ids"]) + list(pursuit["fallen_scout_ids"])
-        to_plateau = travel_together(self.runtime, moving, PLATEAU)
-        to_labyrinth = travel_together(self.runtime, moving, LABYRINTH)
+        concurrent_started_at_ms = self.runtime.world.now_ms
+        to_plateau = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            PLATEAU,
+        )
+        to_labyrinth = travel_together(
+            self.runtime,
+            pursuit["travelling_actor_ids"],
+            LABYRINTH,
+        )
+        complete_routed_travel_within_window(
+            self.runtime,
+            pursuit["fallen_scout_ids"],
+            LABYRINTH,
+            started_at_ms=concurrent_started_at_ms,
+            completed_at_ms=self.runtime.world.now_ms,
+        )
         for scout_id in pursuit["fallen_scout_ids"]:
             self.runtime.actors[scout_id].metadata["ahead_of_pursuers"] = True
 

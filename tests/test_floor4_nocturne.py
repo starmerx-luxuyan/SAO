@@ -78,6 +78,7 @@ def _setup_nocturne_runtime():
     runtime = HousingAincradRuntime(seed=151)
     runtime.world.floors[4].unlocked = True
     runtime.world.floors[4].main_town_gate_active = True
+    runtime.advance_world(2 * 60 * 60_000)
 
     a = runtime.create_character("NocturneA", level=28)
     b = runtime.create_character("NocturneB", level=28)
@@ -111,6 +112,7 @@ def _setup_nocturne_runtime():
         "harin7_nocturne_fixture": {
             "instance_id": "harin7_nocturne_fixture",
             "stage": "boss_room_reached",
+            "lavik_departed_at_ms": 0,
             "player_ids": [a.actor_id, b.actor_id],
             "kizmel_actor_id": kizmel.actor_id,
             "pursuit": {
