@@ -24,7 +24,8 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
         This tool does not interpret natural language, select fallback actions, or roll separate outcomes.
         Action shapes are validated before execution; mechanical failures are raised by the authoritative
-        runtime and already-completed mechanical actions are not rolled back.
+        runtime and already-completed mechanical actions are not rolled back. NPC travel actions schedule
+        concurrent activity; they do not advance the world clock by themselves.
         """
         return _json(gm_turn_executor.execute(actions, world_tick_ms=world_tick_ms))
 
@@ -32,3 +33,16 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
     def get_gm_turn_action_contract() -> str:
         """Return the exact supported structured action names and required/optional fields for execute_gm_turn."""
         return _json({"actions": gm_turn_executor.supported_actions()})
+
+    @mcp.tool()
+    def get_npc_agenda(npc_id: str) -> str:
+        """Inspect one NPC's current goal, concurrent activity and authoritative settled/in-transit location."""
+        return _json(gm_turn_executor.runtime.npc_agenda_state(npc_id))
+
+    @mcp.tool()
+    def get_npc_activity_history(npc_id: str | None = None) -> str:
+        """Inspect completed autonomous NPC activities without mutating the world."""
+        rows = gm_turn_executor.runtime.npc_activity_history
+        if npc_id is not None:
+            rows = [row for row in rows if row["npc_id"] == npc_id]
+        return _json({"activities": rows})
