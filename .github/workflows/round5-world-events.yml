@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Run round5 post-defeat event migration'
+    if: github.event.head_commit.message == 'Run round5 post-defeat event migration v2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply post-defeat event migration
-        run: python scripts/round5_more_events_c1.py
+        run: |
+          python scripts/round5_more_events_c1.py
+          python scripts/round5_more_events_c1_fixes.py
       - name: Verify migration
         run: |
           python -m pip install -e ".[dev]"
