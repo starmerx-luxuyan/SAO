@@ -56,6 +56,16 @@ STACHION_POST_AMBUSH_CONNECTIONS = (
         ),
         traversal_tags=("post_ambush_road", "suribus_stachion_route"),
     ),
+    TravelConnection(
+        "floor_6_cylon_transport_carriage",
+        "floor_6_field",
+        12 * 60_000,
+        provenance=_sim(
+            "A roadside escape from the carriage ambush reaches the surrounding Floor 6 field without requiring entry into either safe settlement. Exact time is simulation.",
+            PROGRESSIVE_5,
+        ),
+        traversal_tags=("post_ambush_road", "field_escape_route"),
+    ),
 )
 
 TRIALS_SECRET_BACK_DOOR_CONNECTIONS = (
