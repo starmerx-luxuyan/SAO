@@ -7,6 +7,12 @@ from sao_mcp.corpus.floor6_south import BASALT_MORPHA_ID, BASALT_MORPHA_WEAPON_I
 from sao_mcp.corpus.floor6_trials import MYIA_ID, THEANO_ID
 from sao_mcp.corpus.floor6_world import GOLDEN_CUBE_LABYRINTH_BREACH_CONNECTION_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
+from sao_mcp.rules.group_travel import (
+    complete_routed_travel_within_window,
+    group_travel_record,
+    routed_travel_window_record,
+    travel_route_together,
+)
 from sao_mcp.rules.world import unlock_dynamic_world_connection
 
 
@@ -102,6 +108,8 @@ class Floor6SouthScenario:
         state["stage"] = "theano_sighted_goskai_caves"
         state["theano_actor_id"] = theano.actor_id
         state["south_sighting_at_ms"] = self.runtime.world.now_ms
+        state["theano_murutsuki_route"] = []
+        state["theano_boss_route"] = None
         state["south_sighting_facts"] = [
             "Theano was seen heading through the southern fourth area",
             "she is carrying the missing Golden Cube",
@@ -155,7 +163,8 @@ class Floor6SouthScenario:
         if actor.location_id != GOSKAI_CAVES:
             raise ValueError("Basalt Morpha is encountered in the caves around Goskai")
         theano = self.runtime.actors[state["theano_actor_id"]]
-        theano.location_id = GOSKAI_CAVES
+        if theano.location_id != GOSKAI_CAVES:
+            raise RuntimeError("Theano is no longer at the authoritative Goskai-caves sighting location")
         basalt = self._create_basalt_morpha()
         encounter = self.runtime.start_encounter(
             [actor_id, theano.actor_id, basalt.actor_id],
@@ -206,10 +215,9 @@ class Floor6SouthScenario:
         theano = self.runtime.actors[state["theano_actor_id"]]
         encounter = self.runtime.encounters[state["basalt_encounter_id"]]
         encounter.participants = {actor_id: self.runtime.actors[actor_id]}
-        encounter.positions = {
-            actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))
-        }
-        theano.location_id = MURUTSUKI
+        encounter.positions = {actor_id: encounter.positions.get(actor_id, (-1.15, 0.0))}
+        route = travel_route_together(self.runtime, [theano.actor_id], MURUTSUKI)
+        state["theano_murutsuki_route"] = [group_travel_record(segment) for segment in route]
         state["stage"] = "theano_passed_murutsuki"
         state["murutsuki_trail_at_ms"] = self.runtime.world.now_ms
         state["murutsuki_facts"] = [
@@ -236,7 +244,13 @@ class Floor6SouthScenario:
             self.runtime.world_map,
             GOLDEN_CUBE_LABYRINTH_BREACH_CONNECTION_ID,
         )
-        theano.location_id = BOSS_ROOM
+        route = complete_routed_travel_within_window(
+            self.runtime,
+            [theano.actor_id],
+            BOSS_ROOM,
+            started_at_ms=int(state["murutsuki_trail_at_ms"]),
+        )
+        state["theano_boss_route"] = routed_travel_window_record(route)
         state["stage"] = "theano_reached_floor6_boss_room"
         state["labyrinth_breached_at_ms"] = self.runtime.world.now_ms
         state["labyrinth_breach_facts"] = [
@@ -258,6 +272,8 @@ class Floor6SouthScenario:
             "stage": state.get("stage"),
             "theano_actor_id": state.get("theano_actor_id"),
             "theano_location_id": theano.location_id if theano else None,
+            "theano_murutsuki_route": state.get("theano_murutsuki_route", []),
+            "theano_boss_route": state.get("theano_boss_route"),
             "golden_cube_instance_id": cube.instance_id if cube else None,
             "basalt_actor_id": state.get("basalt_actor_id"),
             "basalt_encounter_id": state.get("basalt_encounter_id"),
