@@ -1,65 +1,92 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
+from typing import Any
 
 
-def _json(value) -> str:
-    return json.dumps(value, ensure_ascii=False)
+def _json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def register_population_tools(mcp, runtime) -> None:
     @mcp.tool()
     def get_player_population_state() -> str:
-        """Inspect background player cohorts and materialized-player counts from authoritative state."""
-        return _json(runtime.player_population_state())
+        """Inspect conserved aggregate cohorts for players that have not been materialized as actors."""
+        return _json(runtime.population_state())
 
     @mcp.tool()
-    def get_player_population_history() -> str:
-        """Inspect committed background-population reclassification and loss events."""
-        return _json({"events": runtime.population_history})
+    def get_player_population_history(cohort_id: str | None = None) -> str:
+        """Inspect population initialization, splits, role changes, travel, losses and actor materialization history."""
+        rows = runtime.population_history
+        if cohort_id is not None:
+            rows = [
+                row
+                for row in rows
+                if row.get("cohort_id") == cohort_id
+                or row.get("source_cohort_id") == cohort_id
+                or row.get("new_cohort_id") == cohort_id
+            ]
+        return _json({"events": rows})
 
     @mcp.tool()
-    def add_player_population_cohort(
+    def initialize_player_population(cohorts: list[dict[str, Any]]) -> str:
+        """Initialize the tracked abstract player population exactly once from explicit cohort records."""
+        return _json(runtime.initialize_player_population(cohorts))
+
+    @mcp.tool()
+    def split_player_population_cohort(
         cohort_id: str,
-        segment: str,
-        headcount: int,
-        location_id: str,
-        average_level: float,
-        activity: str,
-        provenance: str = "simulation",
-    ) -> str:
-        """Register an unmaterialized player cohort at one authoritative world location."""
-        runtime.add_population_cohort(
-            cohort_id,
-            segment,
-            headcount,
-            location_id,
-            average_level,
-            activity,
-            provenance=provenance,
-        )
-        return _json(runtime.player_population_state())
-
-    @mcp.tool()
-    def reclassify_player_population_cohort(
-        cohort_id: str,
-        segment: str,
-        count: int | None = None,
-        new_cohort_id: str | None = None,
+        new_cohort_id: str,
+        count: int,
+        band: str | None = None,
         activity: str | None = None,
+        average_level: float | None = None,
     ) -> str:
-        """Move all or part of one abstract cohort between frontline/production/mid-tier/casual roles."""
-        runtime.reclassify_population_cohort(
-            cohort_id,
-            segment,
-            count=count,
-            new_cohort_id=new_cohort_id,
-            activity=activity,
+        """Move part of one settled cohort into a new cohort without changing tracked population total."""
+        return _json(
+            asdict(
+                runtime.split_population_cohort(
+                    cohort_id,
+                    new_cohort_id,
+                    count,
+                    band=band,
+                    activity=activity,
+                    average_level=average_level,
+                )
+            )
         )
-        return _json(runtime.player_population_state())
+
+    @mcp.tool()
+    def set_player_population_cohort_role(
+        cohort_id: str,
+        band: str,
+        activity: str,
+        average_level: float | None = None,
+    ) -> str:
+        """Change a whole settled cohort's strategic role/activity without creating or destroying players."""
+        return _json(
+            asdict(
+                runtime.set_population_cohort_role(
+                    cohort_id,
+                    band,
+                    activity=activity,
+                    average_level=average_level,
+                )
+            )
+        )
+
+    @mcp.tool()
+    def schedule_player_population_travel(cohort_id: str, destination_id: str) -> str:
+        """Schedule a settled cohort to move concurrently over the authoritative world graph."""
+        return _json(asdict(runtime.schedule_population_travel(cohort_id, destination_id)))
 
     @mcp.tool()
     def apply_player_population_losses(cohort_id: str, deaths: int, cause: str) -> str:
-        """Commit deaths to one abstract cohort without materializing individual background players."""
-        runtime.apply_population_losses(cohort_id, deaths, cause=cause)
-        return _json(runtime.player_population_state())
+        """Record deaths among unmaterialized players in one cohort; tracked population remains conserved."""
+        return _json(asdict(runtime.apply_population_losses(cohort_id, deaths, cause=cause)))
+
+    @mcp.tool()
+    def materialize_player_population_member(cohort_id: str, actor_id: str) -> str:
+        """Claim one existing living PLAYER actor from a settled abstract cohort, decrementing that cohort by one."""
+        return _json(runtime.materialize_population_member(cohort_id, actor_id))
