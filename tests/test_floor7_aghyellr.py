@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from sao_mcp.corpus.floor7 import SWORD_OF_VOLUPTA_ID
 from sao_mcp.domain.models import ItemInstance, StatusType
 from sao_mcp.rules.inventory import add_item
@@ -6,6 +8,7 @@ from sao_mcp.scenarios.floor7_aghyellr import (
     AGHYELLR_BLOOD_JAR_COUNT,
     BOSS_ROOM,
     CASINO,
+    HUMAN_BLOOD_BRIDGE_MS,
     KORLOY_STABLES,
     NIRRNIR_STABILIZED_SURVIVAL_MS,
     install_floor7_aghyellr_scenario,
@@ -34,6 +37,12 @@ def test_floor7_nirrnir_civis_doleful_and_aghyellr_blood_drop_are_real_state():
     runtime.world.floors[7].unlocked = True
     sword = _give_sword_of_volupta(runtime, lead)
 
+    # Reading the dormant scenario does not materialize mutable story state.
+    assert "floor7_nirrnir_poison_story" not in runtime.world.global_flags
+    dormant = aghyellr.nirrnir_status()
+    assert dormant["stage"] == "not_started"
+    assert "floor7_nirrnir_poison_story" not in runtime.world.global_flags
+
     lead.location_id = CASINO
     runtime.travel_actor(lead.actor_id, KORLOY_STABLES)
     poison = aghyellr.trigger_nirrnir_poisoning(lead.actor_id)
@@ -42,18 +51,30 @@ def test_floor7_nirrnir_civis_doleful_and_aghyellr_blood_drop_are_real_state():
     assert poison["ordinary_antidote_effective"] is False
     assert poison["nightfolk"]["night_rank"] == "dominus_nocte"
 
+    nirrnir = runtime.actors[poison["nirrnir_actor_id"]]
     runtime.advance_world(47 * 60 * 60 * 1000)
+
+    # The authoritative clock event has already mutated the poison state before any read API runs.
+    raw_story = runtime.world.global_flags["floor7_nirrnir_poison_story"]
+    assert raw_story["stage"] == "stabilised_silver_poison"
+    assert nirrnir.alive is True
+    assert nirrnir.hp <= int(nirrnir.max_hp * 0.05)
+    poison_status = next(status for status in nirrnir.statuses if status.stack_key == "argent_serpent_silver_poison")
+    assert 59 * 60 * 1000 <= poison_status.remaining_ms <= 60 * 60 * 1000
+
+    story_before_read = deepcopy(raw_story)
+    hp_before_read = nirrnir.hp
     poison = aghyellr.nirrnir_status()
+    assert runtime.world.global_flags["floor7_nirrnir_poison_story"] == story_before_read
+    assert nirrnir.hp == hp_before_read
     assert poison["alive"] is True
     assert 59 * 60 * 1000 <= poison["remaining_ms"] <= 60 * 60 * 1000
-    assert poison["hp"] <= int(poison["max_hp"] * 0.05)
 
     lead.location_id = BOSS_ROOM
     rookie.location_id = BOSS_ROOM
     raid = aghyellr.start_aghyellr_raid([lead.actor_id, rookie.actor_id], bring_nirrnir=True)
     encounter = runtime.encounters[raid["encounter_id"]]
     boss = runtime.actors[raid["boss_id"]]
-    nirrnir = runtime.actors[raid["nirrnir_actor_id"]]
     assert nirrnir.actor_id in encounter.participants
     assert nirrnir.location_id == BOSS_ROOM
     assert raid["boss"]["definitionId"] == "aghyellr_the_igneous_wyrm"
@@ -61,6 +82,8 @@ def test_floor7_nirrnir_civis_doleful_and_aghyellr_blood_drop_are_real_state():
     world_before_battle_minute = runtime.world.now_ms
     remaining_before_battle_minute = raid["nirrnir"]["remaining_ms"]
     runtime.advance_encounter(encounter.encounter_id, 60_000)
+    poison_status = next(status for status in nirrnir.statuses if status.stack_key == "argent_serpent_silver_poison")
+    assert poison_status.remaining_ms == remaining_before_battle_minute - 60_000
     synced = aghyellr.raid_status(raid["instance_id"])
     assert runtime.world.now_ms - world_before_battle_minute == 60_000
     assert runtime.encounter_world_time_ms(encounter.encounter_id) == runtime.world.now_ms
@@ -74,6 +97,10 @@ def test_floor7_nirrnir_civis_doleful_and_aghyellr_blood_drop_are_real_state():
     assert bridge["transformation"]["direct_sunlight_weakness"] == "lethal"
     assert bridge["transformation"]["can_create_night_followers"] is False
     assert nirrnir.hp >= int(nirrnir.max_hp * 0.30)
+
+    runtime.advance_encounter(encounter.encounter_id, HUMAN_BLOOD_BRIDGE_MS)
+    assert runtime.world.global_flags["floor7_nirrnir_poison_story"]["human_blood_bridge_active"] is False
+    assert nirrnir.metadata["human_blood_bridge_active"] is False
 
     reveal = aghyellr.reveal_doleful_nocturne(raid["instance_id"], lead.actor_id, sword.instance_id)
     assert reveal["true_name"] == "Doleful Nocturne"
@@ -94,6 +121,7 @@ def test_floor7_nirrnir_civis_doleful_and_aghyellr_blood_drop_are_real_state():
     boss.alive = False
     runtime._resolve_defeat(encounter, boss, lead.actor_id)
     assert runtime.world.floors[7].floor_boss_defeated
+    assert aghyellr._raids()[raid["instance_id"]]["stage"] == "aghyellr_defeated"
 
     blood = aghyellr.collect_fresh_dragon_blood(raid["instance_id"], lead.actor_id)
     blood_ids = blood["blood_instance_ids"]
