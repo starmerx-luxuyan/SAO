@@ -1,3 +1,7 @@
+import pytest
+
+from sao_mcp.corpus.world import LocationDefinition
+from sao_mcp.domain.models import ZoneKind
 from sao_mcp.runtime.gm_turn import GMTurnExecutor
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
@@ -96,3 +100,35 @@ def test_population_cohorts_conserve_players_through_split_materialization_losse
 
     final = restored.population_state()
     assert final["abstract_alive"] + final["abstract_deaths"] + final["materialized_from_population"] == 100
+
+
+def test_unreachable_population_route_fails_before_mutating_cohort_state():
+    runtime = HousingAincradRuntime(seed=411)
+    runtime.initialize_player_population(
+        [
+            {
+                "cohort_id": "settled",
+                "band": "sheltered",
+                "count": 12,
+                "location_id": "floor_1_town_of_beginnings",
+            }
+        ]
+    )
+    isolated = "floor_1_population_isolated_test_node"
+    runtime.world_map.locations[isolated] = LocationDefinition(
+        isolated,
+        1,
+        "Population Isolated Test Node",
+        ZoneKind.FIELD,
+    )
+    history_before = list(runtime.population_history)
+
+    with pytest.raises(ValueError, match="unreachable"):
+        runtime.schedule_population_travel("settled", isolated)
+
+    cohort = runtime.population_cohort_state("settled")
+    assert cohort["location_id"] == "floor_1_town_of_beginnings"
+    assert cohort["movement_target_location_id"] is None
+    assert cohort["next_location_id"] is None
+    assert cohort["active"] is False
+    assert runtime.population_history == history_before
