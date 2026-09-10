@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from typing import Any
 
 
@@ -44,18 +43,15 @@ def register_population_tools(mcp, runtime) -> None:
         average_level: float | None = None,
     ) -> str:
         """Move part of one settled cohort into a new cohort without changing tracked population total."""
-        return _json(
-            asdict(
-                runtime.split_population_cohort(
-                    cohort_id,
-                    new_cohort_id,
-                    count,
-                    band=band,
-                    activity=activity,
-                    average_level=average_level,
-                )
-            )
+        runtime.split_population_cohort(
+            cohort_id,
+            new_cohort_id,
+            count,
+            band=band,
+            activity=activity,
+            average_level=average_level,
         )
+        return _json(runtime.population_cohort_state(new_cohort_id))
 
     @mcp.tool()
     def set_player_population_cohort_role(
@@ -65,26 +61,25 @@ def register_population_tools(mcp, runtime) -> None:
         average_level: float | None = None,
     ) -> str:
         """Change a whole settled cohort's strategic role/activity without creating or destroying players."""
-        return _json(
-            asdict(
-                runtime.set_population_cohort_role(
-                    cohort_id,
-                    band,
-                    activity=activity,
-                    average_level=average_level,
-                )
-            )
+        runtime.set_population_cohort_role(
+            cohort_id,
+            band,
+            activity=activity,
+            average_level=average_level,
         )
+        return _json(runtime.population_cohort_state(cohort_id))
 
     @mcp.tool()
     def schedule_player_population_travel(cohort_id: str, destination_id: str) -> str:
         """Schedule a settled cohort to move concurrently over the authoritative world graph."""
-        return _json(asdict(runtime.schedule_population_travel(cohort_id, destination_id)))
+        runtime.schedule_population_travel(cohort_id, destination_id)
+        return _json(runtime.population_cohort_state(cohort_id))
 
     @mcp.tool()
     def apply_player_population_losses(cohort_id: str, deaths: int, cause: str) -> str:
         """Record deaths among unmaterialized players in one cohort; tracked population remains conserved."""
-        return _json(asdict(runtime.apply_population_losses(cohort_id, deaths, cause=cause)))
+        runtime.apply_population_losses(cohort_id, deaths, cause=cause)
+        return _json(runtime.population_cohort_state(cohort_id))
 
     @mcp.tool()
     def materialize_player_population_member(cohort_id: str, actor_id: str) -> str:
