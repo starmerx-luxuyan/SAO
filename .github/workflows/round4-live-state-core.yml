@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply live-state core
-        run: python scripts/round4_live_state_core.py
+        run: python scripts/round4_live_state_core_runner.py
       - name: Verify core
         run: |
           python -m pip install -e ".[dev]"
