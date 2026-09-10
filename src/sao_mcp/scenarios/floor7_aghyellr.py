@@ -42,6 +42,8 @@ class Floor7AghyellrScenario:
         self.runtime = runtime
         apply_floor7_nirrnir_corpus(runtime.catalog)
         self._seed_world()
+        runtime.register_world_advance_hook(self._on_world_advance)
+        runtime.register_defeat_hook(self._on_defeat)
 
     def _seed_world(self) -> None:
         source = "Sword Art Online Progressive Volume 8: Rhapsody of Crimson Heat (Finish)"
@@ -76,24 +78,32 @@ class Floor7AghyellrScenario:
                 TravelConnection(KORLOY_STABLES, CASINO, edge.travel_ms, True, True, p)
             )
 
+    @staticmethod
+    def _initial_story_state() -> dict:
+        return {
+            "stage": "not_started",
+            "nirrnir_actor_id": None,
+            "poisoned_at_ms": None,
+            "stabilized_at_ms": None,
+            "deadline_ms": None,
+            "human_blood_bridge_active": False,
+            "human_blood_bridge_expires_at_ms": None,
+            "human_blood_donor_actor_id": None,
+            "human_blood_donor_cost_hp": None,
+            "civis_actor_id": None,
+            "cured_at_ms": None,
+            "cure_blood_instance_id": None,
+        }
+
     def _story(self) -> dict:
         return self.runtime.world.global_flags.setdefault(
             "floor7_nirrnir_poison_story",
-            {
-                "stage": "not_started",
-                "nirrnir_actor_id": None,
-                "poisoned_at_ms": None,
-                "stabilized_at_ms": None,
-                "deadline_ms": None,
-                "human_blood_bridge_active": False,
-                "human_blood_bridge_expires_at_ms": None,
-                "human_blood_donor_actor_id": None,
-                "human_blood_donor_cost_hp": None,
-                "civis_actor_id": None,
-                "cured_at_ms": None,
-                "cure_blood_instance_id": None,
-            },
+            self._initial_story_state(),
         )
+
+    def _story_view(self) -> dict:
+        story = self.runtime.world.global_flags.get("floor7_nirrnir_poison_story")
+        return story if story is not None else self._initial_story_state()
 
     def _raids(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor7_aghyellr_raids", {})
@@ -158,20 +168,18 @@ class Floor7AghyellrScenario:
         )
         return self.nirrnir_status()
 
-    def _sync_nirrnir(self) -> None:
-        story = self._story()
-        if story["stage"] == "not_started":
+    def _on_world_advance(self, before_ms: int, after_ms: int) -> None:
+        story = self.runtime.world.global_flags.get("floor7_nirrnir_poison_story")
+        if story is None or story["stage"] in {"not_started", "cured", "nirrnir_died_from_silver_poison"}:
             return
         actor_id = story["nirrnir_actor_id"]
         if actor_id not in self.runtime.actors:
             raise RuntimeError("Nirrnir poison story points to a missing actor")
         nirrnir = self.runtime.actors[actor_id]
-        if story["stage"] == "cured":
-            return
         deadline = story["deadline_ms"]
         if deadline is None:
             raise RuntimeError("active Nirrnir poison story has no deadline")
-        remaining = max(0, int(deadline) - self.runtime.world.now_ms)
+        remaining = max(0, int(deadline) - after_ms)
         for status in nirrnir.statuses:
             if status.stack_key == "argent_serpent_silver_poison":
                 status.remaining_ms = remaining
@@ -180,9 +188,10 @@ class Floor7AghyellrScenario:
         if remaining <= 0:
             nirrnir.hp = 0
             nirrnir.alive = False
+            nirrnir.metadata["human_blood_bridge_active"] = False
             story["stage"] = "nirrnir_died_from_silver_poison"
             story["human_blood_bridge_active"] = False
-            story["died_at_ms"] = self.runtime.world.now_ms
+            story["died_at_ms"] = after_ms
             return
 
         if story["stage"] != "stabilised_silver_poison":
@@ -192,7 +201,7 @@ class Floor7AghyellrScenario:
             expiry = story["human_blood_bridge_expires_at_ms"]
             if expiry is None:
                 raise RuntimeError("active human-blood bridge has no expiry")
-            if self.runtime.world.now_ms >= int(expiry):
+            if after_ms >= int(expiry):
                 story["human_blood_bridge_active"] = False
                 nirrnir.metadata["human_blood_bridge_active"] = False
                 bridge_active = False
@@ -202,7 +211,13 @@ class Floor7AghyellrScenario:
             poison_cap = max(1, int(round(nirrnir.max_hp * 0.25 * remaining_ratio)))
             nirrnir.hp = min(nirrnir.hp, poison_cap)
 
-    def _sync_raid_world_time(self, state: dict) -> None:
+    def _on_defeat(self, encounter, target, killer_id: str | None) -> None:
+        raids = self.runtime.world.global_flags.get("floor7_aghyellr_raids", {})
+        for state in raids.values():
+            if state["stage"] == "battle" and state["boss_id"] == target.actor_id:
+                state["stage"] = "aghyellr_defeated"
+
+    def _validate_raid_world_time(self, state: dict) -> None:
         encounter_id = state["encounter_id"]
         encounter = self.runtime.encounters[encounter_id]
         expected_world_ms = self.runtime.encounter_world_time_ms(encounter_id)
@@ -210,11 +225,9 @@ class Floor7AghyellrScenario:
             raise RuntimeError("Aghyellr encounter advanced beyond the authoritative world clock")
         if encounter.time_ms < 0:
             raise RuntimeError("Aghyellr encounter time moved before zero")
-        self._sync_nirrnir()
 
     def nirrnir_status(self) -> dict:
-        self._sync_nirrnir()
-        story = self._story()
+        story = self._story_view()
         if story["stage"] == "not_started":
             return {
                 **story,
@@ -243,7 +256,6 @@ class Floor7AghyellrScenario:
         }
 
     def start_aghyellr_raid(self, player_ids: list[str], *, bring_nirrnir: bool = True) -> dict:
-        self._sync_nirrnir()
         players = list(dict.fromkeys(player_ids))
         if not players:
             raise ValueError("Aghyellr raid needs at least one player")
@@ -251,7 +263,7 @@ class Floor7AghyellrScenario:
             players,
             boss_definition_id=AGHYELLR_ID,
         )
-        story = self._story()
+        story = self._story_view()
         nirrnir_id = story["nirrnir_actor_id"] if story["stage"] != "not_started" else None
         if bring_nirrnir:
             if nirrnir_id is None:
@@ -285,7 +297,7 @@ class Floor7AghyellrScenario:
 
     def sustain_nirrnir_with_human_blood(self, instance_id: str, donor_actor_id: str) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         if state["stage"] != "battle":
             raise ValueError("the human-blood bridge is a last-resort action during the Aghyellr battle")
         story = self._story()
@@ -347,7 +359,7 @@ class Floor7AghyellrScenario:
 
     def reveal_doleful_nocturne(self, instance_id: str, actor_id: str, sword_instance_id: str) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         if actor_id not in state["player_ids"]:
             raise ValueError("Doleful Nocturne revealer must be an Aghyellr raid player")
         actor = self.runtime.actors[actor_id]
@@ -390,7 +402,7 @@ class Floor7AghyellrScenario:
 
     def telegraph_intimidating_gaze(self, instance_id: str) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         boss = self.runtime.actors[state["boss_id"]]
         if not boss.alive or state["stage"] != "battle":
             raise ValueError("Aghyellr is not in an active battle state")
@@ -414,7 +426,7 @@ class Floor7AghyellrScenario:
 
     def resolve_intimidating_gaze(self, instance_id: str, *, look_away_actor_ids: list[str] | None = None) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         pending = state["pending_gaze"]
         if pending is None:
             raise ValueError("Intimidating Gaze has not been telegraphed")
@@ -422,7 +434,7 @@ class Floor7AghyellrScenario:
         remaining = max(0, int(pending["resolve_at_ms"]) - encounter.time_ms)
         if remaining:
             self.runtime.advance_encounter(encounter.encounter_id, remaining)
-            self._sync_raid_world_time(state)
+            self._validate_raid_world_time(state)
         looking_away = set(look_away_actor_ids or ())
         stunned: list[str] = []
         unaffected: list[str] = []
@@ -468,7 +480,7 @@ class Floor7AghyellrScenario:
 
     def collect_fresh_dragon_blood(self, instance_id: str, actor_id: str) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         boss = self.runtime.actors[state["boss_id"]]
         encounter = self.runtime.encounters[state["encounter_id"]]
         if boss.alive:
@@ -510,7 +522,7 @@ class Floor7AghyellrScenario:
 
     def administer_dragon_blood(self, instance_id: str, actor_id: str, blood_instance_id: str) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         story = self._story()
         if story["stage"] != "stabilised_silver_poison":
             raise ValueError("Nirrnir is not in the treatable Argent Serpent poisoning state")
@@ -548,10 +560,8 @@ class Floor7AghyellrScenario:
 
     def raid_status(self, instance_id: str) -> dict:
         state = self._raids()[instance_id]
-        self._sync_raid_world_time(state)
+        self._validate_raid_world_time(state)
         boss = self.runtime.actors[state["boss_id"]]
-        if not boss.alive and state["stage"] == "battle":
-            state["stage"] = "aghyellr_defeated"
         return {
             **state,
             "boss": self.runtime.boss_bar_state(boss),
