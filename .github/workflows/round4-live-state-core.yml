@@ -22,6 +22,7 @@ jobs:
         run: |
           python scripts/round4_live_state_core_runner.py
           python scripts/round4_live_state_core_fixes_runner.py
+          python scripts/round4_live_state_phaseb.py
       - name: Verify core
         run: |
           python -m pip install -e ".[dev]"
@@ -31,7 +32,7 @@ jobs:
         run: |
           git config user.name "starmerx-luxuyan"
           git config user.email "luxuyan@starmerx.com"
-          git add src/sao_mcp/domain/models.py src/sao_mcp/runtime/engine.py src/sao_mcp/rules/travel.py src/sao_mcp/rules/group_travel.py src/sao_mcp/runtime/npc_autonomy_runtime.py src/sao_mcp/runtime/guild_autonomy_runtime.py src/sao_mcp/runtime/persistence.py src/sao_mcp/runtime/social_runtime.py src/sao_mcp/scenarios/floor5_fuscus.py src/sao_mcp/scenarios/floor7_pursuit.py tests/test_encounter_world_clock.py tests/test_adventure_persistence.py tests/test_spatial_combat.py tests/test_timeline_combat.py tests/test_boss_persistence.py
+          git add src/sao_mcp/domain/models.py src/sao_mcp/runtime/engine.py src/sao_mcp/rules/travel.py src/sao_mcp/rules/group_travel.py src/sao_mcp/runtime/npc_autonomy_runtime.py src/sao_mcp/runtime/guild_autonomy_runtime.py src/sao_mcp/runtime/persistence.py src/sao_mcp/runtime/social_runtime.py src/sao_mcp/scenarios/floor5_fuscus.py src/sao_mcp/scenarios/floor7_pursuit.py src/sao_mcp/scenarios/floor6_elfwar.py src/sao_mcp/scenarios/floor8_standoff.py src/sao_mcp/scenarios/floor8_sluva.py tests/test_encounter_world_clock.py tests/test_adventure_persistence.py tests/test_spatial_combat.py tests/test_timeline_combat.py tests/test_boss_persistence.py tests/test_duels_death.py tests/test_floor8_standoff.py tests/test_floor8_sluva.py
           git diff --cached --quiet && exit 1
-          git commit -m "Make encounter lifecycle and clock state authoritative"
+          git commit -m "Make live encounter and legal state authoritative"
           git push origin HEAD:main
