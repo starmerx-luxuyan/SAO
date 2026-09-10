@@ -14,8 +14,12 @@ from sao_mcp.rules.travel import (
 from sao_mcp.runtime.world_event_runtime import WorldEventAincradRuntime
 
 
+LOCATION_UNAVAILABLE_FACT_PREFIX = "location_unavailable:"
+SHOP_RETURN_GOAL_ID = "routine:return_to_shop"
+
+
 class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
-    """World-event runtime with persistent concurrent activities and location goals for named NPCs."""
+    """World-event runtime with persistent concurrent activities and belief-aware NPC goals."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
@@ -169,6 +173,58 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         agenda.clear_goal()
         return agenda
 
+    def _shop_home_unavailable(self, npc_id: str, home_location_id: str) -> bool:
+        belief = self.belief(npc_id, f"{LOCATION_UNAVAILABLE_FACT_PREFIX}{home_location_id}")
+        if belief is None:
+            return False
+        if not isinstance(belief.value, bool):
+            raise RuntimeError("location_unavailable belief value must be boolean")
+        return belief.value
+
+    def _evaluate_npc_decision(self, npc_id: str, decision_at_ms: int) -> None:
+        definition = self.npcs.definitions[npc_id]
+        if "shop_owner" not in definition.roles:
+            return
+        home = definition.home_location_id
+        home_definition = self.world_map.locations.get(home)
+        if home_definition is None or not self.world.floors[home_definition.floor_number].unlocked:
+            return
+        materialized = self._materialized_npc_actor(npc_id)
+        if materialized is not None and not materialized.alive:
+            agenda = self.npc_agendas.get(npc_id)
+            if agenda is not None and not agenda.active and agenda.goal_id == SHOP_RETURN_GOAL_ID:
+                agenda.clear_goal()
+            return
+
+        agenda = self.npc_agendas.setdefault(npc_id, NPCAgendaState(npc_id))
+        if agenda.active:
+            return
+        unavailable = self._shop_home_unavailable(npc_id, home)
+        if unavailable:
+            if agenda.goal_id == SHOP_RETURN_GOAL_ID:
+                agenda.clear_goal()
+            return
+        if agenda.goal_id is not None and agenda.goal_id != SHOP_RETURN_GOAL_ID:
+            return
+        current_location = self._stationary_npc_location_id(npc_id)
+        if self.world_map.locations[current_location].floor_number != home_definition.floor_number:
+            return
+        if agenda.goal_id is None:
+            agenda.set_goal(SHOP_RETURN_GOAL_ID, home)
+        self._plan_goal_step(npc_id, decision_at_ms)
+
+    def _evaluate_npc_decisions(self, decision_at_ms: int) -> None:
+        for npc_id in self.npcs.definitions:
+            self._evaluate_npc_decision(npc_id, decision_at_ms)
+
+    def advance_world(self, elapsed_ms: int) -> list[int]:
+        self._evaluate_npc_decisions(self.world.now_ms)
+        return super().advance_world(elapsed_ms)
+
+    def travel_actor(self, actor_id: str, destination_id: str):
+        self._evaluate_npc_decisions(self.world.now_ms)
+        return super().travel_actor(actor_id, destination_id)
+
     def _finish_travel_leg(self, npc_id: str, agenda: NPCAgendaState) -> int:
         if agenda.activity_kind != "travel":
             raise RuntimeError(f"unsupported NPC agenda activity: {agenda.activity_kind}")
@@ -203,12 +259,14 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         return completed_at_ms
 
     def _resolve_due_npc_activities(self, before_ms: int, after_ms: int) -> None:
-        for npc_id, agenda in self.npc_agendas.items():
+        for npc_id, agenda in list(self.npc_agendas.items()):
             while agenda.active and agenda.due_at_ms is not None and agenda.due_at_ms <= after_ms:
                 completed_at_ms = self._finish_travel_leg(npc_id, agenda)
-                self._plan_goal_step(npc_id, completed_at_ms)
+                if not self._plan_goal_step(npc_id, completed_at_ms):
+                    self._evaluate_npc_decision(npc_id, completed_at_ms)
             if not agenda.active and agenda.goal_target_location_id is not None:
                 self._plan_goal_step(npc_id, after_ms)
+        self._evaluate_npc_decisions(after_ms)
 
     def npc_agenda_state(self, npc_id: str) -> dict:
         if npc_id not in self.npcs.definitions:
