@@ -7,14 +7,14 @@ from sao_mcp.corpus.world import LocationDefinition, TravelConnection
 from sao_mcp.domain.models import Provenance, ProvenanceKind, ZoneKind
 from sao_mcp.rules.housing import HousingState
 from sao_mcp.rules.relationships import SharedStorage
-from sao_mcp.runtime.npc_autonomy_runtime import NPCAutonomyAincradRuntime
+from sao_mcp.runtime.guild_autonomy_runtime import GuildAutonomyAincradRuntime
 
 
 PROPERTY_ENTRY_TIME_MS = 15_000  # Simulation transition time.
 
 
-class HousingAincradRuntime(NPCAutonomyAincradRuntime):
-    """Autonomous-NPC runtime plus persistent property ownership and interior world nodes."""
+class HousingAincradRuntime(GuildAutonomyAincradRuntime):
+    """Autonomous NPC/guild runtime plus persistent property ownership and interior world nodes."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
