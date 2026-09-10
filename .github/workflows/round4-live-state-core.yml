@@ -21,7 +21,7 @@ jobs:
       - name: Apply live-state core
         run: |
           python scripts/round4_live_state_core_runner.py
-          python scripts/round4_live_state_core_fixes.py
+          python scripts/round4_live_state_core_fixes_runner.py
       - name: Verify core
         run: |
           python -m pip install -e ".[dev]"
