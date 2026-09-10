@@ -32,14 +32,20 @@ from sao_mcp.corpus.floor7_pursuit import RUBY_KEY_ID
 from sao_mcp.corpus.location_access import FALLEN_ELVES
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance
 from sao_mcp.rules.access import actor_faction_ids
-from sao_mcp.rules.group_travel import group_travel_record, travel_together
+from sao_mcp.rules.group_travel import exit_encounter_via_travel, group_travel_record, travel_together
 from sao_mcp.rules.inventory import transfer_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, night_rank, tame_lower_level_monster
-from sao_mcp.rules.transport import authorized_transport, authorized_transport_record
+from sao_mcp.rules.transport import (
+    authorized_transport,
+    authorized_transport_record,
+    authorized_transport_within_window,
+)
 
 
 ROVIA = "floor_4_rovia"
 USCO = "floor_4_usco"
+LAVIK_BACKTRACK_MIN_MS = 90 * 60_000
+KYSARAH_INTERCEPTION_TRANSFER_MS = 20 * 60_000
 
 
 class Floor4NocturneScenario:
@@ -182,7 +188,21 @@ class Floor4NocturneScenario:
             raise ValueError("Kizmel must be alive to continue the Elf War campaign")
 
         lavik = self._single_alive_actor_for_npc(LAVIK_ID)
-        lavik.location_id = LAKE_YOFEL_WEST_SHORE
+        lavik_departed_at_ms = harin.get("lavik_departed_at_ms")
+        if lavik_departed_at_ms is None:
+            raise RuntimeError("Lavik has no authoritative Floor 7 departure time for the Nocturne backtrack")
+        lavik_transport = authorized_transport_within_window(
+            self.runtime,
+            transport_id=f"nocturne_lavik_backtrack:{harin_instance_id}",
+            actor_ids=[lavik.actor_id],
+            carrier_actor_id=None,
+            from_location_id=str(lavik.location_id),
+            to_location_id=LAKE_YOFEL_WEST_SHORE,
+            elapsed_ms=LAVIK_BACKTRACK_MIN_MS,
+            started_at_ms=int(lavik_departed_at_ms),
+            completed_at_ms=self.runtime.world.now_ms,
+            transport_tags=("teleport_gate_backtrack", "lavik_nocturne_return", "cross_floor"),
+        )
         lavik.metadata.update(
             {
                 "progressive9_nocturne": True,
@@ -213,6 +233,7 @@ class Floor4NocturneScenario:
             "ruby_key_instance_id": pursuit["ruby_key_instance_id"],
             "floor7_civis_actor_id": handoff["civisActorId"],
             "doleful_nocturne_instance_id": handoff["dolefulNocturneInstanceId"],
+            "lavik_backtrack_transport": authorized_transport_record(lavik_transport),
             "lavik_request_accepted_by_actor_id": None,
             "lavik_request_accepted_at_ms": None,
             "party_arrived_yofel_at_ms": None,
@@ -248,6 +269,8 @@ class Floor4NocturneScenario:
             "kysarah_interception_actor_id": None,
             "kysarah_interception_encounter_id": None,
             "kysarah_interception_outcome": None,
+            "kysarah_interception_transport": None,
+            "kysarah_truce_route": None,
             "kysarah_truce_at_ms": None,
             "kysarah_requested_item_template_id": None,
             "kysarah_tuber_delivered_at_ms": None,
@@ -639,12 +662,25 @@ class Floor4NocturneScenario:
             raise ValueError("Kysarah no longer owns the four-key bag, so this interception cannot occur")
         if not bag_owner.alive:
             raise ValueError("Kysarah is not alive for the interception")
-        bag_owner.location_id = "floor_4_labyrinth"
+        origin = bag_owner.location_id
+        if origin is None:
+            raise RuntimeError("Kysarah has no authoritative world location before the interception")
+        transfer = authorized_transport(
+            self.runtime,
+            transport_id=f"nocturne_kysarah_interception:{instance_id}",
+            actor_ids=[bag_owner.actor_id],
+            carrier_actor_id=None,
+            from_location_id=origin,
+            to_location_id="floor_4_labyrinth",
+            elapsed_ms=KYSARAH_INTERCEPTION_TRANSFER_MS,
+            transport_tags=("fallen_elf_interception_route", "cross_floor", "nocturne"),
+        )
         encounter = self.runtime.start_encounter(
             [actor_id, bag_owner.actor_id],
             zone_id="floor_4_labyrinth",
             safe_zone=False,
         )
+        state["kysarah_interception_transport"] = authorized_transport_record(transfer)
         state["kysarah_interception_actor_id"] = bag_owner.actor_id
         state["kysarah_interception_encounter_id"] = encounter.encounter_id
         state["floor8_branch_stage"] = "kysarah_interception"
@@ -678,7 +714,12 @@ class Floor4NocturneScenario:
             raise RuntimeError("Kysarah no longer holds the inherited four-key bag during the truce")
 
         encounter.threat.clear()
-        kysarah.location_id = KYSARAH_TRANSFER_ROOM
+        truce_route = exit_encounter_via_travel(
+            self.runtime,
+            encounter.encounter_id,
+            [kysarah.actor_id],
+            KYSARAH_TRANSFER_ROOM,
+        )
         kysarah.metadata.update(
             {
                 "progressive9_falhari_truce": True,
@@ -688,6 +729,7 @@ class Floor4NocturneScenario:
             }
         )
         state["kysarah_interception_outcome"] = "falhari_truce"
+        state["kysarah_truce_route"] = group_travel_record(truce_route)
         state["kysarah_truce_at_ms"] = self.runtime.world.now_ms
         state["kysarah_requested_item_template_id"] = ICHTHYOID_TUBER_ID
         state["floor8_branch_stage"] = "kysarah_truce_resolved"
