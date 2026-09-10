@@ -32,6 +32,11 @@ def shortest_next_hop(
         elapsed, node_id, first_hop = heapq.heappop(queue)
         if elapsed != best.get(node_id):
             continue
+        # Dijkstra is final only when a node is removed from the minimum-priority queue.
+        # Returning when the target is first *discovered* can select a slower direct edge
+        # before a shorter multi-edge dynamic route (for example a boss shortcut) is explored.
+        if node_id == target:
+            return first_hop
         for edge in world_map.adjacency.get(node_id, ()):
             destination = world_map.locations[edge.to_location_id]
             if edge.requires_floor_unlocked and not world.floors[destination.floor_number].unlocked:
@@ -42,8 +47,6 @@ def shortest_next_hop(
             if total >= best.get(edge.to_location_id, 2**63 - 1):
                 continue
             next_first = edge.to_location_id if first_hop is None else first_hop
-            if edge.to_location_id == target:
-                return next_first
             best[edge.to_location_id] = total
             heapq.heappush(queue, (total, edge.to_location_id, next_first))
     raise ValueError(f"destination is unreachable from {origin}: {target}")
