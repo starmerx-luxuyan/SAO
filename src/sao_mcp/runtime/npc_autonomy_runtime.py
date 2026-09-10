@@ -113,8 +113,12 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
             if not materialized.alive:
                 raise ValueError("defeated NPC cannot start autonomous travel")
             require_autonomous_travel(materialized)
-            if has_surviving_colocated_outsider(self, materialized.actor_id, origin):
-                raise ValueError("NPC autonomous travel is unavailable during a live colocated encounter")
+            member_ids = {materialized.actor_id}
+            for encounter in self.encounters.values():
+                if materialized.actor_id not in encounter.participants:
+                    continue
+                if has_surviving_colocated_outsider(encounter, member_ids, origin):
+                    raise ValueError("NPC autonomous travel is unavailable during a live colocated encounter")
             require_location_access(materialized, destination_id)
 
         agenda.begin_travel(
