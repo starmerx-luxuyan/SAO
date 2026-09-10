@@ -15,6 +15,7 @@ from sao_mcp.corpus.floor7_intrigue import (
 from sao_mcp.corpus.monsters import AINCRAD_MONSTERS
 from sao_mcp.domain.models import CursorColor, ItemInstance
 from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.transport import authorized_transport, authorized_transport_record
 
 
 CASINO = "floor_7_volupta_grand_casino"
@@ -86,6 +87,7 @@ class Floor7CasinoIntrigueScenario:
                 "disguised_lykaon_actor_id": None,
                 "true_species_revealed": False,
                 "storm_lykaon_freed": False,
+                "stable_escape_transport": None,
                 "field_encounter_id": None,
             },
         )
@@ -215,7 +217,6 @@ class Floor7CasinoIntrigueScenario:
             loot_table_id=definition.loot_table_id,
             quest_kill_id=definition.quest_kill_id,
         )
-        lykaon.location_id = KORLOY_STABLES
         lykaon.hp = max(1, int(round(lykaon.max_hp * 0.33)))
         lykaon.alive = True
         lykaon.cursor = CursorColor.YELLOW
@@ -272,9 +273,17 @@ class Floor7CasinoIntrigueScenario:
         lykaon = self.runtime.actors[state["disguised_lykaon_actor_id"]]
         lykaon.metadata["restrained_by_chain"] = False
         lykaon.metadata["freed_from_korloy"] = True
-        self.runtime.advance_world(STABLE_ESCAPE_MS)
-        actor.location_id = WEST_RIVERBANK
-        lykaon.location_id = WEST_RIVERBANK
+        transport = authorized_transport(
+            self.runtime,
+            transport_id=f"korloy_stable_escape:{actor_id}",
+            actor_ids=[actor_id, lykaon.actor_id],
+            carrier_actor_id=None,
+            from_location_id=KORLOY_STABLES,
+            to_location_id=WEST_RIVERBANK,
+            elapsed_ms=STABLE_ESCAPE_MS,
+            transport_tags=("korloy_stable_escape", "rear_yard_route"),
+        )
+        state["stable_escape_transport"] = authorized_transport_record(transport)
         encounter = self.runtime.start_encounter([actor_id, lykaon.actor_id], zone_id=WEST_RIVERBANK, safe_zone=False)
         lykaon.cursor = CursorColor.YELLOW
         lykaon.metadata["employment_fades_at_encounter_ms"] = encounter.time_ms + EMPLOYMENT_FADE_MS
@@ -292,7 +301,6 @@ class Floor7CasinoIntrigueScenario:
         deadline = int(lykaon.metadata["employment_fades_at_encounter_ms"])
         remaining = max(0, deadline - encounter.time_ms)
         if remaining:
-            self.runtime.advance_world(remaining)
             self.runtime.advance_encounter(encounter.encounter_id, remaining)
         lykaon.cursor = CursorColor.RED
         lykaon.metadata["korloy_employment_active"] = False
