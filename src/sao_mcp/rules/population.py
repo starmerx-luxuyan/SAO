@@ -1,155 +1,114 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
+
+from sao_mcp.domain.models import ProvenanceKind
 
 
-class PlayerPopulationSegment(str, Enum):
+class PopulationBand(StrEnum):
+    UNCLASSIFIED = "unclassified"
     FRONTLINE = "frontline"
     PRODUCTION = "production"
     MID_TIER = "mid_tier"
     CASUAL = "casual"
+    SHELTERED = "sheltered"
 
 
 @dataclass(slots=True)
 class PopulationCohortState:
+    """One aggregate cohort containing only players that are not materialized as actors."""
+
     cohort_id: str
-    segment: PlayerPopulationSegment
-    headcount: int
-    floor_number: int
-    location_id: str
+    band: PopulationBand
+    count: int
+    location_id: str | None
     average_level: float
     activity: str
-    provenance: str = "simulation"
+    cumulative_deaths: int = 0
+    provenance_kind: ProvenanceKind = ProvenanceKind.SIMULATION
+    source_ref: str | None = None
+    movement_target_location_id: str | None = None
+    from_location_id: str | None = None
+    next_location_id: str | None = None
+    started_at_ms: int | None = None
+    due_at_ms: int | None = None
+    traversal_tags: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.cohort_id:
             raise ValueError("population cohort_id must be non-empty")
-        if self.headcount < 0:
-            raise ValueError("population cohort headcount cannot be negative")
-        if not 1 <= self.floor_number <= 100:
-            raise ValueError("population cohort floor_number must be between 1 and 100")
-        if not self.location_id:
-            raise ValueError("population cohort location_id must be non-empty")
+        if self.count < 0:
+            raise ValueError("population cohort count cannot be negative")
         if self.average_level < 1:
             raise ValueError("population cohort average_level must be at least 1")
         if not self.activity:
             raise ValueError("population cohort activity must be non-empty")
-        if self.provenance not in {"canon", "canon_inferred", "simulation"}:
-            raise ValueError("population cohort provenance must be canon, canon_inferred, or simulation")
+        if self.cumulative_deaths < 0:
+            raise ValueError("population cohort cumulative_deaths cannot be negative")
+        if self.provenance_kind is not ProvenanceKind.SIMULATION and not self.source_ref:
+            raise ValueError("non-simulation population cohort requires source_ref")
 
+    @property
+    def active(self) -> bool:
+        return self.next_location_id is not None
 
-class PlayerPopulationState:
-    """Authoritative ledger for unmaterialized player cohorts.
+    def begin_route(self, target_location_id: str) -> None:
+        if self.active or self.movement_target_location_id is not None:
+            raise ValueError(f"population cohort {self.cohort_id} already has an active movement order")
+        if self.count <= 0:
+            raise ValueError("empty population cohort cannot move")
+        if self.location_id is None:
+            raise RuntimeError("settled population cohort must have a location before movement begins")
+        if self.location_id == target_location_id:
+            raise ValueError("population cohort is already at the requested destination")
+        self.movement_target_location_id = target_location_id
 
-    Named/materialized player actors remain ordinary runtime actors. Cohorts represent only the
-    background players that are intentionally not materialized one-by-one, so the two populations
-    never mirror the same person.
-    """
-
-    def __init__(self) -> None:
-        self.cohorts: dict[str, PopulationCohortState] = {}
-        self.cumulative_deaths = 0
-
-    def add(self, cohort: PopulationCohortState) -> PopulationCohortState:
-        if cohort.cohort_id in self.cohorts:
-            raise ValueError(f"population cohort already exists: {cohort.cohort_id}")
-        self.cohorts[cohort.cohort_id] = cohort
-        return cohort
-
-    def reclassify(
+    def begin_leg(
         self,
-        cohort_id: str,
-        segment: PlayerPopulationSegment,
         *,
-        count: int | None = None,
-        new_cohort_id: str | None = None,
-        activity: str | None = None,
-    ) -> tuple[PopulationCohortState, PopulationCohortState | None]:
-        cohort = self.cohorts[cohort_id]
-        moved = cohort.headcount if count is None else count
-        if moved <= 0 or moved > cohort.headcount:
-            raise ValueError("population reclassification count must be within the source cohort")
+        from_location_id: str,
+        next_location_id: str,
+        started_at_ms: int,
+        due_at_ms: int,
+        traversal_tags: tuple[str, ...],
+    ) -> None:
+        if self.active:
+            raise ValueError(f"population cohort {self.cohort_id} already has an active movement leg")
+        if self.movement_target_location_id is None:
+            raise RuntimeError("population movement leg requires an active route order")
+        if due_at_ms <= started_at_ms:
+            raise ValueError("population movement due time must be after its start time")
+        if self.location_id != from_location_id:
+            raise RuntimeError("population movement origin disagrees with settled cohort location")
+        self.from_location_id = from_location_id
+        self.next_location_id = next_location_id
+        self.started_at_ms = started_at_ms
+        self.due_at_ms = due_at_ms
+        self.traversal_tags = traversal_tags
+        self.location_id = None
 
-        if moved == cohort.headcount:
-            cohort.segment = segment
-            if activity is not None:
-                if not activity:
-                    raise ValueError("population cohort activity must be non-empty")
-                cohort.activity = activity
-            return cohort, None
+    def finish_leg(self) -> str:
+        if not self.active or self.next_location_id is None:
+            raise RuntimeError("population cohort has no active movement leg")
+        destination_id = self.next_location_id
+        self.location_id = destination_id
+        self.from_location_id = None
+        self.next_location_id = None
+        self.started_at_ms = None
+        self.due_at_ms = None
+        self.traversal_tags = ()
+        if destination_id == self.movement_target_location_id:
+            self.movement_target_location_id = None
+        return destination_id
 
-        if not new_cohort_id:
-            raise ValueError("partial population reclassification requires new_cohort_id")
-        if new_cohort_id in self.cohorts:
-            raise ValueError(f"population cohort already exists: {new_cohort_id}")
-        cohort.headcount -= moved
-        split = PopulationCohortState(
-            cohort_id=new_cohort_id,
-            segment=segment,
-            headcount=moved,
-            floor_number=cohort.floor_number,
-            location_id=cohort.location_id,
-            average_level=cohort.average_level,
-            activity=activity or cohort.activity,
-            provenance=cohort.provenance,
-        )
-        self.cohorts[split.cohort_id] = split
-        return cohort, split
-
-    def apply_losses(self, cohort_id: str, deaths: int) -> PopulationCohortState:
-        cohort = self.cohorts[cohort_id]
-        if deaths <= 0 or deaths > cohort.headcount:
-            raise ValueError("population deaths must be positive and cannot exceed cohort headcount")
-        cohort.headcount -= deaths
-        self.cumulative_deaths += deaths
-        return cohort
-
-    def segment_totals(self) -> dict[str, int]:
-        totals = {segment.value: 0 for segment in PlayerPopulationSegment}
-        for cohort in self.cohorts.values():
-            totals[cohort.segment.value] += cohort.headcount
-        return totals
-
-    def living_count(self) -> int:
-        return sum(cohort.headcount for cohort in self.cohorts.values())
-
-    def dump_state(self) -> dict:
-        return {
-            "cohorts": {
-                cohort_id: {
-                    "cohort_id": cohort.cohort_id,
-                    "segment": cohort.segment.value,
-                    "headcount": cohort.headcount,
-                    "floor_number": cohort.floor_number,
-                    "location_id": cohort.location_id,
-                    "average_level": cohort.average_level,
-                    "activity": cohort.activity,
-                    "provenance": cohort.provenance,
-                }
-                for cohort_id, cohort in self.cohorts.items()
-            },
-            "cumulative_deaths": self.cumulative_deaths,
-        }
-
-    def load_state(self, payload: dict) -> None:
-        cohorts: dict[str, PopulationCohortState] = {}
-        for cohort_id, row in payload.get("cohorts", {}).items():
-            cohort = PopulationCohortState(
-                cohort_id=row["cohort_id"],
-                segment=PlayerPopulationSegment(row["segment"]),
-                headcount=int(row["headcount"]),
-                floor_number=int(row["floor_number"]),
-                location_id=row["location_id"],
-                average_level=float(row["average_level"]),
-                activity=row["activity"],
-                provenance=row.get("provenance", "simulation"),
-            )
-            if cohort.cohort_id != cohort_id:
-                raise ValueError(f"population cohort key/id mismatch: {cohort_id}")
-            cohorts[cohort_id] = cohort
-        cumulative_deaths = int(payload.get("cumulative_deaths", 0))
-        if cumulative_deaths < 0:
-            raise ValueError("population cumulative_deaths cannot be negative")
-        self.cohorts = cohorts
-        self.cumulative_deaths = cumulative_deaths
+    def cancel_empty_route(self) -> None:
+        if self.count != 0:
+            raise ValueError("only an empty population cohort can cancel movement by extinction")
+        self.location_id = None
+        self.movement_target_location_id = None
+        self.from_location_id = None
+        self.next_location_id = None
+        self.started_at_ms = None
+        self.due_at_ms = None
+        self.traversal_tags = ()
