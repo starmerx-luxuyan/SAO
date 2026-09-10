@@ -27,9 +27,10 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
         This tool does not interpret natural language, select fallback actions, or roll separate outcomes.
         Action shapes are validated before execution; mechanical failures are raised by the authoritative
-        runtime and already-completed mechanical actions are not rolled back. NPC and guild travel actions
-        schedule concurrent activity; they do not advance the world clock by themselves. Dynamic facts enter
-        an entity's knowledge only through explicit observation, inference, or an actual colocated report.
+        runtime and already-completed mechanical actions are not rolled back. NPC, guild and aggregate
+        population travel actions schedule concurrent activity; they do not advance the world clock by
+        themselves. Dynamic facts enter an entity's knowledge only through explicit observation, inference,
+        or an actual colocated report.
         """
         return _json(gm_turn_executor.execute(actions, world_tick_ms=world_tick_ms))
 
@@ -63,6 +64,25 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
         if guild_id is not None:
             rows = [row for row in rows if row["guild_id"] == guild_id]
         return _json({"activities": rows})
+
+    @mcp.tool()
+    def get_player_population_state() -> str:
+        """Inspect conserved unmaterialized player cohorts plus materialized-player accounting."""
+        return _json(gm_turn_executor.runtime.population_state())
+
+    @mcp.tool()
+    def get_player_population_history(cohort_id: str | None = None) -> str:
+        """Inspect aggregate player-population initialization, movement, losses, splits and materialization history."""
+        rows = gm_turn_executor.runtime.population_history
+        if cohort_id is not None:
+            rows = [
+                row
+                for row in rows
+                if row.get("cohort_id") == cohort_id
+                or row.get("source_cohort_id") == cohort_id
+                or row.get("new_cohort_id") == cohort_id
+            ]
+        return _json({"events": rows})
 
     @mcp.tool()
     def get_entity_knowledge(entity_id: str) -> str:
