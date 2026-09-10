@@ -25,7 +25,8 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
         This tool does not interpret natural language, select fallback actions, or roll separate outcomes.
         Action shapes are validated before execution; mechanical failures are raised by the authoritative
         runtime and already-completed mechanical actions are not rolled back. NPC travel actions schedule
-        concurrent activity; they do not advance the world clock by themselves.
+        concurrent activity; they do not advance the world clock by themselves. Dynamic facts enter an
+        entity's knowledge only through explicit observation, inference, or an actual colocated report.
         """
         return _json(gm_turn_executor.execute(actions, world_tick_ms=world_tick_ms))
 
@@ -46,3 +47,19 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
         if npc_id is not None:
             rows = [row for row in rows if row["npc_id"] == npc_id]
         return _json({"activities": rows})
+
+    @mcp.tool()
+    def get_entity_knowledge(entity_id: str) -> str:
+        """Inspect the entity's current dynamic beliefs, each derived from its latest knowledge event."""
+        return _json(gm_turn_executor.runtime.knowledge_state(entity_id))
+
+    @mcp.tool()
+    def get_entity_knowledge_history(entity_id: str) -> str:
+        """Inspect the entity's full dynamic knowledge history, preserving rumors, mistakes and corrections."""
+        knower_id = gm_turn_executor.runtime._knowledge_owner_id(entity_id)
+        rows = [
+            event
+            for event in gm_turn_executor.runtime.knowledge_events
+            if event.knower_id == knower_id
+        ]
+        return _json({"knower_id": knower_id, "events": rows})
