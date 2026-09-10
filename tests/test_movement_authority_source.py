@@ -12,6 +12,7 @@ LOCATION_AUTHORITY_FILES = {
     Path("rules/travel.py"),
     Path("rules/group_travel.py"),
     Path("rules/transport.py"),
+    Path("rules/spawn.py"),
     Path("runtime/npc_autonomy_runtime.py"),
     Path("runtime/guild_autonomy_runtime.py"),
 }
@@ -64,6 +65,6 @@ def test_runtime_location_mutation_is_confined_to_movement_authorities():
             violations.append(f"{relative.as_posix()}:{line}")
 
     assert violations == [], (
-        "Direct live world-location mutation bypasses travel/transport authority:\n"
+        "Direct live world-location mutation bypasses travel/transport/spawn authority:\n"
         + "\n".join(violations)
     )
