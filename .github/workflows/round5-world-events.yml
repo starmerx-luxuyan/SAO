@@ -4,36 +4,32 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
-  audit:
-    if: github.event.head_commit.message == 'Run round5 final event audit'
+  apply:
+    if: github.event.head_commit.message == 'Run round5 Witch return and transition gate'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Audit remaining scenario transition methods
+      - name: Apply Witch return and transition gate
+        run: python scripts/round5_witch_and_gate.py
+      - name: Verify final round5 state
         run: |
-          python - <<'PY'
-          import ast
-          from pathlib import Path
-
-          root = Path('src/sao_mcp/scenarios')
-          prefixes = ('trigger_', 'advance_', 'resolve_', 'finish_', 'complete_')
-          for path in sorted(root.glob('*.py')):
-              text = path.read_text(encoding='utf-8')
-              lines = text.splitlines()
-              tree = ast.parse(text)
-              for node in ast.walk(tree):
-                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                      continue
-                  if not node.name.startswith(prefixes):
-                      continue
-                  args = [arg.arg for arg in node.args.args if arg.arg != 'self']
-                  end = min(len(lines), node.lineno + 9)
-                  preview = ' | '.join(
-                      line.strip() for line in lines[node.lineno-1:end] if line.strip()
-                  )
-                  print(f'{path.name}:{node.lineno}:{node.name}:args={args} :: {preview}')
-          PY
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified final round5 state
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/scenarios/floor22_witch.py src/sao_mcp/server_floor22.py tests/test_floor22_witch_quest.py tests/test_floor8_standoff.py tests/test_world_event_authority.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Make Witch return event-driven and lock transition classification"
+          git push origin HEAD:main
