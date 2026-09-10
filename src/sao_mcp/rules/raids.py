@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sao_mcp.domain.models import CombatantState, EntityKind, EncounterState, WorldState
+from sao_mcp.rules.group_travel import exit_encounter_via_travel
 
 
 RAID_ROLE_TANK = "tank"
@@ -162,8 +163,7 @@ def retreat_from_boss_room(
         destination_id = f"floor_{floor}_labyrinth"
         if destination_id not in runtime.world_map.locations:
             raise ValueError("boss room has no mapped labyrinth retreat destination")
-        actor.location_id = destination_id
-        encounter.participants.pop(actor_id, None)
+        resolution = exit_encounter_via_travel(runtime, encounter_id, [actor_id], destination_id)
         runtime._append(
             encounter,
             "boss_room_retreat",
@@ -171,6 +171,8 @@ def retreat_from_boss_room(
             None,
             method="door",
             destination_id=destination_id,
+            elapsed_ms=resolution.elapsed_ms,
+            traversal_tags=list(resolution.traversal_tags),
         )
     elif method == "teleport":
         if encounter.anti_crystal:
