@@ -20,13 +20,8 @@ def _json(value: Any) -> str:
 def register_floor2_tools(mcp, taurus_raid, martial_arts) -> None:
     @mcp.tool()
     def start_floor2_taurus_raid(player_ids: list[str]) -> str:
-        """Begin the Floor 2 Taurus raid with Nato and Baran in the Boss Room."""
+        """Begin the Floor 2 Taurus raid with Nato and Baran in the Boss Room; Asterius enters automatically after both fall."""
         return _json(taurus_raid.start_raid(player_ids))
-
-    @mcp.tool()
-    def unleash_floor2_asterius(instance_id: str) -> str:
-        """After Nato and Baran are defeated, bring Asterius the Taurus King into the same encounter."""
-        return _json(taurus_raid.unleash_asterius(instance_id))
 
     @mcp.tool()
     def get_floor2_taurus_raid(instance_id: str) -> str:
