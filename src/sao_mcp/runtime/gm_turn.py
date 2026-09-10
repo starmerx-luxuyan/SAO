@@ -44,6 +44,14 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"npc_id", "destination_id"}),
         frozenset(),
     ),
+    "assign_guild_goal": (
+        frozenset({"guild_id", "leader_id", "goal_id", "target_location_id", "assigned_member_ids"}),
+        frozenset({"basis_fact_id"}),
+    ),
+    "clear_guild_goal": (
+        frozenset({"guild_id", "leader_id"}),
+        frozenset(),
+    ),
     "observe_fact": (
         frozenset({"entity_id", "fact_id", "value"}),
         frozenset({"source_id"}),
@@ -140,6 +148,14 @@ class GMTurnExecutor:
                 raise ValueError(
                     f"GM turn action {index} ({op}) has unknown fields: {', '.join(sorted(unknown))}"
                 )
+            if op == "assign_guild_goal":
+                member_ids = action["assigned_member_ids"]
+                if not isinstance(member_ids, list) or not member_ids or any(
+                    not isinstance(actor_id, str) for actor_id in member_ids
+                ):
+                    raise ValueError(
+                        f"GM turn action {index} (assign_guild_goal) assigned_member_ids must be a non-empty string list"
+                    )
 
     def _execute_action(self, action: dict[str, Any]) -> Any:
         op = action["op"]
@@ -207,6 +223,17 @@ class GMTurnExecutor:
                 action["npc_id"],
                 action["destination_id"],
             )
+        if op == "assign_guild_goal":
+            return runtime.assign_guild_goal(
+                action["guild_id"],
+                action["leader_id"],
+                action["goal_id"],
+                action["target_location_id"],
+                action["assigned_member_ids"],
+                basis_fact_id=action.get("basis_fact_id"),
+            )
+        if op == "clear_guild_goal":
+            return runtime.clear_guild_goal(action["guild_id"], action["leader_id"])
         if op == "observe_fact":
             return runtime.record_observation(
                 action["entity_id"],
@@ -242,19 +269,25 @@ class GMTurnExecutor:
 
     @staticmethod
     def _actor_ids(actions: list[dict[str, Any]]) -> set[str]:
-        fields = {
+        scalar_fields = {
             "actor_id",
             "attacker_id",
             "target_id",
             "outgoing_id",
             "incoming_id",
+            "leader_id",
         }
-        return {
+        actor_ids = {
             value
             for action in actions
             for key, value in action.items()
-            if key in fields and isinstance(value, str)
+            if key in scalar_fields and isinstance(value, str)
         }
+        for action in actions:
+            member_ids = action.get("assigned_member_ids")
+            if isinstance(member_ids, list):
+                actor_ids.update(actor_id for actor_id in member_ids if isinstance(actor_id, str))
+        return actor_ids
 
     @staticmethod
     def _encounter_ids(actions: list[dict[str, Any]]) -> set[str]:
@@ -273,6 +306,14 @@ class GMTurnExecutor:
             for action in actions
             for key, value in action.items()
             if key in fields and isinstance(value, str)
+        }
+
+    @staticmethod
+    def _guild_ids(actions: list[dict[str, Any]]) -> set[str]:
+        return {
+            action["guild_id"]
+            for action in actions
+            if isinstance(action.get("guild_id"), str)
         }
 
     def execute(self, actions: list[dict[str, Any]], *, world_tick_ms: int = 0) -> dict:
@@ -299,6 +340,7 @@ class GMTurnExecutor:
         actor_ids = self._actor_ids(actions)
         encounter_ids = self._encounter_ids(actions)
         knowledge_entity_ids = self._knowledge_entity_ids(actions)
+        guild_ids = self._guild_ids(actions)
         new_events = {}
         for encounter_id, encounter in runtime.encounters.items():
             start = event_counts.get(encounter_id, 0)
@@ -345,6 +387,10 @@ class GMTurnExecutor:
             "npc_agendas": {
                 npc_id: runtime.npc_agenda_state(npc_id)
                 for npc_id in sorted(npc_ids)
+            },
+            "guild_agendas": {
+                guild_id: runtime.guild_agenda_state(guild_id)
+                for guild_id in sorted(guild_ids)
             },
             "knowledge": {
                 entity_id: runtime.knowledge_state(entity_id)
