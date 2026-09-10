@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from sao_mcp.domain.models import EntityKind, ProvenanceKind
 from sao_mcp.rules.population import PopulationBand, PopulationCohortState
@@ -234,8 +234,10 @@ class PopulationAincradRuntime(GuildAutonomyAincradRuntime):
         destination = self.world_map.locations[destination_id]
         if not self.world.floors[destination.floor_number].unlocked:
             raise ValueError("population movement target floor is not unlocked")
+        probe = replace(cohort)
+        probe.begin_route(destination_id)
+        self._next_population_hop(probe)
         cohort.begin_route(destination_id)
-        self._next_population_hop(cohort)
         self._begin_population_leg(cohort, self.world.now_ms)
         self.population_history.append(
             {
