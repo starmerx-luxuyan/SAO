@@ -13,8 +13,10 @@ from sao_mcp.domain.models import (
     StatusEffectState,
     StatusType,
 )
+from sao_mcp.rules.group_travel import exit_encounter_via_travel, group_travel_record
 from sao_mcp.rules.inventory import add_item, locate_item_container
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.transport import authorized_boarding, authorized_transport_record
 from sao_mcp.rules.world import unlock_dynamic_world_connection
 
 
@@ -25,6 +27,7 @@ TRAVELLER_GRAVE = "floor_6_traveller_grave"
 SURIBUS = "floor_6_suribus"
 PITHAGRUS_HOUSE = "floor_6_pithagrus_suribus_house"
 CYLON_TRANSPORT = "floor_6_cylon_transport_carriage"
+FIELD = "floor_6_field"
 HOUSE_SEARCH_MS = 75 * 60_000
 TRANSPORT_TO_AMBUSH_MS = 18 * 60_000
 SCRIPTED_PARALYSIS_MS = 2 * 60 * 60_000
@@ -69,16 +72,19 @@ class Floor6StachionScenario:
                 "golden_key_obtained_at_ms": None,
                 "capture_event_started": False,
                 "captured_at_ms": None,
+                "capture_boarding": None,
                 "cylon_actor_id": None,
                 "transport_encounter_id": None,
                 "confiscated_key_instance_id": None,
                 "ambush_site_reached_at_ms": None,
+                "post_ambush_routes_unlocked_at_ms": None,
                 "morte_actor_id": None,
                 "joe_actor_id": None,
                 "ground_cache_actor_id": None,
                 "cylon_killed_at_ms": None,
                 "poison_cloud_active": False,
                 "ambushers_retreated_at_ms": None,
+                "ambusher_retreat_route": None,
                 "ground_loot_recovered_at_ms": None,
                 "recovered_instance_ids": [],
             },
@@ -193,8 +199,14 @@ class Floor6StachionScenario:
             )
         )
         actor.metadata["scripted_capture"] = "cylon_transport"
-        actor.location_id = CYLON_TRANSPORT
-        cylon.location_id = CYLON_TRANSPORT
+        boarding = authorized_boarding(
+            self.runtime,
+            transport_id=f"cylon_carriage_boarding:{actor_id}",
+            actor_ids=[actor_id, cylon.actor_id],
+            from_location_id=PITHAGRUS_HOUSE,
+            transport_location_id=CYLON_TRANSPORT,
+            transport_tags=("cylon_capture", "carriage"),
+        )
         encounter = self.runtime.start_encounter([actor_id, cylon.actor_id], zone_id=CYLON_TRANSPORT, safe_zone=False)
         self.runtime._append(
             encounter,
@@ -203,11 +215,13 @@ class Floor6StachionScenario:
             actor_id,
             poison_jar_template_id=POISON_JAR_ID,
             confiscated_key_instance_id=key.instance_id,
+            boarding_transport_id=boarding.transport_id,
         )
         state.update(
             stage="captured_transport_to_stachion",
             capture_event_started=True,
             captured_at_ms=self.runtime.world.now_ms,
+            capture_boarding=authorized_transport_record(boarding),
             cylon_actor_id=cylon.actor_id,
             transport_encounter_id=encounter.encounter_id,
             confiscated_key_instance_id=key.instance_id,
@@ -219,10 +233,15 @@ class Floor6StachionScenario:
         if state["stage"] != "captured_transport_to_stachion":
             raise ValueError("Cylon's carriage transport is not currently active")
         encounter_id = state["transport_encounter_id"]
-        self.runtime.advance_world(TRANSPORT_TO_AMBUSH_MS)
         self.runtime.advance_encounter(encounter_id, TRANSPORT_TO_AMBUSH_MS)
+        unlock_dynamic_world_connection(
+            self.runtime.world,
+            self.runtime.world_map,
+            STACHION_POST_AMBUSH_CONNECTION_ID,
+        )
         state["stage"] = "morte_joe_ambush_pending"
         state["ambush_site_reached_at_ms"] = self.runtime.world.now_ms
+        state["post_ambush_routes_unlocked_at_ms"] = self.runtime.world.now_ms
         self.runtime._append(
             self.runtime.encounters[encounter_id], "transport_reaches_ambush_site", state["cylon_actor_id"], actor_id
         )
@@ -368,7 +387,6 @@ class Floor6StachionScenario:
             default=0,
         )
         if remaining:
-            self.runtime.advance_world(remaining)
             self.runtime.advance_encounter(state["transport_encounter_id"], remaining)
         actor.metadata.pop("scripted_capture", None)
         state["stage"] = "morte_joe_pvp_active"
@@ -402,18 +420,20 @@ class Floor6StachionScenario:
         if not trigger:
             raise ValueError("the ambushers have not yet reached the simulation retreat condition")
 
+        retreating = [hostile for hostile in hostiles if hostile.alive and not hostile.metadata.get("retreated")]
+        route = None
+        if retreating:
+            movement = exit_encounter_via_travel(
+                self.runtime,
+                encounter.encounter_id,
+                [hostile.actor_id for hostile in retreating],
+                FIELD,
+            )
+            route = group_travel_record(movement)
         retreated_ids: list[str] = []
-        for hostile in hostiles:
-            if not hostile.alive or hostile.metadata.get("retreated"):
-                continue
+        for hostile in retreating:
             hostile.metadata["retreated"] = True
             hostile.metadata["retreated_from_floor6_ambush_at_ms"] = self.runtime.world.now_ms
-            hostile.location_id = "floor_6_field"
-            encounter.participants.pop(hostile.actor_id, None)
-            encounter.positions.pop(hostile.actor_id, None)
-            encounter.threat.pop(hostile.actor_id, None)
-            for threat_map in encounter.threat.values():
-                threat_map.pop(hostile.actor_id, None)
             retreated_ids.append(hostile.actor_id)
             self.runtime._append(
                 encounter,
@@ -423,6 +443,7 @@ class Floor6StachionScenario:
                 hp=hostile.hp,
                 max_hp=hostile.max_hp,
                 retreat_threshold_ratio=AMBUSH_RETREAT_HP_RATIO,
+                destination_id=FIELD,
             )
 
         if not self._ambushers_neutralized(state):
@@ -430,6 +451,7 @@ class Floor6StachionScenario:
         state["stage"] = "ambushers_neutralized_ground_loot"
         state["ambushers_retreated_at_ms"] = self.runtime.world.now_ms
         state["ambusher_retreat_ids"] = retreated_ids
+        state["ambusher_retreat_route"] = route
         return self.status(actor_id)
 
     def recover_cylon_ground_loot(self, actor_id: str) -> dict:
@@ -448,11 +470,6 @@ class Floor6StachionScenario:
             recovered.append(instance_id)
         cache.metadata["emptied"] = True
         cache.metadata["recovered_by_actor_id"] = actor_id
-        unlock_dynamic_world_connection(
-            self.runtime.world,
-            self.runtime.world_map,
-            STACHION_POST_AMBUSH_CONNECTION_ID,
-        )
         state["stage"] = "post_ambush_loot_recovered"
         state["ground_loot_recovered_at_ms"] = self.runtime.world.now_ms
         state["recovered_instance_ids"] = recovered
