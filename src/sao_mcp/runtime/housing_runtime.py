@@ -8,13 +8,13 @@ from sao_mcp.domain.models import Provenance, ProvenanceKind, ZoneKind
 from sao_mcp.rules.housing import HousingState
 from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.relationships import SharedStorage
-from sao_mcp.runtime.communications_runtime import CommunicatingAincradRuntime
+from sao_mcp.runtime.world_event_runtime import WorldEventAincradRuntime
 
 
 PROPERTY_ENTRY_TIME_MS = 15_000  # Simulation transition time.
 
 
-class HousingAincradRuntime(CommunicatingAincradRuntime):
+class HousingAincradRuntime(WorldEventAincradRuntime):
     """Full communicating runtime plus persistent property ownership and interior world nodes."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
@@ -248,7 +248,7 @@ class HousingAincradRuntime(CommunicatingAincradRuntime):
             raise ValueError("actor must be outside this property before entering")
         if not self.can_enter_property(actor_id, property_id):
             raise ValueError("actor is not authorized to enter this property")
-        self.world.now_ms += PROPERTY_ENTRY_TIME_MS
+        self.advance_world(PROPERTY_ENTRY_TIME_MS)
         actor.location_id = state.interior_location_id
         actor.metadata["inside_property_id"] = property_id
         return state
@@ -259,7 +259,7 @@ class HousingAincradRuntime(CommunicatingAincradRuntime):
         if not property_id or property_id not in self.housing.properties:
             raise ValueError("actor is not inside a registered property")
         state = self.housing.properties[str(property_id)]
-        self.world.now_ms += PROPERTY_ENTRY_TIME_MS
+        self.advance_world(PROPERTY_ENTRY_TIME_MS)
         actor.location_id = state.parent_location_id
         actor.metadata.pop("inside_property_id", None)
         return state
