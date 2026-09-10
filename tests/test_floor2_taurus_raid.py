@@ -14,15 +14,24 @@ def test_floor2_taurus_midbosses_transition_into_asterius_and_clear_floor():
     assert state["asterius_id"] not in encounter.participants
     assert {state["nato_id"], state["baran_id"]}.issubset(encounter.participants)
 
-    for actor_id in (state["nato_id"], state["baran_id"]):
-        actor = runtime.actors[actor_id]
-        actor.hp = 0
-        actor.alive = False
-        runtime._resolve_defeat(encounter, actor, player.actor_id)
+    nato = runtime.actors[state["nato_id"]]
+    nato.hp = 0
+    nato.alive = False
+    runtime._resolve_defeat(encounter, nato, player.actor_id)
+    assert scenario._instance(state["instance_id"])["stage"] == "nato_and_baran"
+    assert state["asterius_id"] not in encounter.participants
 
-    state = scenario.unleash_asterius(state["instance_id"])
+    baran = runtime.actors[state["baran_id"]]
+    baran.hp = 0
+    baran.alive = False
+    runtime._resolve_defeat(encounter, baran, player.actor_id)
+
+    # The second authoritative defeat event advances the encounter immediately;
+    # reading status is not required to release the Floor Boss.
+    raw_state = scenario._instance(state["instance_id"])
     boss = runtime.actors[state["asterius_id"]]
-    assert state["stage"] == "asterius"
+    assert raw_state["stage"] == "asterius"
+    assert raw_state["asterius_entered_at_ms"] == runtime.world.now_ms
     assert boss.actor_id in encounter.participants
     assert runtime.boss_bar_state(boss)["hpBars"] == 6
 
