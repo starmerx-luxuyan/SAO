@@ -35,10 +35,14 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "interact_npc": (frozenset({"actor_id", "npc_id"}), frozenset()),
     "accept_quest": (frozenset({"actor_id", "quest_id"}), frozenset()),
     "claim_quest": (frozenset({"actor_id", "quest_id"}), frozenset()),
-    "set_npc_goal": (frozenset({"npc_id", "goal_id"}), frozenset()),
+    "set_npc_goal": (
+        frozenset({"npc_id", "goal_id", "target_location_id"}),
+        frozenset(),
+    ),
+    "clear_npc_goal": (frozenset({"npc_id"}), frozenset()),
     "schedule_npc_travel": (
         frozenset({"npc_id", "destination_id"}),
-        frozenset({"goal_id"}),
+        frozenset(),
     ),
     "advance_world": (frozenset({"elapsed_ms"}), frozenset()),
     "advance_encounter": (
@@ -179,12 +183,17 @@ class GMTurnExecutor:
         if op == "claim_quest":
             return runtime.claim_quest(action["actor_id"], action["quest_id"])
         if op == "set_npc_goal":
-            return runtime.set_npc_goal(action["npc_id"], action["goal_id"])
+            return runtime.set_npc_goal(
+                action["npc_id"],
+                action["goal_id"],
+                action["target_location_id"],
+            )
+        if op == "clear_npc_goal":
+            return runtime.clear_npc_goal(action["npc_id"])
         if op == "schedule_npc_travel":
             return runtime.schedule_npc_travel(
                 action["npc_id"],
                 action["destination_id"],
-                goal_id=action.get("goal_id"),
             )
         if op == "advance_world":
             return {"activated_floor_gates": runtime.advance_world(int(action["elapsed_ms"]))}
