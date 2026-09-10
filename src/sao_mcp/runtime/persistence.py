@@ -76,6 +76,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     npc_autonomy_dump = getattr(runtime, "dump_npc_autonomy_state", None)
     guild_autonomy_dump = getattr(runtime, "dump_guild_autonomy_state", None)
     housing_dump = getattr(runtime, "dump_housing_state", None)
+    population_dump = getattr(runtime, "dump_population_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -94,6 +95,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "npc_autonomy_state": npc_autonomy_dump() if npc_autonomy_dump is not None else {},
         "guild_autonomy_state": guild_autonomy_dump() if guild_autonomy_dump is not None else {},
         "housing_state": housing_dump() if housing_dump is not None else {},
+        "population_state": population_dump() if population_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -102,10 +104,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     payload = _upgrade_payload(json.loads(payload_json))
 
     if into is None:
-        from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
+        from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
         from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
-        runtime: GameRuntime = HousingAincradRuntime()
+        runtime: GameRuntime = PopulationAincradRuntime()
         install_floor22_witch_scenario(runtime)
     else:
         runtime = into
@@ -159,6 +161,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
 
+    population_load = getattr(runtime, "load_population_state", None)
+    if population_load is not None:
+        population_load(payload.get("population_state", {}))
     knowledge_load = getattr(runtime, "load_knowledge_state", None)
     if knowledge_load is not None:
         knowledge_load(payload.get("knowledge_state", {}))
