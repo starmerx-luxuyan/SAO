@@ -14,8 +14,17 @@ from sao_mcp.corpus.floor22 import (
     install_floor22_npc,
 )
 from sao_mcp.domain.models import EntityKind, ItemInstance, StatusEffectState, StatusType
+from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.transport import (
+    authorized_transport,
+    authorized_transport_record,
+    authorized_transport_within_window,
+)
+
+
+LOG_HOUSE_FLIGHT_MS = 15 * 60_000
 
 
 class Floor22WitchScenario:
@@ -66,16 +75,27 @@ class Floor22WitchScenario:
             "witch_encounter_id": None,
             "key_instance_id": None,
             "started_at_ms": runtime.world.now_ms,
+            "outbound_transport": None,
+            "castle_route": [],
+            "return_transport": None,
+            "toto_return_transport": None,
             "completed_at_ms": None,
         }
         self.instances()[instance_id] = state
-        runtime.world.now_ms += 15 * 60_000
+        flight = authorized_transport(
+            runtime,
+            transport_id=f"{instance_id}:log_house_outbound",
+            actor_ids=players,
+            npc_ids=[TOTO_ID],
+            carrier_actor_id=None,
+            from_location_id=FOREST_SITE,
+            to_location_id=QUEST_AREA,
+            elapsed_ms=LOG_HOUSE_FLIGHT_MS,
+            transport_tags=("flying_log_house", "floor22_witch_quest"),
+        )
+        state["outbound_transport"] = authorized_transport_record(flight)
         for actor_id in players:
-            actor = runtime.actors[actor_id]
-            actor.location_id = QUEST_AREA
-            actor.metadata["floor22_witch_instance_id"] = instance_id
-            runtime.world.floors[22].discovered_locations.add(QUEST_AREA)
-        runtime.npcs.states[TOTO_ID].location_id = QUEST_AREA
+            runtime.actors[actor_id].metadata["floor22_witch_instance_id"] = instance_id
         return dict(state)
 
     def collect_optional_treasure(self, actor_id: str, template_id: str) -> ItemInstance:
@@ -117,14 +137,15 @@ class Floor22WitchScenario:
         state = self.instance(instance_id)
         if state["stage"] != "isolated_area":
             raise ValueError("quest instance is not ready to enter the Witch's castle")
-        players = [runtime.actors[actor_id] for actor_id in state["player_ids"] if runtime.actors[actor_id].alive]
-        if not players:
+        player_ids = [actor_id for actor_id in state["player_ids"] if runtime.actors[actor_id].alive]
+        if not player_ids:
             raise ValueError("quest instance has no living players")
-        for actor in players:
-            if actor.location_id != QUEST_AREA:
+        for actor_id in player_ids:
+            if runtime.actors[actor_id].location_id != QUEST_AREA:
                 raise ValueError("all living quest participants must regroup in the isolated quest area")
-            actor.location_id = WITCH_CASTLE
-        runtime.world.now_ms += 12 * 60_000
+        route = travel_together(runtime, player_ids, WITCH_CASTLE)
+        state["castle_route"] = [group_travel_record(route)]
+        players = [runtime.actors[actor_id] for actor_id in player_ids]
         werepanthers = []
         for index in range(4):
             mob = runtime._create_monster(
@@ -305,16 +326,55 @@ class Floor22WitchScenario:
         self._sync_witch_defeat(state)
         if state["stage"] != "witch_defeated":
             raise ValueError("the Witch must be defeated before the Log House can return")
+        returning_ids = [
+            actor_id for actor_id in state["player_ids"]
+            if actor_id in runtime.actors and runtime.actors[actor_id].alive
+        ]
+        if not returning_ids:
+            raise ValueError("the Witch quest has no living player to return")
+        encounter = runtime.encounters.get(state.get("witch_encounter_id"))
+        if encounter is not None:
+            for actor_id in returning_ids:
+                encounter.participants.pop(actor_id, None)
+                encounter.positions.pop(actor_id, None)
+                encounter.threat.pop(actor_id, None)
+                for table in encounter.threat.values():
+                    table.pop(actor_id, None)
+
+        return_started_at_ms = runtime.world.now_ms
+        return_flight = authorized_transport(
+            runtime,
+            transport_id=f"{instance_id}:log_house_return",
+            actor_ids=returning_ids,
+            carrier_actor_id=None,
+            from_location_id=WITCH_CASTLE,
+            to_location_id=FOREST_SITE,
+            elapsed_ms=LOG_HOUSE_FLIGHT_MS,
+            transport_tags=("flying_log_house", "floor22_witch_quest", "return"),
+        )
+        toto_return = authorized_transport_within_window(
+            runtime,
+            transport_id=f"{instance_id}:toto_return",
+            actor_ids=(),
+            npc_ids=[TOTO_ID],
+            carrier_actor_id=None,
+            from_location_id=QUEST_AREA,
+            to_location_id=FOREST_SITE,
+            elapsed_ms=LOG_HOUSE_FLIGHT_MS,
+            started_at_ms=return_started_at_ms,
+            completed_at_ms=runtime.world.now_ms,
+            transport_tags=("flying_log_house", "floor22_witch_quest", "return"),
+        )
+        state["return_transport"] = authorized_transport_record(return_flight)
+        state["toto_return_transport"] = authorized_transport_record(toto_return)
+
         completed = []
-        for actor_id in state["player_ids"]:
+        for actor_id in returning_ids:
             actor = runtime.actors[actor_id]
-            actor.location_id = FOREST_SITE
             actor.metadata.pop("floor22_witch_instance_id", None)
             if runtime.quests.ready_to_claim(actor, QUEST_ID):
                 runtime.quests.claim(actor, QUEST_ID, runtime.catalog, now_ms=runtime.world.now_ms)
                 completed.append(actor_id)
-        runtime.npcs.states[TOTO_ID].location_id = FOREST_SITE
-        runtime.world.now_ms += 15 * 60_000
         state["stage"] = "completed"
         state["completed_at_ms"] = runtime.world.now_ms
         return {"instanceId": instance_id, "completedPlayerIds": completed, "stage": "completed"}
