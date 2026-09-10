@@ -100,6 +100,9 @@ def test_floor6_release_finale_preserves_cube_and_combined_key_instances_through
     assert cleared["combined_key_grounded"] is True
     assert not boss.alive and boss.hp == 0
     assert runtime.world.floors[6].floor_boss_defeated
+
+    # The boss defeat hook advances Buxum's branch before any Buxum status read.
+    assert buxum_scene._state(state["instance_id"])["stage"] == "floor_cleared"
     grounded = buxum_scene.status(state["instance_id"])
     assert grounded["combined_key_holder_id"] is None
 
