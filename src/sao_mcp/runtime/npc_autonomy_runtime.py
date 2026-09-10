@@ -6,7 +6,6 @@ from dataclasses import asdict
 from sao_mcp.corpus.location_access import LOCATION_ACCESS_RULES
 from sao_mcp.rules.access import actor_faction_ids, require_location_access
 from sao_mcp.rules.npc_autonomy import NPCAgendaState
-from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.travel import (
     AUTONOMOUS_TRAVEL_RESTRICTION_KEY,
     has_surviving_colocated_outsider,
@@ -24,61 +23,17 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         self.npc_activity_history: list[dict] = []
         self.register_world_advance_hook(self._resolve_due_npc_activities)
 
-    def _materialized_npc_actor(self, npc_id: str):
-        matches = [
-            actor
-            for actor in self.actors.values()
-            if actor.metadata.get("npc_definition_id") == npc_id
-        ]
-        if len(matches) > 1:
-            raise RuntimeError(f"multiple materialized actors exist for NPC {npc_id}")
-        return matches[0] if matches else None
-
     def _stationary_npc_location_id(self, npc_id: str) -> str:
-        if npc_id not in self.npcs.states:
-            raise KeyError(npc_id)
-        materialized = self._materialized_npc_actor(npc_id)
-        if materialized is None:
-            return self.npcs.states[npc_id].location_id
-        if materialized.location_id is None:
-            raise RuntimeError(f"materialized NPC {npc_id} has no settled world location")
-        return materialized.location_id
+        location_id = super().npc_location_id(npc_id)
+        if location_id is None:
+            raise RuntimeError(f"NPC {npc_id} has no settled world location")
+        return location_id
 
     def npc_location_id(self, npc_id: str) -> str | None:
         agenda = self.npc_agendas.get(npc_id)
         if agenda is not None and agenda.active:
             return None
-        return self._stationary_npc_location_id(npc_id)
-
-    def interact_npc(self, actor_id: str, npc_id: str):
-        materialized = self._materialized_npc_actor(npc_id)
-        if materialized is not None and not materialized.alive:
-            raise ValueError("materialized NPC is not alive for interaction")
-        actor = self.actors[actor_id]
-        interaction = self.npcs.interact_at(
-            actor_id,
-            npc_id,
-            actor_location_id=actor.location_id,
-            npc_location_id=self.npc_location_id(npc_id),
-            now_ms=self.world.now_ms,
-            quests=self.quests,
-        )
-        self.quests.record_event(
-            actor_id,
-            kind=QuestObjectiveKind.TALK,
-            target_id=npc_id,
-        )
-        return interaction
-
-    def claim_quest(self, actor_id: str, quest_id: str):
-        actor = self.actors[actor_id]
-        definition = self.quests.definitions[quest_id]
-        materialized = self._materialized_npc_actor(definition.turn_in_id)
-        if materialized is not None and not materialized.alive:
-            raise ValueError("materialized quest turn-in NPC is not alive")
-        if actor.location_id != self.npc_location_id(definition.turn_in_id):
-            raise ValueError("quest must be turned in to the designated NPC")
-        return self.quests.claim(actor, quest_id, self.catalog, now_ms=self.world.now_ms)
+        return super().npc_location_id(npc_id)
 
     def _location_accessible_to_npc(self, npc_id: str, location_id: str) -> bool:
         materialized = self._materialized_npc_actor(npc_id)
