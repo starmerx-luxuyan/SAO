@@ -103,6 +103,8 @@ def test_permanent_spouse_death_ends_marriage_and_transfers_shared_estate():
     runtime = FamilyCommunityAincradRuntime(seed=1)
     a, b, marriage = _married(runtime, strong=True)
     original_ids = set(a.inventory)
+    a.location_id = "floor_1_west_field"
+    b.location_id = "floor_1_west_field"
     encounter = runtime.start_encounter([a.actor_id, b.actor_id], zone_id="floor_1_west_field")
     b.hp = 0
     b.alive = False

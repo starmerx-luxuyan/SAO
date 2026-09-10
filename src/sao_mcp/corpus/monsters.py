@@ -118,7 +118,7 @@ _MONSTER_ROWS = (
     _monster("forest_elven_swordsman", "Forest Elven Swordsman", 4, level=8, hp_factor=1.05, tags=("forest_elf", "humanoid", "sword")),
     _monster("gaudy_nepenthes", "Gaudy Nepenthes", 4, level=7, hp_factor=1.00, tags=("plant",)),
     _monster(
-        "magnatherium", "Magnatherium", 4, level=10, hp_factor=3.2,
+        "magnatherium", "Magnatherium", 4, level=10, location="floor_4_bear_forest", hp_factor=3.2,
         tags=("rare_named_monster", "beast", "shipwright_of_yore"),
         sources=("https://swordartonline.fandom.com/wiki/Magnatherium",),
         notes="Rare named monster in the Bear Forest; it drops high-quality materials for Shipwright of Yore.",

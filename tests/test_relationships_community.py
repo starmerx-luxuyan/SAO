@@ -91,6 +91,8 @@ def test_same_guild_same_party_sets_simulation_bonus_and_changes_damage():
     runtime.accept_guild_invite(invite.invite_id, b.actor_id)
     party = runtime.create_party(a.actor_id)
     runtime.join_party(party.party_id, b.actor_id)
+    a.location_id = monster.location_id
+    b.location_id = monster.location_id
     runtime.start_encounter([a.actor_id, b.actor_id, monster.actor_id])
     assert a.metadata["guild_party_stat_bonus"] == pytest.approx(0.02)
     assert b.metadata["guild_party_stat_bonus"] == pytest.approx(0.02)

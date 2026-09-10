@@ -54,6 +54,8 @@ def test_monster_defeat_rewards_once_and_party_shares_xp_col():
     monster.hp = 1
     monster.max_hp = 1
     monster.agility = -100
+    a.location_id = monster.location_id
+    b.location_id = monster.location_id
     enc = rt.start_encounter([a.actor_id, b.actor_id, monster.actor_id])
     a_xp_before = int(a.metadata["experience"])
     b_xp_before = int(b.metadata["experience"])

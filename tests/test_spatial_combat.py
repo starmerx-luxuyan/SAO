@@ -10,6 +10,7 @@ def test_default_encounter_formation_and_authoritative_range():
     runtime = SpatialAincradRuntime(seed=1)
     player = runtime.create_character("Spatial")
     monster = runtime.create_training_monster(level=1)
+    player.location_id = monster.location_id
     encounter = runtime.start_encounter([player.actor_id, monster.actor_id])
     assert player.actor_id in encounter.positions
     assert monster.actor_id in encounter.positions
@@ -32,6 +33,7 @@ def test_encounter_movement_consumes_time_and_changes_distance():
     runtime = SpatialAincradRuntime(seed=1)
     player = runtime.create_character("Mover")
     monster = runtime.create_training_monster(level=1)
+    player.location_id = monster.location_id
     encounter = runtime.start_encounter([player.actor_id, monster.actor_id])
     before_distance = runtime.encounter_distance(encounter.encounter_id, player.actor_id, monster.actor_id)
     start_time = encounter.time_ms
@@ -55,6 +57,8 @@ def test_living_actor_blocks_straight_movement_path():
     mover = runtime.create_character("Mover")
     tank = runtime.create_character("Tank")
     monster = runtime.create_training_monster(level=1)
+    mover.location_id = monster.location_id
+    tank.location_id = monster.location_id
     encounter = runtime.start_encounter([mover.actor_id, tank.actor_id, monster.actor_id])
     encounter.positions[mover.actor_id] = (-3.0, 0.0)
     encounter.positions[tank.actor_id] = (0.0, 0.0)
@@ -82,6 +86,8 @@ def test_switch_requires_incoming_member_to_be_spatially_ready():
     monster = runtime.create_training_monster(level=1)
     party = runtime.create_party(outgoing.actor_id)
     runtime.join_party(party.party_id, incoming.actor_id)
+    outgoing.location_id = monster.location_id
+    incoming.location_id = monster.location_id
     encounter = runtime.start_encounter([outgoing.actor_id, incoming.actor_id, monster.actor_id])
     encounter.positions[outgoing.actor_id] = (0.0, 0.0)
     encounter.positions[monster.actor_id] = (1.2, 0.0)
@@ -207,6 +213,7 @@ def test_public_attack_tool_ignores_fake_distance_when_spatial_runtime_is_bootst
     runtime = bootstrap.runtime
     player = runtime.create_character("ToolRange")
     monster = runtime.create_training_monster(level=1)
+    player.location_id = monster.location_id
     encounter = runtime.start_encounter([player.actor_id, monster.actor_id])
     encounter.positions[player.actor_id] = (0.0, 0.0)
     encounter.positions[monster.actor_id] = (4.0, 0.0)

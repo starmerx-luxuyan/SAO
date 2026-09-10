@@ -6,10 +6,8 @@ def _raid():
     runtime = AincradRuntime(seed=1)
     player = runtime.create_character("Raider", level=8)
     player.skill_proficiencies["one_hand_sword"] = 700
-    encounter, boss = runtime.start_floor_boss_encounter(
-        [player.actor_id],
-        enforce_location=False,
-    )
+    player.location_id = "floor_1_boss_room"
+    encounter, boss = runtime.start_floor_boss_encounter([player.actor_id])
     return runtime, player, encounter, boss
 
 

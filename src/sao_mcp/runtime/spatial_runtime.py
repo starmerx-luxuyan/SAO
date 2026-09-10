@@ -25,14 +25,14 @@ from sao_mcp.runtime.aincrad_runtime import AincradRuntime
 class SpatialAincradRuntime(AincradRuntime):
     """Aincrad runtime whose formal combat actions derive range from authoritative 2-D positions."""
 
-    def start_encounter(self, actor_ids, *, zone_id="floor_1_west_field", safe_zone=None, anti_crystal=None):
+    def start_encounter(self, actor_ids, *, zone_id=None, safe_zone=None, anti_crystal=None):
         encounter = super().start_encounter(
             actor_ids,
             zone_id=zone_id,
             safe_zone=safe_zone,
             anti_crystal=anti_crystal,
         )
-        encounter.arena_radius_m = 22.0 if zone_id.endswith("boss_room") else 30.0
+        encounter.arena_radius_m = 22.0 if encounter.zone_id.endswith("boss_room") else 30.0
         default_formation(encounter)
         return encounter
 

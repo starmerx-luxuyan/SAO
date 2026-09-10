@@ -222,7 +222,7 @@ class GameRuntime:
         self,
         actor_ids: list[str],
         *,
-        zone_id: str = "floor_1_west_field",
+        zone_id: str | None = None,
         safe_zone: bool | None = None,
         anti_crystal: bool | None = None,
     ) -> EncounterState:
@@ -239,7 +239,17 @@ class GameRuntime:
             ]
             if conflicts:
                 raise ValueError(f"actor {actor_id} is already in active encounter {conflicts[0]}")
-        location = self.world_map.locations.get(zone_id)
+        participant_locations = {self.actors[actor_id].location_id for actor_id in actor_ids}
+        if None in participant_locations or len(participant_locations) != 1:
+            raise ValueError("encounter participants must already share one settled world location")
+        shared_location_id = next(iter(participant_locations))
+        if zone_id is None:
+            zone_id = shared_location_id
+        elif zone_id != shared_location_id:
+            raise ValueError("encounter zone must match the participants' current world location")
+        if zone_id not in self.world_map.locations:
+            raise KeyError(zone_id)
+        location = self.world_map.locations[zone_id]
         resolved_safe = location.safe_zone if location and safe_zone is None else bool(safe_zone)
         resolved_anti = location.anti_crystal if location and anti_crystal is None else bool(anti_crystal)
         encounter = EncounterState(

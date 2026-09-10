@@ -9,7 +9,7 @@ from sao_mcp.runtime.spatial_runtime import SpatialAincradRuntime
 class RaidSpatialAincradRuntime(SpatialAincradRuntime):
     """Spatial runtime with deterministic formations that remain valid up to a 48-player raid."""
 
-    def start_encounter(self, actor_ids, *, zone_id="floor_1_west_field", safe_zone=None, anti_crystal=None):
+    def start_encounter(self, actor_ids, *, zone_id=None, safe_zone=None, anti_crystal=None):
         # Encounter time is intentionally local and begins at zero. Action/recovery/reaction deadlines
         # are expressed in that local clock, so they must not leak from an earlier finished encounter.
         for actor_id in dict.fromkeys(actor_ids):

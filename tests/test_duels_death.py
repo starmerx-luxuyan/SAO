@@ -99,6 +99,8 @@ def test_illegal_field_pvp_still_turns_green_attacker_orange():
     runtime = SocialTimelineAincradRuntime(seed=1)
     a = runtime.create_character("A")
     b = runtime.create_character("B")
+    a.location_id = "floor_1_west_field"
+    b.location_id = "floor_1_west_field"
     encounter = runtime.start_encounter([a.actor_id, b.actor_id], zone_id="floor_1_west_field")
     result, _ = runtime.attack_authoritative(
         encounter.encounter_id,

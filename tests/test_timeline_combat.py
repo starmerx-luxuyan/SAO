@@ -69,6 +69,7 @@ def test_queued_attack_resolves_when_no_boss_event_precedes_it():
     runtime = TimelineRaidAincradRuntime(seed=1)
     player = runtime.create_character("Timeline")
     monster = runtime.create_training_monster(level=1)
+    player.location_id = monster.location_id
     encounter = runtime.start_encounter([player.actor_id, monster.actor_id])
     encounter.positions[player.actor_id] = (0.0, 0.0)
     encounter.positions[monster.actor_id] = (1.2, 0.0)
@@ -90,6 +91,7 @@ def test_target_moving_out_during_windup_causes_queued_whiff():
     runtime = TimelineRaidAincradRuntime(seed=1)
     player = runtime.create_character("Attacker")
     target = runtime.create_training_monster(level=1)
+    player.location_id = target.location_id
     encounter = runtime.start_encounter([player.actor_id, target.actor_id])
     encounter.positions[player.actor_id] = (0.0, 0.0)
     encounter.positions[target.actor_id] = (1.2, 0.0)

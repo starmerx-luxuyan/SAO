@@ -9,6 +9,8 @@ def test_runtime_attack_builds_threat_and_switch_opening():
     party = rt.create_party(a.actor_id)
     rt.join_party(party.party_id, b.actor_id)
     monster = rt.create_training_monster(level=4)
+    a.location_id = monster.location_id
+    b.location_id = monster.location_id
     enc = rt.start_encounter([a.actor_id, b.actor_id, monster.actor_id])
 
     result = rt.attack(enc.encounter_id, a.actor_id, monster.actor_id, defense="none", seed=5)
@@ -25,7 +27,9 @@ def test_safe_zone_blocks_hostile_damage_without_crime():
     rt = GameRuntime(seed=1)
     a = rt.create_character("A")
     b = rt.create_character("B")
-    enc = rt.start_encounter([a.actor_id, b.actor_id], safe_zone=True, zone_id="town")
+    enc = rt.start_encounter(
+        [a.actor_id, b.actor_id], safe_zone=True, zone_id="floor_1_town_of_beginnings"
+    )
     before = b.hp
     result = rt.attack(enc.encounter_id, a.actor_id, b.actor_id, defense="none", seed=1)
     assert not result.legal
