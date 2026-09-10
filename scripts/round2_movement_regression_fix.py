@@ -137,3 +137,12 @@ for path in ("tests/test_floor4_nocturne.py", "tests/test_floor8_emergency.py"):
             raise RuntimeError(f"{path}: Floor 8 setup anchor not found")
         text = text.replace(floor8_anchor, floor8_anchor + '    runtime.advance_world(2 * 60 * 60_000)\n', 1)
     Path(path).write_text(text, encoding="utf-8")
+
+# Kysarah's Falhari truce exits the interception encounter before transporting her to the transfer room.
+# Keeping her in encounter.participants after her world location changes would create contradictory live state.
+replace_once(
+    "tests/test_floor8_emergency.py",
+    '    assert set(encounter.participants) == {a.actor_id, kysarah.actor_id}\n',
+    '    assert set(encounter.participants) == {a.actor_id}\n'
+    '    assert kysarah.actor_id not in encounter.participants\n',
+)
