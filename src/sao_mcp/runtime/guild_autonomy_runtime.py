@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from sao_mcp.corpus.location_access import LOCATION_ACCESS_RULES
-from sao_mcp.domain.models import CursorColor
+from sao_mcp.domain.models import CursorColor, EntityKind
 from sao_mcp.rules.access import actor_faction_ids, require_location_access
 from sao_mcp.rules.guild_autonomy import GuildAgendaState
+from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.routing import shortest_next_hop
 from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY, has_surviving_colocated_outsider
 from sao_mcp.runtime.npc_autonomy_runtime import NPCAutonomyAincradRuntime
@@ -204,9 +205,19 @@ class GuildAutonomyAincradRuntime(NPCAutonomyAincradRuntime):
             raise RuntimeError("a travelling guild-operation member unexpectedly has a settled location")
 
         completed_at_ms = agenda.due_at_ms
-        destination = agenda.next_location_id
+        destination_id = agenda.next_location_id
+        destination = self.world_map.locations[destination_id]
+        floor = self.world.floors[destination.floor_number]
+        newly_discovered = destination_id not in floor.discovered_locations
+        floor.discovered_locations.add(destination_id)
         for actor in members:
-            actor.location_id = destination
+            actor.location_id = destination_id
+            if actor.kind is EntityKind.PLAYER:
+                self.quests.record_event(
+                    actor.actor_id,
+                    kind=QuestObjectiveKind.DISCOVER,
+                    target_id=destination_id,
+                )
         self.guild_activity_history.append(
             {
                 "guild_id": agenda.guild_id,
@@ -214,9 +225,10 @@ class GuildAutonomyAincradRuntime(NPCAutonomyAincradRuntime):
                 "goal_id": agenda.goal_id,
                 "assigned_member_ids": list(agenda.assigned_member_ids),
                 "from_location_id": agenda.from_location_id,
-                "to_location_id": destination,
+                "to_location_id": destination_id,
                 "started_at_ms": agenda.started_at_ms,
                 "completed_at_ms": completed_at_ms,
+                "newly_discovered": newly_discovered,
                 "traversal_tags": list(agenda.traversal_tags),
             }
         )
