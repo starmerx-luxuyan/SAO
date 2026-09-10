@@ -6,7 +6,8 @@ from sao_mcp.corpus.floor6_buxum import BUXUM_ID, BUXUM_LONGSWORD_ID
 from sao_mcp.corpus.floor6_elfwar import KYSARAH_ID, MEDITATION_SKILL_ID
 from sao_mcp.corpus.floor6_finale import COMBINED_IRON_KEY_ID, GOLDEN_CUBE_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, StatusType
-from sao_mcp.rules.inventory import add_item, locate_item_container
+from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.state_authority import locate_runtime_item
 
 
 BOSS_ROOM = "floor_6_boss_room"
@@ -44,22 +45,23 @@ class Floor6BuxumScenario:
         key_id = self.runtime.world.global_flags.get("floor6_combined_iron_key_instance_id")
         if not key_id:
             return None
-        located = locate_item_container(self.runtime.actors, key_id)
+        located = locate_runtime_item(self.runtime, key_id)
         if located is None:
             return None
-        container, key = located
-        if key.template_id != COMBINED_IRON_KEY_ID:
+        if located.item.template_id != COMBINED_IRON_KEY_ID:
             raise RuntimeError("Floor 6 combined-key instance ID points to the wrong item template")
-        if key.owner_id is not None and key.owner_id != container.actor_id:
-            raise RuntimeError("Floor 6 combined key owner_id disagrees with its authoritative inventory container")
-        return container, key
+        return located
 
     def _take_kysarah_combined_key(self) -> tuple[CombatantState, ItemInstance]:
         located = self._combined_key_location()
         if located is None:
             raise ValueError("Kysarah's stolen combined iron key has not reached the Floor 6 finale route")
-        holder, key = located
-        if key.owner_id != holder.actor_id or holder.metadata.get("npc_definition_id") != KYSARAH_ID:
+        holder_id = located.sole_actor_id
+        if holder_id is None:
+            raise ValueError("the canonical Buxum betrayal requires Kysarah to be the combined key's current actor holder")
+        holder = self.runtime.actors[holder_id]
+        key = located.item
+        if holder.metadata.get("npc_definition_id") != KYSARAH_ID:
             raise ValueError("the canonical Buxum betrayal requires the combined key previously stolen by Kysarah")
         holder.inventory.pop(key.instance_id)
         return holder, key
@@ -282,7 +284,7 @@ class Floor6BuxumScenario:
             if any(status.stack_key == "golden_cube_bind" for status in actor.statuses)
         ]
         located = self._combined_key_location()
-        combined_key_holder_id = located[1].owner_id if located is not None else None
+        combined_key_holder_id = located.sole_actor_id if located is not None else None
         return {
             **state,
             "buxum_alive": buxum.alive,

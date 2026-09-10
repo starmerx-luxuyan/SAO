@@ -7,6 +7,7 @@ from sao_mcp.rules.state_authority import (
     quest_owner_ids,
 )
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
+from sao_mcp.runtime.property_economy import make_runtime_economy
 from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
 
 
@@ -80,6 +81,7 @@ def test_quest_outer_actor_mapping_is_current_ownership_authority():
 
 def test_market_escrow_is_item_container_and_owner_projection_is_empty():
     runtime = PopulationAincradRuntime(seed=617)
+    runtime.economy = make_runtime_economy(runtime)
     seller = runtime.create_character("Seller", level=5)
     weapon_id = seller.equipment["weapon"]
     runtime.unequip_item(seller.actor_id, "weapon")

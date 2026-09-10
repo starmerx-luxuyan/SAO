@@ -9,6 +9,7 @@ from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind
 from sao_mcp.rules.factions import adjust_faction_standing, faction_standing
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
+from sao_mcp.rules.state_authority import authoritative_guild_id
 from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 from sao_mcp.scenarios.floor8_standoff import FOREST_ELF_CUSTODY_RESTRICTION
 
@@ -103,7 +104,10 @@ class Floor8SluvaJusticeScenario:
 
     def _guild_ids(self, state: dict) -> list[str]:
         custody_ids = self._custody_ids(state)
-        guild_ids = sorted({self.runtime.actors[actor_id].guild_id for actor_id in custody_ids})
+        resolved_guild_ids = [authoritative_guild_id(self.runtime, actor_id) for actor_id in custody_ids]
+        if any(guild_id is None for guild_id in resolved_guild_ids):
+            raise RuntimeError("Sluva custody includes an actor outside the authoritative guild registry")
+        guild_ids = sorted(set(resolved_guild_ids))
         if guild_ids != [ALS_GUILD_ID, DKB_GUILD_ID]:
             raise RuntimeError("Sluva custody no longer matches the materialized ALS/DKB representatives")
         for guild_id in guild_ids:
@@ -114,7 +118,9 @@ class Floor8SluvaJusticeScenario:
                 raise RuntimeError(f"authoritative GuildState {guild_id} has no shared storage")
             storage = self.runtime.relationships.storages[guild.storage_id]
             expected_members = {
-                actor_id for actor_id in custody_ids if self.runtime.actors[actor_id].guild_id == guild_id
+                actor_id
+                for actor_id in custody_ids
+                if authoritative_guild_id(self.runtime, actor_id) == guild_id
             }
             if not expected_members.issubset(set(guild.member_ids)):
                 raise RuntimeError(f"Sluva custody actors are absent from GuildState {guild_id}")

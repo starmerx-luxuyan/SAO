@@ -211,9 +211,9 @@ class Floor4NocturneScenario:
                 "nocturne_arrived_yofel_at_ms": self.runtime.world.now_ms,
             }
         )
-        if self.runtime.npcs.states[YOFILIS_ID].location_id != YOFEL_CASTLE:
+        if self.runtime.npc_location_id(YOFILIS_ID) != YOFEL_CASTLE:
             raise RuntimeError("the authoritative Yofilis NPC is not at Yofel Castle")
-        if self.runtime.npcs.states[CETRANN_ID].location_id != YOFEL_CASTLE:
+        if self.runtime.npc_location_id(CETRANN_ID) != YOFEL_CASTLE:
             raise RuntimeError("Cetrann is not at Yofel Castle")
 
         instance_id = f"nocturne9_{uuid.uuid4().hex[:12]}"
@@ -432,7 +432,7 @@ class Floor4NocturneScenario:
         kizmel = self.runtime.actors[state["kizmel_actor_id"]]
         if kizmel.location_id != YOFEL_CASTLE:
             raise ValueError("Kizmel must still be at Yofel Castle to escort Yofilis")
-        if self.runtime.npcs.states[YOFILIS_ID].location_id != YOFEL_CASTLE:
+        if self.runtime.npc_location_id(YOFILIS_ID) != YOFEL_CASTLE:
             raise RuntimeError("Yofilis is no longer at Yofel Castle before the secret departure")
         spec = YOFILIS_SECRET_ESCORT
         resolution = authorized_transport(
@@ -484,7 +484,7 @@ class Floor4NocturneScenario:
             raise ValueError("the Kelpie party has not reached Yofilis")
         actor_ids = list(state["search_actor_ids"]) + [state["kizmel_actor_id"]]
         self._require_actor_ids_at(actor_ids, LAKE_YOFEL_NORTH_BEACH)
-        if self.runtime.npcs.states[YOFILIS_ID].location_id != LAKE_YOFEL_NORTH_BEACH:
+        if self.runtime.npc_location_id(YOFILIS_ID) != LAKE_YOFEL_NORTH_BEACH:
             raise RuntimeError("Yofilis is not at the north-beach rendezvous")
         kelpie = self._kelpie(state)
         if kelpie.location_id != LAKE_YOFEL_NORTH_BEACH:
@@ -537,7 +537,7 @@ class Floor4NocturneScenario:
         self._require_actor_ids_at(returning, LAKE_YOFEL_WEST_SHORE)
         if kelpie.location_id != LAKE_YOFEL_WEST_SHORE:
             raise RuntimeError("Morvarc'h is not with the returning party")
-        if self.runtime.npcs.states[YOFILIS_ID].location_id != LAKE_YOFEL_WEST_SHORE:
+        if self.runtime.npc_location_id(YOFILIS_ID) != LAKE_YOFEL_WEST_SHORE:
             raise RuntimeError("Yofilis is not with the returning party")
 
         spec = KELPIE_WEST_SHORE_TO_CASTLE

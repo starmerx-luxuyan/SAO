@@ -5,7 +5,8 @@ import uuid
 
 from sao_mcp.corpus.floor5_flag import FLAG_OF_VALOR
 from sao_mcp.domain.models import EntityKind, ItemInstance
-from sao_mcp.rules.inventory import add_item, locate_item_container
+from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.state_authority import authoritative_guild_id, locate_runtime_item
 
 
 FUSCUS_ID = "fuscus_the_vacant_colossus"
@@ -129,30 +130,33 @@ class Floor5FuscusScenario:
         flag_id = state.get("flag_instance_id")
         if not flag_id:
             return None
-        located = locate_item_container(self.runtime.actors, flag_id)
+        located = locate_runtime_item(self.runtime, flag_id)
         if located is None:
             if state.get("flag_drop_resolved"):
-                raise RuntimeError("resolved Flag of Valor instance is missing from authoritative inventories")
+                raise RuntimeError("resolved Flag of Valor instance is missing from authoritative containers")
             return None
-        container, flag = located
+        flag = located.item
         if flag.template_id != FLAG_OF_VALOR:
             raise RuntimeError("Fuscus flag instance ID points to the wrong item template")
         encounter_id = flag.metadata.get("deployed_encounter_id")
         if encounter_id is None:
             return None
-        if flag.owner_id != container.actor_id:
-            raise RuntimeError("deployed Flag of Valor owner_id disagrees with its authoritative inventory container")
+        deployed_by_actor_id = flag.metadata.get("deployed_by_actor_id")
+        if not isinstance(deployed_by_actor_id, str):
+            raise RuntimeError("deployed Flag of Valor has no authoritative wielder")
+        if located.kind != "actor_inventory" or deployed_by_actor_id not in located.actor_ids:
+            raise RuntimeError("deployed Flag of Valor is no longer in its wielder's inventory pool")
         if encounter_id not in self.runtime.encounters:
             raise RuntimeError("deployed Flag of Valor references an unknown encounter")
         encounter = self.runtime.encounters[encounter_id]
         affected = sorted(
             actor_id
             for actor_id, actor in encounter.participants.items()
-            if actor.metadata.get("flag_of_valor_source_actor_id") == flag.owner_id
+            if actor.metadata.get("flag_of_valor_source_actor_id") == deployed_by_actor_id
             and actor.metadata.get("flag_of_valor_encounter_id") == encounter_id
         )
         return {
-            "owner_id": flag.owner_id,
+            "owner_id": deployed_by_actor_id,
             "flag_instance_id": flag.instance_id,
             "encounter_id": encounter_id,
             "range_m": FLAG_AURA_RANGE_M,
@@ -163,7 +167,8 @@ class Floor5FuscusScenario:
     def refresh_flag_aura(self, actor_id: str, encounter_id: str) -> dict:
         owner = self.runtime.actors[actor_id]
         flag = self._owned_flag(actor_id)
-        if not owner.guild_id:
+        owner_guild_id = authoritative_guild_id(self.runtime, actor_id)
+        if owner_guild_id is None:
             raise ValueError("Flag of Valor requires the wielder to belong to a guild")
         encounter = self.runtime.encounters[encounter_id]
         if actor_id not in encounter.participants or not owner.alive:
@@ -177,7 +182,7 @@ class Floor5FuscusScenario:
         for target_id, target in encounter.participants.items():
             if target_id == actor_id or target.kind is not EntityKind.PLAYER or not target.alive:
                 continue
-            if target.guild_id != owner.guild_id:
+            if authoritative_guild_id(self.runtime, target_id) != owner_guild_id:
                 continue
             target_pos = encounter.positions.get(target_id)
             if target_pos is None:
@@ -190,6 +195,7 @@ class Floor5FuscusScenario:
             target.metadata["flag_of_valor_encounter_id"] = encounter_id
 
         flag.metadata["deployed_encounter_id"] = encounter_id
+        flag.metadata["deployed_by_actor_id"] = actor_id
         state = next(
             state
             for state in self._instances().values()
@@ -205,6 +211,7 @@ class Floor5FuscusScenario:
         encounter = self.runtime.encounters[encounter_id]
         self._clear_flag_source(encounter, actor_id)
         flag.metadata.pop("deployed_encounter_id", None)
+        flag.metadata.pop("deployed_by_actor_id", None)
         return {"owner_id": actor_id, "encounter_id": encounter_id, "deployed": False}
 
     def status(self, instance_id: str) -> dict:

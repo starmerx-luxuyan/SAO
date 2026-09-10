@@ -11,7 +11,7 @@ class ItemContainerRef:
     """Authoritative current container for one live item instance.
 
     ``ItemInstance.owner_id`` is a projection used by serialization/UI. Current ownership is
-    determined by the container: an actor inventory pool, shared storage, or market escrow.
+    determined by the container: an actor inventory pool, ground-loot cache, shared storage, or market escrow.
     Married actors may intentionally share one inventory object, so one inventory container can
     have two actor members without inventing a single holder.
     """
@@ -54,11 +54,17 @@ def locate_runtime_item(runtime, instance_id: str) -> ItemContainerRef | None:
                 raise RuntimeError(
                     f"actor inventory key disagrees with item instance_id: {instance_id} != {item.instance_id}"
                 )
+            ground_cache_actor_id = (
+                actor_ids[0]
+                if len(actor_ids) == 1
+                and runtime.actors[actor_ids[0]].metadata.get("ground_loot_cache") is True
+                else None
+            )
             matches.append(
                 ItemContainerRef(
-                    "actor_inventory",
-                    "actors:" + "::".join(actor_ids),
-                    actor_ids,
+                    "ground_cache" if ground_cache_actor_id is not None else "actor_inventory",
+                    ground_cache_actor_id or ("actors:" + "::".join(actor_ids)),
+                    () if ground_cache_actor_id is not None else actor_ids,
                     item,
                 )
             )
@@ -157,6 +163,12 @@ def assert_runtime_state_authority(runtime) -> None:
     # Actor inventory pools are containers. Sharing one pool is legal only for one active marriage.
     seen_instances: dict[str, str] = {}
     for actor_ids, inventory in _actor_inventory_pools(runtime):
+        ground_cache_actor_id = (
+            actor_ids[0]
+            if len(actor_ids) == 1
+            and runtime.actors[actor_ids[0]].metadata.get("ground_loot_cache") is True
+            else None
+        )
         if len(actor_ids) > 1:
             if relationships is None or len(actor_ids) != 2:
                 raise RuntimeError(f"unowned shared actor inventory pool: {actor_ids}")
@@ -172,13 +184,22 @@ def assert_runtime_state_authority(runtime) -> None:
                 raise RuntimeError(
                     f"actor inventory key disagrees with item instance_id: {instance_id} != {item.instance_id}"
                 )
-            container = "actors:" + "::".join(actor_ids)
+            container = (
+                f"ground:{ground_cache_actor_id}"
+                if ground_cache_actor_id is not None
+                else "actors:" + "::".join(actor_ids)
+            )
             previous = seen_instances.setdefault(instance_id, container)
             if previous != container:
                 raise RuntimeError(
                     f"item instance {instance_id} exists in multiple live containers: {previous}, {container}"
                 )
-            if item.owner_id not in actor_ids:
+            if ground_cache_actor_id is not None:
+                if item.owner_id is not None:
+                    raise RuntimeError(
+                        f"ground-cache item {instance_id} has stale owner_id {item.owner_id!r}"
+                    )
+            elif item.owner_id not in actor_ids:
                 raise RuntimeError(
                     f"item {instance_id} owner_id projection {item.owner_id!r} is outside its actor inventory {actor_ids}"
                 )

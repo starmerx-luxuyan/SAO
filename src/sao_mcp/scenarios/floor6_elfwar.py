@@ -30,7 +30,8 @@ from sao_mcp.rules.group_travel import (
     routed_travel_window_record,
     travel_route_together,
 )
-from sao_mcp.rules.inventory import add_item, locate_item_container
+from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.state_authority import locate_runtime_item
 
 
 CASTLE_GALEY = "floor_6_castle_galey"
@@ -414,16 +415,14 @@ class Floor6ElfWarScenario:
         state = self._state(actor_id)
         actor = self.runtime.actors[actor_id]
         combined_id = self.runtime.world.global_flags.get("floor6_combined_iron_key_instance_id")
-        located = locate_item_container(self.runtime.actors, combined_id) if combined_id else None
+        located = locate_runtime_item(self.runtime, combined_id) if combined_id else None
         combined_holder = None
         combined_exists = located is not None
         if located is not None:
-            container, combined = located
+            combined = located.item
             if combined.template_id != COMBINED_IRON_KEY_ID:
                 raise RuntimeError("Floor 6 combined-key instance ID points to the wrong item template")
-            if combined.owner_id is not None and combined.owner_id != container.actor_id:
-                raise RuntimeError("Floor 6 combined key owner_id disagrees with its authoritative inventory container")
-            combined_holder = combined.owner_id
+            combined_holder = located.sole_actor_id
         return {
             **state,
             "player_location_id": actor.location_id,

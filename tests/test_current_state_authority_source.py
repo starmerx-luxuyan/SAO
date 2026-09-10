@@ -9,6 +9,7 @@ NPC_LOCATION_AUTHORITY_FILES = {
     Path("rules/npcs.py"),
     Path("runtime/knowledge_runtime.py"),
     Path("runtime/npc_autonomy_runtime.py"),
+    Path("rules/transport.py"),
 }
 
 

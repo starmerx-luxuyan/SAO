@@ -17,6 +17,7 @@ from sao_mcp.corpus.progressive_guilds import ALS_GUILD_ID, DKB_GUILD_ID
 from sao_mcp.domain.models import CombatantState, CursorColor, EntityKind, ItemInstance, PartyState
 from sao_mcp.rules.group_travel import group_travel_record, travel_together
 from sao_mcp.rules.spawn import create_character_at
+from sao_mcp.rules.state_authority import authoritative_guild_id
 from sao_mcp.runtime.canonical_guilds import install_progressive_clearing_guilds
 
 
@@ -155,7 +156,7 @@ class Floor8ForestEmergencyScenario:
         )
         invite = self.runtime.invite_to_guild(guild_id, guild.leader_id, actor.actor_id)
         joined = self.runtime.accept_guild_invite(invite.invite_id, actor.actor_id)
-        if joined.guild_id != guild_id or actor.guild_id != guild_id:
+        if authoritative_guild_id(self.runtime, actor.actor_id) != guild_id:
             raise RuntimeError("Floor 8 incident player did not join the authoritative clearing GuildState")
         if actor.actor_id not in joined.member_ids:
             raise RuntimeError("Floor 8 incident player is absent from authoritative guild membership")
@@ -456,7 +457,7 @@ class Floor8ForestEmergencyScenario:
         frontline_actors = {
             actor_id: {
                 "name": self.runtime.actors[actor_id].name,
-                "guild_id": self.runtime.actors[actor_id].guild_id,
+                "guild_id": authoritative_guild_id(self.runtime, actor_id),
                 "party_id": self.runtime.actors[actor_id].party_id,
                 "location_id": self.runtime.actors[actor_id].location_id,
                 "alive": self.runtime.actors[actor_id].alive,

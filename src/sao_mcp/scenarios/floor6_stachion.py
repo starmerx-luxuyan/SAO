@@ -14,7 +14,8 @@ from sao_mcp.domain.models import (
     StatusType,
 )
 from sao_mcp.rules.group_travel import exit_encounter_via_travel, group_travel_record
-from sao_mcp.rules.inventory import add_item, locate_item_container
+from sao_mcp.rules.inventory import add_item
+from sao_mcp.rules.state_authority import locate_runtime_item
 from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.transport import authorized_boarding, authorized_transport_record
 from sao_mcp.rules.world import unlock_dynamic_world_connection
@@ -493,14 +494,12 @@ class Floor6StachionScenario:
         key_owner_id = player_key.owner_id if player_key else None
         key_instance_id = state.get("confiscated_key_instance_id")
         if key_instance_id:
-            located = locate_item_container(self.runtime.actors, key_instance_id)
+            located = locate_runtime_item(self.runtime, key_instance_id)
             if located is not None:
-                container, key = located
+                key = located.item
                 if key.template_id != GOLDEN_KEY_ID:
                     raise RuntimeError("Stachion confiscated golden-key instance ID points to the wrong item template")
-                if key.owner_id is not None and key.owner_id != container.actor_id:
-                    raise RuntimeError("Stachion golden key owner_id disagrees with its authoritative inventory container")
-                key_owner_id = key.owner_id
+                key_owner_id = located.sole_actor_id
             else:
                 key_owner_id = None
         ground_items: list[dict] = []
