@@ -35,6 +35,11 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "interact_npc": (frozenset({"actor_id", "npc_id"}), frozenset()),
     "accept_quest": (frozenset({"actor_id", "quest_id"}), frozenset()),
     "claim_quest": (frozenset({"actor_id", "quest_id"}), frozenset()),
+    "set_npc_goal": (frozenset({"npc_id", "goal_id"}), frozenset()),
+    "schedule_npc_travel": (
+        frozenset({"npc_id", "destination_id"}),
+        frozenset({"goal_id"}),
+    ),
     "advance_world": (frozenset({"elapsed_ms"}), frozenset()),
     "advance_encounter": (
         frozenset({"encounter_id", "elapsed_ms"}),
@@ -173,6 +178,14 @@ class GMTurnExecutor:
             return runtime.accept_quest(action["actor_id"], action["quest_id"])
         if op == "claim_quest":
             return runtime.claim_quest(action["actor_id"], action["quest_id"])
+        if op == "set_npc_goal":
+            return runtime.set_npc_goal(action["npc_id"], action["goal_id"])
+        if op == "schedule_npc_travel":
+            return runtime.schedule_npc_travel(
+                action["npc_id"],
+                action["destination_id"],
+                goal_id=action.get("goal_id"),
+            )
         if op == "advance_world":
             return {"activated_floor_gates": runtime.advance_world(int(action["elapsed_ms"]))}
         if op == "advance_encounter":
@@ -260,6 +273,11 @@ class GMTurnExecutor:
                 row["timeline"] = _plain(runtime.timeline_state(encounter_id))
             encounters[encounter_id] = row
 
+        npc_ids = {
+            action["npc_id"]
+            for action in actions
+            if isinstance(action.get("npc_id"), str)
+        }
         return {
             "world_time_before_ms": world_before,
             "world_time_after_ms": runtime.world.now_ms,
@@ -271,6 +289,10 @@ class GMTurnExecutor:
                 actor_id: _observable_actor(runtime.actors[actor_id])
                 for actor_id in sorted(actor_ids)
                 if actor_id in runtime.actors
+            },
+            "npc_agendas": {
+                npc_id: runtime.npc_agenda_state(npc_id)
+                for npc_id in sorted(npc_ids)
             },
             "encounters": encounters,
         }
