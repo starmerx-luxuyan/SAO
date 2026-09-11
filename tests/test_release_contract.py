@@ -38,6 +38,20 @@ def test_release_plugin_uses_hosted_mcp():
     assert server == {"type": "http", "url": HOSTED_MCP_URL}
 
 
+def test_release_plugin_publication_metadata_is_complete():
+    manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    interface = manifest["interface"]
+
+    assert manifest["homepage"].startswith("https://")
+    assert manifest["repository"].startswith("https://")
+    assert {"Interactive", "Read", "Write"} <= set(interface["capabilities"])
+    assert interface["websiteURL"].startswith("https://")
+    assert interface["privacyPolicyURL"].startswith("https://")
+    assert interface["termsOfServiceURL"].startswith("https://")
+    assert (ROOT / "docs" / "PRIVACY.md").is_file()
+    assert (ROOT / "docs" / "TERMS.md").is_file()
+
+
 def test_release_persistence_schema_is_v3():
     assert SAVE_SCHEMA == "sao.aincrad.save.v3"
 
