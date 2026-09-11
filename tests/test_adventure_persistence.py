@@ -1,3 +1,5 @@
+import json
+
 from sao_mcp.runtime.engine import GameRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 
@@ -61,3 +63,16 @@ def test_save_roundtrip_preserves_shared_actor_identity_world_quests_and_rng():
     assert loaded.encounters[enc.encounter_id].participants[actor.actor_id] is loaded.actors[actor.actor_id]
     assert loaded.npcs.states["npc_tutorial_instructor"].relationship_by_actor[actor.actor_id] == 17
     assert loaded.rng.random() == rt.rng.random()
+
+
+def test_save_export_canonicalizes_discovered_location_sets():
+    rt = GameRuntime(seed=321)
+    actor = rt.create_character("DiscoveryOrder")
+    _go_to_horunka(rt, actor.actor_id)
+
+    first = export_runtime(rt)
+    discovered = json.loads(first)["world"]["floors"]["1"]["discovered_locations"]
+    assert discovered == sorted(discovered)
+
+    loaded = import_runtime(first)
+    assert export_runtime(loaded) == first
