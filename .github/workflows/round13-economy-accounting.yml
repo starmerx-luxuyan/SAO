@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply economy accounting fix
-        run: python scripts/round13_economy_accounting_fix.py
+        run: |
+          python scripts/round13_economy_accounting_fix.py
+          python scripts/round13_economy_accounting_testfix.py
       - name: Verify economy accounting
         run: |
           python -m pip install -e ".[dev]"
