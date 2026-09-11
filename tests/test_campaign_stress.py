@@ -50,6 +50,39 @@ def _payload(runtime) -> dict:
     return json.loads(export_runtime(runtime))
 
 
+def _first_difference(left, right, path: str = "$" ) -> str | None:
+    if type(left) is not type(right):
+        return f"{path}: type {type(left).__name__} != {type(right).__name__}"
+    if isinstance(left, dict):
+        left_keys = set(left)
+        right_keys = set(right)
+        if left_keys != right_keys:
+            return f"{path}: keys only-left={sorted(left_keys - right_keys)!r} only-right={sorted(right_keys - left_keys)!r}"
+        for key in sorted(left_keys):
+            difference = _first_difference(left[key], right[key], f"{path}.{key}")
+            if difference is not None:
+                return difference
+        return None
+    if isinstance(left, list):
+        if len(left) != len(right):
+            return f"{path}: length {len(left)} != {len(right)}"
+        for index, (left_value, right_value) in enumerate(zip(left, right, strict=True)):
+            difference = _first_difference(left_value, right_value, f"{path}[{index}]")
+            if difference is not None:
+                return difference
+        return None
+    if left != right:
+        return f"{path}: {left!r} != {right!r}"
+    return None
+
+
+def _assert_same_campaign_state(left_runtime, right_runtime) -> None:
+    left = _payload(left_runtime)
+    right = _payload(right_runtime)
+    difference = _first_difference(left, right)
+    assert difference is None, difference
+
+
 def test_campaign_long_advance_matches_hourly_scheduler_partitioning():
     runtime, _ = _campaign_seed(1901)
     baseline = export_runtime(runtime)
@@ -60,7 +93,7 @@ def test_campaign_long_advance_matches_hourly_scheduler_partitioning():
     for _ in range(24):
         hourly.advance_world(HOUR)
 
-    assert _payload(long_step) == _payload(hourly)
+    _assert_same_campaign_state(long_step, hourly)
 
 
 def test_campaign_checkpoint_churn_matches_uninterrupted_world():
@@ -74,7 +107,7 @@ def test_campaign_checkpoint_churn_matches_uninterrupted_world():
         checkpointed.advance_world(6 * HOUR)
         checkpointed = import_runtime(export_runtime(checkpointed))
 
-    assert _payload(uninterrupted) == _payload(checkpointed)
+    _assert_same_campaign_state(uninterrupted, checkpointed)
 
 
 def test_locked_floor_population_migration_resumes_on_exact_gate_activation_boundary():
@@ -169,7 +202,7 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
     fighter = runtime.create_character("StressFighter", level=4)
     runtime.travel_actor(fighter.actor_id, WEST)
     ecological_ids = runtime._ecology_actor_ids(location_id=WEST)
-    assert ecological_ids
+    assert ecological_ids, "travel to West Field should materialize a living ecology monster"
     monster_actor_id = ecological_ids[0]
     encounter = runtime.start_encounter([fighter.actor_id, monster_actor_id], zone_id=WEST)
 
@@ -190,7 +223,7 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
         guild.guild_id,
         fact.fact_id,
     )
-    assert len(deliveries) == 1
+    assert len(deliveries) == 1, "guild notice should create exactly one member delivery"
     delivery_id = deliveries[0].delivery_id
 
     operation = runtime.assign_guild_goal(
@@ -200,8 +233,8 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
         TOLBANA,
         [member.actor_id],
     )
-    assert operation.active is True
-    assert runtime.actors[member.actor_id].location_id is None
+    assert operation.active is True, "guild operation should begin immediately"
+    assert runtime.actors[member.actor_id].location_id is None, "active guild traveller should be unsettled"
 
     runtime.set_npc_goal(
         "npc_tutorial_instructor",
@@ -210,9 +243,9 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
         priority=500,
     )
     npc_agenda = runtime.npc_agenda_state("npc_tutorial_instructor")
-    assert npc_agenda["active"] is True
-    assert runtime.social_deliveries[delivery_id].pending is True
-    assert runtime.encounters[encounter.encounter_id].active is True
+    assert npc_agenda["active"] is True, "tutorial NPC should begin its autonomous route"
+    assert runtime.social_deliveries[delivery_id].pending is True, "guild notice must still be in flight at baseline"
+    assert runtime.encounters[encounter.encounter_id].active is True, "stress encounter must be live at baseline"
 
     baseline = export_runtime(runtime)
     uninterrupted = import_runtime(baseline)
@@ -224,13 +257,14 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
         checkpointed = import_runtime(export_runtime(checkpointed))
 
     assert checkpointed.world.now_ms == uninterrupted.world.now_ms
-    assert _payload(uninterrupted) == _payload(checkpointed)
 
     restored_operation = checkpointed.guild_operations[operation.operation_id]
-    assert restored_operation.status.value == "completed"
+    assert restored_operation.status.value == "completed", "guild route should complete within one hour"
     assert checkpointed.actors[member.actor_id].location_id == TOLBANA
     assert checkpointed.npc_location_id("npc_tutorial_instructor") == HORUNKA
     assert checkpointed.social_deliveries[delivery_id].status.value == "delivered"
     assert checkpointed.encounters[encounter.encounter_id].active is True
     assert fighter.actor_id in checkpointed.encounters[encounter.encounter_id].participants
+
+    _assert_same_campaign_state(uninterrupted, checkpointed)
     export_runtime(checkpointed)
