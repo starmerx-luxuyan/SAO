@@ -9,10 +9,10 @@ from sao_mcp.rules.guild_autonomy import GuildAgendaState
 from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.routing import shortest_next_hop
 from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY, has_surviving_colocated_outsider
-from sao_mcp.runtime.npc_autonomy_runtime import NPCAutonomyAincradRuntime
+from sao_mcp.runtime.npc_scheduler_runtime import NPCSchedulerAincradRuntime
 
 
-class GuildAutonomyAincradRuntime(NPCAutonomyAincradRuntime):
+class GuildAutonomyAincradRuntime(NPCSchedulerAincradRuntime):
     """NPC-autonomy runtime plus persistent guild operations executed by real guild members."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:

@@ -43,4 +43,5 @@ def test_gm_set_npc_goal_contract_accepts_actor_core_decision_constraints():
         "relationship_actor_id",
         "min_relationship",
         "resource_requirements",
+        "scheduled_actions",
     }

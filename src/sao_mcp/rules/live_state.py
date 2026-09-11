@@ -29,7 +29,7 @@ def actor_route_state(runtime, actor_id: str) -> dict | None:
     npc_agendas = getattr(runtime, "npc_agendas", {})
     if isinstance(npc_id, str):
         agenda = npc_agendas.get(npc_id)
-        if agenda is not None and agenda.active:
+        if agenda is not None and agenda.active and agenda.activity_kind == "travel":
             matches.append(
                 {
                     "kind": "npc_travel",
@@ -87,6 +87,9 @@ def assert_runtime_live_state(runtime) -> None:
     now = runtime.world.now_ms
     if not isinstance(now, int) or isinstance(now, bool) or now < 0:
         raise RuntimeError("world clock must be a non-negative integer")
+    scheduler_assert = getattr(runtime, "_assert_npc_scheduler_authority", None)
+    if scheduler_assert is not None:
+        scheduler_assert()
 
     active_actor_encounter: dict[str, str] = {}
     for encounter_id, encounter in runtime.encounters.items():
@@ -128,7 +131,15 @@ def assert_runtime_live_state(runtime) -> None:
         if not agenda.active:
             continue
         if agenda.activity_kind != "travel":
-            raise RuntimeError(f"NPC {npc_id} has unsupported active activity {agenda.activity_kind!r}")
+            if agenda.stationary_location_id not in runtime.world_map.locations:
+                raise RuntimeError(f"NPC {npc_id} stationary activity references an unknown location")
+            if agenda.started_at_ms is None or agenda.due_at_ms is None or not (agenda.started_at_ms <= now < agenda.due_at_ms):
+                raise RuntimeError(f"NPC {npc_id} has invalid stationary-activity timing")
+            resolver = getattr(runtime, "_materialized_npc_actor", None)
+            materialized = resolver(npc_id) if resolver is not None else None
+            if materialized is not None and materialized.location_id != agenda.stationary_location_id:
+                raise RuntimeError(f"NPC {npc_id} stationary activity actor is not at its settled location")
+            continue
         if agenda.from_location_id not in runtime.world_map.locations or agenda.target_location_id not in runtime.world_map.locations:
             raise RuntimeError(f"NPC {npc_id} active route references an unknown location")
         if not _has_direct_edge(runtime, agenda.from_location_id, agenda.target_location_id):

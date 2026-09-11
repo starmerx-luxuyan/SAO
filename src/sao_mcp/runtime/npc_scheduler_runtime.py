@@ -431,10 +431,7 @@ class NPCSchedulerAincradRuntime(NPCAutonomyAincradRuntime):
 
     def _finish_travel_leg(self, npc_id: str, agenda) -> int:
         if agenda.activity_kind == NPCPlanActionKind.TRAVEL.value:
-            completed_at_ms = super()._finish_travel_leg(npc_id, agenda)
-            if self.npc_activity_history:
-                self.npc_activity_history[-1].setdefault("status", "completed")
-            return completed_at_ms
+            return super()._finish_travel_leg(npc_id, agenda)
 
         if agenda.due_at_ms is None or agenda.started_at_ms is None or agenda.plan_step_id is None:
             raise RuntimeError(f"active NPC scheduler activity {npc_id} lacks timing or plan-step authority")

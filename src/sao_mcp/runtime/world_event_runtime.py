@@ -333,9 +333,8 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
         self.evaluate_world_events()
 
     def travel_actor(self, actor_id: str, destination_id: str):
-        # GameRuntime.travel_actor delegates to the data-only travel rule, which advances
-        # WorldState directly. Emit the same authoritative time event after that commit.
-        before_ms = self.world.now_ms
+        # Elapsed travel time is emitted through self.advance_world(). Evaluate once more
+        # after the destination commit for arrival-dependent rules, without replaying time hooks.
         resolution = super().travel_actor(actor_id, destination_id)
-        self._emit_world_advance(before_ms)
+        self.evaluate_world_events()
         return resolution

@@ -45,9 +45,14 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
             "relationship_actor_id",
             "min_relationship",
             "resource_requirements",
+            "scheduled_actions",
         }),
     ),
     "clear_npc_goal": (frozenset({"npc_id"}), frozenset()),
+    "interrupt_npc_activity": (
+        frozenset({"npc_id", "reason"}),
+        frozenset({"suspend_goal"}),
+    ),
     "schedule_npc_travel": (
         frozenset({"npc_id", "destination_id"}),
         frozenset(),
@@ -242,9 +247,16 @@ class GMTurnExecutor:
                     else None
                 ),
                 resource_requirements=action.get("resource_requirements"),
+                scheduled_actions=action.get("scheduled_actions"),
             )
         if op == "clear_npc_goal":
             return runtime.clear_npc_goal(action["npc_id"])
+        if op == "interrupt_npc_activity":
+            return runtime.interrupt_npc_activity(
+                action["npc_id"],
+                reason=action["reason"],
+                suspend_goal=bool(action.get("suspend_goal", True)),
+            )
         if op == "schedule_npc_travel":
             return runtime.schedule_npc_travel(
                 action["npc_id"],
@@ -427,6 +439,11 @@ class GMTurnExecutor:
             "npc_agendas": {
                 npc_id: runtime.npc_agenda_state(npc_id)
                 for npc_id in sorted(npc_ids)
+            },
+            "npc_schedulers": {
+                npc_id: runtime.npc_scheduler_state(npc_id)
+                for npc_id in sorted(npc_ids)
+                if hasattr(runtime, "npc_scheduler_state")
             },
             "guild_agendas": {
                 guild_id: runtime.guild_agenda_state(guild_id)

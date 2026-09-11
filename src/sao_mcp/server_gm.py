@@ -49,6 +49,11 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
         return _json(gm_turn_executor.runtime.npc_actor_core_state(npc_id))
 
     @mcp.tool()
+    def get_npc_scheduler(npc_id: str) -> str:
+        """Inspect one NPC's world-time execution step, due time, interruptibility and goal-bound scheduler operations."""
+        return _json(gm_turn_executor.runtime.npc_scheduler_state(npc_id))
+
+    @mcp.tool()
     def get_npc_activity_history(npc_id: str | None = None) -> str:
         """Inspect completed autonomous NPC activities without mutating the world."""
         rows = gm_turn_executor.runtime.npc_activity_history

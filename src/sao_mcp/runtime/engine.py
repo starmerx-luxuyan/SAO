@@ -783,7 +783,7 @@ class GameRuntime:
         self.require_actor_autonomous_travel(actor_id)
         if self._in_live_encounter(actor_id):
             raise ValueError("ordinary travel is unavailable during a live encounter")
-        resolution = travel(self.world, actor, destination_id, self.world_map)
+        resolution = travel(self.world, actor, destination_id, self.world_map, advance_time=self.advance_world)
         if resolution.newly_discovered:
             self.quests.record_event(
                 actor_id,

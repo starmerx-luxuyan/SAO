@@ -13,6 +13,7 @@ from sao_mcp.rules.npc_actor_core import (
     NPCPlanStep,
 )
 from sao_mcp.rules.npc_autonomy import NPCAgendaState
+from sao_mcp.rules.npc_scheduler import NPCPlanActionKind
 from sao_mcp.rules.travel import (
     AUTONOMOUS_TRAVEL_RESTRICTION_KEY,
     has_surviving_colocated_outsider,
@@ -22,7 +23,7 @@ from sao_mcp.runtime.world_event_runtime import WorldEventAincradRuntime
 
 LOCATION_UNAVAILABLE_FACT_PREFIX = "location_unavailable:"
 SHOP_RETURN_GOAL_ID = "routine:return_to_shop"
-NPC_AUTONOMY_SCHEMA = "npc-autonomy.v3"
+NPC_AUTONOMY_SCHEMA = "npc-autonomy.v4"
 
 
 class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
@@ -72,7 +73,7 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
 
     def npc_location_id(self, npc_id: str) -> str | None:
         agenda = self.npc_agendas.get(npc_id)
-        if agenda is not None and agenda.active:
+        if agenda is not None and agenda.in_transit:
             return None
         return super().npc_location_id(npc_id)
 
@@ -608,8 +609,13 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
                 step = core.current_plan_step
                 if step is None or step.step_id != agenda.plan_step_id:
                     raise RuntimeError(f"NPC {npc_id} active agenda is not executing the current actor-core plan step")
-                if step.target_location_id != agenda.target_location_id:
-                    raise RuntimeError(f"NPC {npc_id} agenda target disagrees with actor-core plan step")
+                if step.action_kind.value != agenda.activity_kind:
+                    raise RuntimeError(f"NPC {npc_id} agenda kind disagrees with actor-core plan step")
+                if agenda.in_transit:
+                    if step.target_location_id != agenda.target_location_id:
+                        raise RuntimeError(f"NPC {npc_id} agenda target disagrees with actor-core plan step")
+                elif agenda.stationary_location_id != self._stationary_npc_location_id(npc_id):
+                    raise RuntimeError(f"NPC {npc_id} stationary agenda lost its settled location")
 
     def dump_npc_autonomy_state(self) -> dict:
         self._assert_npc_actor_core_authority()
@@ -703,13 +709,16 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
                 activity_kind=row.get("activity_kind"),
                 from_location_id=row.get("from_location_id"),
                 target_location_id=row.get("target_location_id"),
+                stationary_location_id=row.get("stationary_location_id"),
                 started_at_ms=row.get("started_at_ms"),
                 due_at_ms=row.get("due_at_ms"),
                 traversal_tags=tuple(row.get("traversal_tags", ())),
                 plan_step_id=row.get("plan_step_id"),
+                payload=dict(row.get("payload", {})),
+                interruptible=bool(row.get("interruptible", False)),
             )
             if agenda.active and (agenda.due_at_ms is None or agenda.due_at_ms <= self.world.now_ms):
-                raise ValueError(f"NPC autonomy save contains overdue active travel: {npc_id}")
+                raise ValueError(f"NPC autonomy save contains overdue active activity: {npc_id}")
             agendas[npc_id] = agenda
         self.npc_agendas = agendas
         self.npc_activity_history = list(payload.get("history", []))

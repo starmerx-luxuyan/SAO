@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sao_mcp.corpus.world import LocationDefinition, WorldMapCatalog
@@ -61,6 +62,8 @@ def travel(
     actor: CombatantState,
     destination_id: str,
     catalog: WorldMapCatalog,
+    *,
+    advance_time: Callable[[int], object] | None = None,
 ) -> TravelResolution:
     require_living_world_traveller(actor)
     require_autonomous_travel(actor)
@@ -80,7 +83,13 @@ def travel(
         raise ValueError("destination is not directly connected to the current location")
     edge = min(candidates, key=lambda value: value.travel_ms)
     origin = actor.location_id
-    world.now_ms += edge.travel_ms
+    if advance_time is None:
+        world.now_ms += edge.travel_ms
+    else:
+        actor.location_id = None
+        advance_time(edge.travel_ms)
+        if actor.location_id is not None:
+            raise RuntimeError("travelling actor acquired a settled location before travel commit")
     newly_discovered = discover_location(world, actor, destination)
     return TravelResolution(
         origin,
