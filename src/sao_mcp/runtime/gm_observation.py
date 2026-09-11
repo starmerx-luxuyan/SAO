@@ -295,17 +295,20 @@ class GMObservationGate:
     def _messages(self, observer_id: str) -> list[dict[str, Any]]:
         if not hasattr(self.runtime, "message_inbox"):
             return []
-        return [
-            {
+        rows = []
+        for message in self.runtime.message_inbox(observer_id):
+            row = {
                 "message_id": message.message_id,
                 "sender_id": message.sender_id,
                 "channel": message.channel.value,
-                "text": message.text,
                 "sent_at_ms": message.sent_at_ms,
                 "read_at_ms": message.read_at_ms,
+                "unread": message.read_at_ms is None,
             }
-            for message in self.runtime.message_inbox(observer_id)
-        ]
+            if message.read_at_ms is not None:
+                row["text"] = message.text
+            rows.append(row)
+        return rows
 
     def observe(
         self,

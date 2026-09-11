@@ -105,3 +105,30 @@ def test_player_can_see_own_ui_state_but_not_guild_strategy_resources():
     assert "secret_strategy" not in dumped
     assert "vault_col" not in dumped
     assert "strategic_goals" not in dumped
+
+
+def test_unread_message_content_is_not_visible_to_gm_until_the_player_reads_it():
+    runtime = SocialCommunicationAincradRuntime(seed=1707)
+    sender = runtime.create_character("Sender")
+    observer = runtime.create_character("Observer")
+    request = runtime.request_friend(sender.actor_id, observer.actor_id)
+    runtime.accept_friend(request.request_id, observer.actor_id)
+    message = runtime.send_short_message(sender.actor_id, observer.actor_id, "Secret route at dawn")
+
+    before = GMObservationGate(runtime).observe([observer.actor_id])
+    row = next(
+        item for item in before["viewpoints"][observer.actor_id]["messages"]
+        if item["message_id"] == message.message_id
+    )
+    assert row["unread"] is True
+    assert "text" not in row
+    assert "Secret route at dawn" not in repr(before)
+
+    runtime.read_message(observer.actor_id, message.message_id)
+    after = GMObservationGate(runtime).observe([observer.actor_id])
+    row = next(
+        item for item in after["viewpoints"][observer.actor_id]["messages"]
+        if item["message_id"] == message.message_id
+    )
+    assert row["unread"] is False
+    assert row["text"] == "Secret route at dawn"
