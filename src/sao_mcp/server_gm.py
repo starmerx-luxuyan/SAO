@@ -82,10 +82,31 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
     @mcp.tool()
     def get_world_event_state(occurrence_id: str | None = None) -> str:
-        """Inspect registered event rules and already-resolved persistent world-event occurrences."""
+        """Inspect registered event rules and persistent world-event lifecycle occurrences."""
         return _json(gm_turn_executor.runtime.world_event_state(occurrence_id))
 
     @mcp.tool()
     def get_world_event_history(rule_id: str | None = None) -> str:
-        """Inspect resolved world-event history, optionally filtered by one rule id."""
+        """Inspect world-event lifecycle history, optionally filtered by one rule id."""
         return _json({"events": gm_turn_executor.runtime.world_event_history(rule_id)})
+
+    @mcp.tool()
+    def get_canonical_timeline_profile() -> str:
+        """Inspect available canon-continuity profiles and the current non-authoritative milestone expectation overlay."""
+        runtime = gm_turn_executor.runtime
+        return _json(
+            {
+                "profiles": runtime.canonical_timeline_profiles(),
+                "current": runtime.canonical_timeline_state(),
+            }
+        )
+
+    @mcp.tool()
+    def set_canonical_timeline_profile(profile_id: str | None, anchor_world_ms: int = 0) -> str:
+        """Select a canon expectation profile, or null to disable it; this never mutates world outcomes or actor state."""
+        return _json(
+            gm_turn_executor.runtime.select_canonical_timeline_profile(
+                profile_id,
+                anchor_world_ms=anchor_world_ms,
+            )
+        )
