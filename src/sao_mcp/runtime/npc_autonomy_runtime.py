@@ -408,7 +408,12 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         core.select_goal(selected_id, decided_at_ms=decision_at_ms)
         if selected is None:
             return
-        if previous_id != selected_id or core.current_plan_step is None:
+        needs_plan = previous_id != selected_id or (
+            core.current_plan_step is None
+            and selected.target_location_id is not None
+            and self._stationary_npc_location_id(npc_id) != selected.target_location_id
+        )
+        if needs_plan:
             self._replace_goal_plan(npc_id, selected)
         self._plan_goal_step(npc_id, decision_at_ms)
 

@@ -29,3 +29,18 @@ def test_gm_exposes_actor_core_inspection_surface():
     server = (ROOT / "src/sao_mcp/server_gm.py").read_text(encoding="utf-8")
     assert "def get_npc_actor_core" in server
     assert "npc_actor_core_state(npc_id)" in server
+
+
+def test_gm_set_npc_goal_contract_accepts_actor_core_decision_constraints():
+    from sao_mcp.runtime.gm_turn import GMTurnExecutor
+
+    optional = set(GMTurnExecutor.supported_actions()["set_npc_goal"]["optional"])
+    assert optional == {
+        "priority",
+        "business_id",
+        "required_fact_id",
+        "required_fact_value",
+        "relationship_actor_id",
+        "min_relationship",
+        "resource_requirements",
+    }

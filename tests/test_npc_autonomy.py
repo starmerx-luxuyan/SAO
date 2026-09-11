@@ -215,3 +215,15 @@ def test_agenda_is_execution_only_and_cannot_own_goal_state():
     projected = runtime.npc_agenda_state(AGIL)
     assert projected["goal_id"] == "inspect_frontline_route"
     assert projected["goal_target_location_id"] == FLOOR50_FIELD
+
+
+def test_reached_goal_does_not_rebuild_identical_plan_every_world_tick():
+    runtime = HousingAincradRuntime(seed=113)
+    runtime.world.floors[50].unlocked = True
+    runtime.set_npc_goal(AGIL, "visit_algade_once", ALGADE)
+    runtime.advance_world(SHOP_TO_ALGADE_MS)
+    core = runtime.npc_actor_cores[AGIL]
+    assert runtime.npc_actor_core_state(AGIL)["goal_reached"] is True
+    revision = core.revision
+    runtime.advance_world(60_000)
+    assert core.revision == revision

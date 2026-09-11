@@ -37,7 +37,15 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "claim_quest": (frozenset({"actor_id", "quest_id"}), frozenset()),
     "set_npc_goal": (
         frozenset({"npc_id", "goal_id", "target_location_id"}),
-        frozenset(),
+        frozenset({
+            "priority",
+            "business_id",
+            "required_fact_id",
+            "required_fact_value",
+            "relationship_actor_id",
+            "min_relationship",
+            "resource_requirements",
+        }),
     ),
     "clear_npc_goal": (frozenset({"npc_id"}), frozenset()),
     "schedule_npc_travel": (
@@ -215,6 +223,17 @@ class GMTurnExecutor:
                 action["npc_id"],
                 action["goal_id"],
                 action["target_location_id"],
+                priority=int(action.get("priority", 100)),
+                business_id=action.get("business_id"),
+                required_fact_id=action.get("required_fact_id"),
+                required_fact_value=action.get("required_fact_value", True),
+                relationship_actor_id=action.get("relationship_actor_id"),
+                min_relationship=(
+                    int(action["min_relationship"])
+                    if action.get("min_relationship") is not None
+                    else None
+                ),
+                resource_requirements=action.get("resource_requirements"),
             )
         if op == "clear_npc_goal":
             return runtime.clear_npc_goal(action["npc_id"])
