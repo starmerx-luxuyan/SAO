@@ -26,7 +26,8 @@ The world model contains all 100 floors. Canon-backed and authored scenario cove
 ```text
 SAO/
 ├─ .codex-plugin/plugin.json     plugin metadata
-├─ .mcp.json                     local MCP command configuration
+├─ .mcp.json                     hosted Streamable HTTP MCP configuration
+├─ Dockerfile                    reproducible hosted MCP deployment
 ├─ skills/sao-gm/SKILL.md        host-model GM workflow and state discipline
 ├─ docs/                         mechanics, UI and release contracts
 ├─ src/sao_mcp/
@@ -43,6 +44,16 @@ SAO/
 ```
 
 `server_bootstrap.py` is the production composition root. It creates the single authoritative Aincrad runtime, installs scenario services and registers the complete public MCP tool families onto one `MCPServer`.
+
+## Hosted plugin endpoint
+
+The bundled plugin MCP configuration points directly at the hosted Streamable HTTP server:
+
+```text
+https://sao-aincrad-mcp-production.up.railway.app/mcp
+```
+
+The plugin therefore does not require a local Python installation to use its normal hosted MCP path. The release bundle still includes the Python wheel so the same v1.0.0 runtime can be self-hosted or run locally.
 
 ## Public MCP surface
 
@@ -61,9 +72,19 @@ The full server exposes tools in these stable capability families:
 - complete runtime save export/import
 - packaged Aincrad HUD, system-menu and boss/raid UI resources
 
-The release contract tests assert a critical subset of these tools through the SDK's public `MCPServer.list_tools()` API so accidental bootstrap omissions fail CI.
+The release contract tests assert a critical subset of these tools through the SDK's public `MCPServer.list_tools()` API so accidental bootstrap omissions fail CI. They also lock the plugin's hosted MCP URL so the packaged plugin cannot silently drift back to a missing local command.
 
-## Installation
+## Plugin bundle
+
+The CI release job assembles `SAO-Aincrad-v1.0.0-plugin` with:
+
+- `.codex-plugin/plugin.json`
+- `.mcp.json` pointing to the hosted MCP endpoint
+- `skills/sao-gm/SKILL.md`
+- the v1.0.0 Python wheel for self-hosting
+- release/source-policy/license documentation
+
+## Local development and self-hosting
 
 Requires **Python 3.12+**.
 
@@ -87,17 +108,17 @@ python -m pip install .
 sao-mcp
 ```
 
-The package entry point is `sao-mcp = sao_mcp.cli:main`. The bundled `.mcp.json` uses that command directly.
+The package entry point is `sao-mcp = sao_mcp.cli:main`.
 
 ## Transport
 
-`stdio` is the default transport:
+`stdio` is the default local transport:
 
 ```bash
 sao-mcp
 ```
 
-For Streamable HTTP:
+For self-hosted Streamable HTTP:
 
 ```bash
 # macOS/Linux
@@ -136,7 +157,8 @@ The normal CI path performs:
 3. full pytest suite, including campaign stress and release-contract invariants;
 4. real wheel build;
 5. installation of that wheel into a clean virtual environment;
-6. smoke import of the packaged production bootstrap and packaged UI resources.
+6. smoke import of the packaged production bootstrap and packaged UI resources;
+7. assembly of the installable plugin bundle including hidden manifest/config files.
 
 This is intentionally aimed at release failures that ordinary source-tree unit tests do not catch.
 
