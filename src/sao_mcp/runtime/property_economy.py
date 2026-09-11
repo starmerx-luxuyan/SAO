@@ -302,7 +302,8 @@ class GuardedEconomyRuntime(EconomyRuntime):
             demand_index, supply_index = regional_pressure(segment_totals, int(population["headcount"]))
             region.set_pressure(demand_index, supply_index, tick_ms=tick_ms)
             location_demand = 0
-            location_supply = 0
+            location_production = 0
+            location_system_restock = 0
             vendor_rows = []
             for vendor in sorted(
                 (row for row in self.vendors.values() if row.location_id == location_id),
@@ -312,30 +313,40 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 item_rows = []
                 for listing in vendor.listings:
                     template_id = listing.template_id
-                    production = background_supply_units(self.runtime.catalog, template_id, segment_totals)
-                    system_units = system_restock_units(
+                    production_requested = background_supply_units(
+                        self.runtime.catalog, template_id, segment_totals
+                    )
+                    production_supplied = stock.restock(template_id, production_requested)
+                    system_requested = system_restock_units(
                         stock.available(template_id),
                         stock.target_by_template[template_id],
                     )
-                    supplied = stock.restock(template_id, production + system_units)
+                    system_supplied = stock.restock(template_id, system_requested)
                     demanded = background_demand_units(self.runtime.catalog, template_id, segment_totals)
                     consumed = min(stock.available(template_id), demanded)
                     if consumed:
                         stock.consume(template_id, consumed)
-                    location_supply += supplied
+                    location_production += production_supplied
+                    location_system_restock += system_supplied
                     location_demand += consumed
                     item_rows.append(
                         {
                             "template_id": template_id,
-                            "production_units": production,
-                            "system_restock_units": max(0, supplied - production),
+                            "production_requested_units": production_requested,
+                            "production_supplied_units": production_supplied,
+                            "system_restock_requested_units": system_requested,
+                            "system_restock_units": system_supplied,
                             "background_consumed_units": consumed,
                             "stock_after": stock.available(template_id),
                             "current_unit_price_col": self.vendor_quote(vendor.vendor_id, template_id)["current_unit_price_col"],
                         }
                     )
                 vendor_rows.append({"vendor_id": vendor.vendor_id, "items": item_rows})
-            region.record_background(demand_units=location_demand, production_units=location_supply)
+            region.record_background(
+                demand_units=location_demand,
+                production_units=location_production,
+                system_restock_units=location_system_restock,
+            )
             market_units, market_col = self._clear_background_player_market(
                 location_id=location_id,
                 segment_totals=segment_totals,
@@ -352,7 +363,9 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 demand_index=region.demand_index,
                 supply_index=region.supply_index,
                 background_vendor_demand_units=location_demand,
-                background_supply_units=location_supply,
+                background_production_units=location_production,
+                system_restock_units=location_system_restock,
+                background_supply_units=location_production + location_system_restock,
                 background_player_market_units=market_units,
                 background_player_market_col=market_col,
                 vendors=vendor_rows,
@@ -518,6 +531,7 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 last_tick_ms=int(row["last_tick_ms"]),
                 cumulative_background_demand_units=int(row.get("cumulative_background_demand_units", 0)),
                 cumulative_production_units=int(row.get("cumulative_production_units", 0)),
+                cumulative_system_restock_units=int(row.get("cumulative_system_restock_units", 0)),
                 cumulative_player_market_units=int(row.get("cumulative_player_market_units", 0)),
                 cumulative_player_market_col=int(row.get("cumulative_player_market_col", 0)),
                 cumulative_named_trade_col=int(row.get("cumulative_named_trade_col", 0)),

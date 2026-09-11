@@ -68,6 +68,7 @@ class RegionalMarketState:
     last_tick_ms: int = 0
     cumulative_background_demand_units: int = 0
     cumulative_production_units: int = 0
+    cumulative_system_restock_units: int = 0
     cumulative_player_market_units: int = 0
     cumulative_player_market_col: int = 0
     cumulative_named_trade_col: int = 0
@@ -84,6 +85,7 @@ class RegionalMarketState:
         for value in (
             self.cumulative_background_demand_units,
             self.cumulative_production_units,
+            self.cumulative_system_restock_units,
             self.cumulative_player_market_units,
             self.cumulative_player_market_col,
             self.cumulative_named_trade_col,
@@ -102,12 +104,19 @@ class RegionalMarketState:
         self.last_tick_ms = int(tick_ms)
         self.revision += 1
 
-    def record_background(self, *, demand_units: int = 0, production_units: int = 0) -> None:
-        if demand_units < 0 or production_units < 0:
+    def record_background(
+        self,
+        *,
+        demand_units: int = 0,
+        production_units: int = 0,
+        system_restock_units: int = 0,
+    ) -> None:
+        if demand_units < 0 or production_units < 0 or system_restock_units < 0:
             raise ValueError("background market units cannot be negative")
         self.cumulative_background_demand_units += demand_units
         self.cumulative_production_units += production_units
-        if demand_units or production_units:
+        self.cumulative_system_restock_units += system_restock_units
+        if demand_units or production_units or system_restock_units:
             self.revision += 1
 
     def record_player_market(self, *, units: int, gross_col: int) -> None:
@@ -211,6 +220,7 @@ def market_state_row(region: RegionalMarketState) -> dict[str, Any]:
         "last_tick_ms": region.last_tick_ms,
         "cumulative_background_demand_units": region.cumulative_background_demand_units,
         "cumulative_production_units": region.cumulative_production_units,
+        "cumulative_system_restock_units": region.cumulative_system_restock_units,
         "cumulative_player_market_units": region.cumulative_player_market_units,
         "cumulative_player_market_col": region.cumulative_player_market_col,
         "cumulative_named_trade_col": region.cumulative_named_trade_col,

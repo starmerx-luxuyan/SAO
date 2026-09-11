@@ -74,8 +74,8 @@ class EconomyRuntime:
     def __init__(self, vendors: dict[str, VendorDefinition] | None = None) -> None:
         self.vendors = dict(vendors or CORE_VENDORS)
         self.player_listings: dict[str, PlayerListing] = {}
-        self.on_income: Callable[[CombatantState, int, str], None] | None = None
-        self.on_expense: Callable[[CombatantState, int, str], None] | None = None
+        self.on_income: Callable[[CombatantState, int, str], Any] | None = None
+        self.on_expense: Callable[[CombatantState, int, str], Any] | None = None
         self.validate_player_purchase: Callable[[CombatantState, CombatantState, int], None] | None = None
 
     def _income(self, actor: CombatantState, amount: int, source: str) -> Any:

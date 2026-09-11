@@ -125,3 +125,29 @@ def test_living_economy_round_trip_preserves_stock_pressure_history_and_next_tic
     assert restored.economy.next_tick_at_ms == ECONOMY_TICK_MS * 2
     restored.advance_world(ECONOMY_TICK_MS)
     assert restored.economy.next_tick_at_ms == ECONOMY_TICK_MS * 3
+
+
+def test_system_vendor_restock_is_accounted_separately_from_player_production():
+    runtime = EconomyLoopAincradRuntime(seed=607)
+    buyer = runtime.create_character("BulkBuyer")
+    buyer.col = 100_000
+    runtime.economy.buy_from_vendor(
+        buyer,
+        VENDOR,
+        "field_bread",
+        10,
+        runtime.catalog,
+        actor_location_id=buyer.location_id,
+    )
+    runtime.advance_world(ECONOMY_TICK_MS)
+    market = runtime.aincrad_economy_state(TOWN)["location"]["market"]
+    assert market["cumulative_production_units"] == 0
+    assert market["cumulative_system_restock_units"] > 0
+    row = next(
+        row
+        for row in reversed(runtime.economy.market_history)
+        if row["event"] == "economy_tick" and row["location_id"] == TOWN
+    )
+    assert row["background_production_units"] == 0
+    assert row["system_restock_units"] > 0
+    assert row["background_supply_units"] == row["system_restock_units"]
