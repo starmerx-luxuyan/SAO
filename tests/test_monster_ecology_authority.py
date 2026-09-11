@@ -6,6 +6,7 @@ from pathlib import Path
 from sao_mcp.rules.monster_ecology import MonsterSpeciesEcologyState
 from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
 from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
+from sao_mcp.runtime.quest_ecology_runtime import QuestEcologyAincradRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +47,9 @@ def test_scenarios_cannot_mutate_ecology_or_background_commodity_authorities_dir
 
 def test_server_bootstrap_uses_monster_ecology_as_authoritative_top_runtime():
     source = (ROOT / "src/sao_mcp/server_bootstrap.py").read_text(encoding="utf-8")
-    assert "MonsterEcologyAincradRuntime" in source
+    assert QuestEcologyAincradRuntime.__bases__ == (MonsterEcologyAincradRuntime,)
+    assert "QuestEcologyAincradRuntime" in source
+    assert "MonsterEcologyAincradRuntime(seed=0xA1C0)" not in source
     assert "EconomyLoopAincradRuntime(seed=0xA1C0)" not in source
     assert "register_monster_ecology_tools" in source
 

@@ -33,14 +33,20 @@ def register_adventure_tools(mcp, runtime) -> None:
 
     def _spawn_catalog_monster(monster_id: str, *, level_override: int | None = None):
         definition = AINCRAD_MONSTERS[monster_id]
-        monster = runtime._create_monster(
-            name=definition.name,
-            level=definition.level if level_override is None else level_override,
-            location_id=definition.location_id,
-            hp_factor=definition.hp_factor,
-            loot_table_id=definition.loot_table_id,
-            quest_kill_id=definition.quest_kill_id,
-        )
+        materialize = getattr(runtime, "materialize_ecological_monster", None)
+        if materialize is not None:
+            if level_override is not None and level_override != definition.level:
+                raise ValueError("living ecology encounters cannot override catalog monster level")
+            monster = materialize(monster_id)
+        else:
+            monster = runtime._create_monster(
+                name=definition.name,
+                level=definition.level if level_override is None else level_override,
+                location_id=definition.location_id,
+                hp_factor=definition.hp_factor,
+                loot_table_id=definition.loot_table_id,
+                quest_kill_id=definition.quest_kill_id,
+            )
         monster.metadata.update(
             {
                 "monster_id": definition.monster_id,
@@ -226,7 +232,15 @@ def register_adventure_tools(mcp, runtime) -> None:
         actor = runtime.actors[actor_id]
         if actor.location_id != "floor_1_west_field":
             raise ValueError("Little Nepenthes encounter requires the Floor 1 west field")
-        if flowerhead:
+        definition = AINCRAD_MONSTERS["little_nepenthes"]
+        if hasattr(runtime, "materialize_ecological_monster"):
+            if monster_level != definition.level:
+                raise ValueError("living ecology Little Nepenthes encounters use the catalog level")
+            monster = runtime.materialize_ecological_monster("little_nepenthes")
+            if flowerhead:
+                monster.name = "Flowerhead Little Nepenthes"
+                monster.metadata["loot_table_id"] = "floor1_little_nepenthes_flower"
+        elif flowerhead:
             monster = runtime.create_little_nepenthes(flowerhead=True, level=monster_level)
         else:
             monster = _spawn_catalog_monster("little_nepenthes", level_override=monster_level)

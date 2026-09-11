@@ -225,6 +225,28 @@ class GuardedEconomyRuntime(EconomyRuntime):
             stock_after=stock[template_id],
         )
 
+    def record_system_reward(
+        self,
+        location_id: str,
+        gross_col: int,
+        *,
+        source: str,
+        at_ms: int | None = None,
+    ) -> None:
+        if gross_col <= 0:
+            raise ValueError("system reward Col must be positive")
+        if not source:
+            raise ValueError("system reward source is required")
+        region = self._region(location_id)
+        region.record_system_col_flow(injected_col=gross_col)
+        self._record_market(
+            "system_reward_injection",
+            at_ms=at_ms,
+            location_id=location_id,
+            gross_col=gross_col,
+            source=source,
+        )
+
     def vendor_quote(self, vendor_id: str, template_id: str) -> dict[str, Any]:
         vendor = self.vendors[vendor_id]
         listing = next((row for row in vendor.listings if row.template_id == template_id), None)
@@ -459,8 +481,14 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 demand_index=region.demand_index,
                 supply_index=region.supply_index,
                 background_requested_demand_units=sum(demand_requested.values()),
+                background_requested_demand_units_by_template=dict(sorted(demand_requested.items())),
                 background_fulfilled_demand_units=fulfilled_demand,
                 background_unmet_demand_units=unmet_demand,
+                background_unmet_demand_units_by_template={
+                    template_id: units
+                    for template_id, units in sorted(demand_remaining.items())
+                    if units > 0
+                },
                 background_vendor_demand_units=location_vendor_demand,
                 background_production_units=location_production,
                 unabsorbed_production_units=unabsorbed_production,

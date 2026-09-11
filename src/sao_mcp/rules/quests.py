@@ -66,6 +66,13 @@ class QuestProgress:
     counters: dict[str, int] = field(default_factory=dict)
     claimed: bool = False
     claimed_at_ms: int | None = None
+    terminated_status: str | None = None
+    terminated_at_ms: int | None = None
+    termination_reason: str | None = None
+
+    @property
+    def terminated(self) -> bool:
+        return self.terminated_status is not None
 
 
 @dataclass(slots=True, frozen=True)
@@ -80,7 +87,7 @@ class QuestRuntime:
     """Persistent quest state. Definitions are immutable corpus; progress is campaign state."""
 
     def __init__(self, definitions: dict[str, QuestDefinition]) -> None:
-        self.definitions = definitions
+        self.definitions = dict(definitions)
         self.progress_by_actor: dict[str, dict[str, QuestProgress]] = {}
         self.completed_by_actor: dict[str, set[str]] = {}
         self.global_accept_block_until_ms: dict[str, int] = {}
@@ -91,7 +98,7 @@ class QuestRuntime:
         if any(required not in completed for required in definition.prerequisites):
             raise ValueError("quest prerequisites are not complete")
         existing = self.progress_by_actor.setdefault(actor_id, {}).get(quest_id)
-        if existing and not existing.claimed:
+        if existing and not existing.claimed and not existing.terminated:
             return existing
         if quest_id in completed and not definition.repeatable:
             raise ValueError("quest is not repeatable")
@@ -118,7 +125,7 @@ class QuestRuntime:
         event_kind = QuestObjectiveKind(kind)
         updated: list[str] = []
         for quest_id, progress in self.progress_by_actor.get(actor_id, {}).items():
-            if progress.claimed:
+            if progress.claimed or progress.terminated:
                 continue
             definition = self.definitions[quest_id]
             for objective in definition.objectives:
@@ -140,6 +147,8 @@ class QuestRuntime:
 
     def refresh_collect_objectives(self, actor: CombatantState, quest_id: str) -> QuestProgress:
         progress = self.progress_by_actor[actor.actor_id][quest_id]
+        if progress.terminated:
+            return progress
         definition = self.definitions[quest_id]
         for objective in definition.objectives:
             if objective.kind is QuestObjectiveKind.COLLECT:
@@ -151,6 +160,8 @@ class QuestRuntime:
 
     def ready_to_claim(self, actor: CombatantState, quest_id: str) -> bool:
         progress = self.refresh_collect_objectives(actor, quest_id)
+        if progress.claimed or progress.terminated:
+            return False
         definition = self.definitions[quest_id]
         return all(
             progress.counters.get(objective.objective_id, 0) >= objective.required
@@ -187,6 +198,8 @@ class QuestRuntime:
             raise ValueError("quest has not been accepted")
         if progress.claimed:
             raise ValueError("quest reward has already been claimed")
+        if progress.terminated:
+            raise ValueError(f"quest progress is {progress.terminated_status}: {progress.termination_reason}")
         if not self.ready_to_claim(actor, quest_id):
             raise ValueError("quest objectives are incomplete")
 
@@ -232,6 +245,31 @@ class QuestRuntime:
         self.completed_by_actor.setdefault(actor.actor_id, set()).add(quest_id)
         return QuestClaimResolution(quest_id, definition.reward.col, xp, tuple(created))
 
+    def terminate(
+        self,
+        actor_id: str,
+        quest_id: str,
+        *,
+        status: str,
+        at_ms: int,
+        reason: str,
+    ) -> QuestProgress:
+        if status not in {"failed", "expired", "interrupted"}:
+            raise ValueError("quest termination status must be failed, expired or interrupted")
+        if at_ms < 0 or not reason:
+            raise ValueError("quest termination requires non-negative time and reason")
+        progress = self.progress_by_actor.get(actor_id, {}).get(quest_id)
+        if progress is None:
+            raise KeyError((actor_id, quest_id))
+        if progress.claimed:
+            raise ValueError("claimed quest progress cannot be terminated")
+        if progress.terminated:
+            return progress
+        progress.terminated_status = status
+        progress.terminated_at_ms = at_ms
+        progress.termination_reason = reason
+        return progress
+
     def dump_state(self) -> dict:
         return {
             "progress": {
@@ -242,6 +280,9 @@ class QuestRuntime:
                         "counters": dict(progress.counters),
                         "claimed": progress.claimed,
                         "claimed_at_ms": progress.claimed_at_ms,
+                        "terminated_status": progress.terminated_status,
+                        "terminated_at_ms": progress.terminated_at_ms,
+                        "termination_reason": progress.termination_reason,
                     }
                     for quest_id, progress in quests.items()
                 }
@@ -263,6 +304,9 @@ class QuestRuntime:
                     counters={k: int(v) for k, v in value.get("counters", {}).items()},
                     claimed=bool(value.get("claimed", False)),
                     claimed_at_ms=value.get("claimed_at_ms"),
+                    terminated_status=value.get("terminated_status"),
+                    terminated_at_ms=value.get("terminated_at_ms"),
+                    termination_reason=value.get("termination_reason"),
                 )
                 for quest_id, value in quests.items()
             }

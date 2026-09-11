@@ -135,7 +135,11 @@ class NPCRuntime:
             quest = quests.definitions[quest_id]
             if any(required not in completed for required in quest.prerequisites):
                 continue
-            if quest_id in active and not active[quest_id].claimed:
+            if (
+                quest_id in active
+                and not active[quest_id].claimed
+                and not active[quest_id].terminated
+            ):
                 available.append(quest_id)
                 continue
             if quest_id in completed and not quest.repeatable:
