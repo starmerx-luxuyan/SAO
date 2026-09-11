@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sao_mcp.server as core_server
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
+from sao_mcp.runtime.gm_decision import GMDecisionRuntime
 from sao_mcp.runtime.gm_turn import GMTurnExecutor
 from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
 from sao_mcp.scenarios.floor2_martial_arts import install_floor2_martial_arts_scenario
@@ -92,6 +93,7 @@ floor8_standoff = install_floor8_cave_standoff_scenario(runtime, floor8_emergenc
 floor8_sluva = install_floor8_sluva_justice_scenario(runtime, floor8_emergency)
 floor22_witch = install_floor22_witch_scenario(runtime)
 gm_turn_executor = GMTurnExecutor(runtime)
+gm_decision_runtime = GMDecisionRuntime(GMTurnExecutor.supported_actions())
 
 register_adventure_tools(mcp, runtime)
 register_inventory_tools(mcp, runtime)
@@ -108,7 +110,7 @@ register_population_tools(mcp, runtime)
 register_monster_ecology_tools(mcp, runtime)
 register_quest_ecology_tools(mcp, runtime)
 register_social_autonomy_tools(mcp, runtime)
-register_gm_tools(mcp, gm_turn_executor)
+register_gm_tools(mcp, gm_turn_executor, gm_decision_runtime)
 register_floor2_tools(mcp, floor2_taurus_raid, floor2_martial_arts)
 register_floor3_tools(mcp, floor3_spiders)
 register_floor4_tools(mcp, floor4_shipwright, floor4_biceps)
@@ -133,6 +135,7 @@ __all__ = [
     "mcp",
     "runtime",
     "gm_turn_executor",
+    "gm_decision_runtime",
     "floor2_martial_arts",
     "floor2_taurus_raid",
     "floor3_spiders",

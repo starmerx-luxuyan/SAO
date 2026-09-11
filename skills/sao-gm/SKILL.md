@@ -30,13 +30,15 @@ For an in-world player action:
 
 Do not turn gameplay into a menu unless the user asks for options. NPCs and monsters act from their own state, goals, AI profile and information; they are not extensions of the user's plan.
 
-## Structured GM turn executor
+## GM observation and decision gate
 
-For tightly coupled ordinary mechanics, prefer `execute_gm_turn` over manually stitching many MCP calls when one player intent clearly maps to a known sequence. The executor does not understand prose and does not decide what the player meant. Translate the user's intent first, then submit exact structured actions.
+For ordinary in-world play, start from `get_gm_observation` for the explicit player viewpoint. The observation packet is the narration/decision boundary: it contains that player's current UI state, beliefs, visible entities, encounters, messages and currently usable capability references, but not NPC actor-core plans, guild strategy internals, world-event occurrences, canonical expectation overlays or another entity's private knowledge.
 
-Use `get_gm_turn_action_contract` when the exact action shape is needed. The v1 executor covers ordinary travel/teleport, encounter movement, timeline attacks and timeline processing, Switch, inventory item use, equip/unequip, NPC interaction, quest accept/claim, and explicit world/encounter time advancement. Floor/campaign-specific story actions remain scenario tools and must not be smuggled through the generic executor.
+Translate the user's prose into the smallest proposed ordinary action batch, then use `execute_gm_decision`. The GM Decision Runtime receives only the fresh observation packet and rejects action references that are not grounded in that packet. Use `preview_gm_decision` when you need to validate the plan without mutation and `get_gm_decision_contract` for the exact allowed action shapes.
 
-The executor validates the complete action-plan shape before performing the first mutation. Once mechanical execution begins, each step is authoritative and is not transactionally rolled back if a later game action is illegal. Keep batches small and only combine actions that are already decided; never put conditional alternatives, speculative retries, or a player/NPC choice into one batch. A failed hit, blocked route or invalid action is the result, not an invitation to substitute a fallback action.
+Do not call the internal `GMTurnExecutor` as a narration shortcut. It remains a mechanical dispatcher under the decision gate. NPC/guild administrative goal controls, direct knowledge injection and raw world advancement are deliberately absent from the player-observable decision surface; NPCs, guilds, events, population, economy and ecology continue through their own autonomous runtimes.
+
+A decision batch is bound to the observation digest that justified it. Keep batches small. Once an action changes location, identity, inventory, encounter membership or other visibility, re-observe before deciding the next action. World-only waiting is represented by a positive `world_tick_ms` with no proposed player action.
 
 ## Combat
 

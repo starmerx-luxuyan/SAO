@@ -133,10 +133,12 @@ class GMTurnExecutor:
 
     @staticmethod
     def _validate_plan(actions: list[dict[str, Any]], world_tick_ms: int) -> None:
-        if not isinstance(actions, list) or not actions:
-            raise ValueError("GM turn requires a non-empty actions list")
+        if not isinstance(actions, list):
+            raise ValueError("GM turn actions must be a list")
         if not isinstance(world_tick_ms, int) or world_tick_ms < 0:
             raise ValueError("world_tick_ms must be a non-negative integer")
+        if not actions and world_tick_ms == 0:
+            raise ValueError("GM turn requires an action or positive world_tick_ms")
         for index, action in enumerate(actions):
             if not isinstance(action, dict):
                 raise ValueError(f"GM turn action {index} must be an object")

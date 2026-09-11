@@ -132,3 +132,16 @@ def test_unread_message_content_is_not_visible_to_gm_until_the_player_reads_it()
     )
     assert row["unread"] is False
     assert row["text"] == "Secret route at dawn"
+
+
+
+def test_observation_projects_current_decision_capabilities_without_hidden_second_leg():
+    runtime = SocialCommunicationAincradRuntime(seed=1708)
+    observer = runtime.create_character("Observer")
+    packet = GMObservationGate(runtime).observe([observer.actor_id])
+    caps = packet["viewpoints"][observer.actor_id]["capabilities"]
+    destinations = {row["destination_id"] for row in caps["travel_options"]}
+    assert WEST in destinations
+    assert HORUNKA not in destinations
+    assert "npc_tutorial_instructor" in caps["interactable_npc_ids"]
+    assert set(caps["inventory_instance_ids"]) == set(observer.inventory)

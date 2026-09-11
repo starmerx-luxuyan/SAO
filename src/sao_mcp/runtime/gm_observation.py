@@ -4,7 +4,10 @@ from dataclasses import asdict
 from typing import Any
 
 from sao_mcp.domain.models import EntityKind
+from sao_mcp.rules.access import require_location_access
+from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.state_authority import authoritative_guild_id
+from sao_mcp.rules.travel import AUTONOMOUS_TRAVEL_RESTRICTION_KEY
 
 
 VISIBLE_COMBAT_EVENT_PAYLOAD_KEYS = frozenset({
@@ -292,6 +295,133 @@ class GMObservationGate:
             ),
         }
 
+    def _travel_options(self, observer_id: str) -> list[dict[str, Any]]:
+        actor = self.runtime.actors[observer_id]
+        if not actor.alive or actor.location_id is None:
+            return []
+        if actor.metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY) is not None:
+            return []
+        if any(
+            encounter.active and observer_id in encounter.participants
+            for encounter in self.runtime.encounters.values()
+        ):
+            return []
+        rows = []
+        for edge in self.runtime.world_map.adjacency.get(actor.location_id, ()):
+            destination = self.runtime.world_map.locations[edge.to_location_id]
+            floor = self.runtime.world.floors[destination.floor_number]
+            if edge.requires_floor_unlocked and not floor.unlocked:
+                continue
+            try:
+                require_location_access(actor, destination.location_id)
+            except ValueError:
+                continue
+            rows.append({
+                "destination_id": destination.location_id,
+                "name": destination.name,
+                "travel_ms": edge.travel_ms,
+                "traversal_tags": list(edge.traversal_tags),
+            })
+        return sorted(rows, key=lambda row: (row["travel_ms"], row["destination_id"]))
+
+    def _teleport_options(self, observer_id: str) -> tuple[list[str], list[dict[str, Any]]]:
+        actor = self.runtime.actors[observer_id]
+        crystals = sorted(
+            item.instance_id
+            for item in actor.inventory.values()
+            if item.template_id == "teleport_crystal" and item.quantity > 0
+        )
+        if not crystals or not actor.alive or actor.location_id is None:
+            return crystals, []
+        if actor.metadata.get(AUTONOMOUS_TRAVEL_RESTRICTION_KEY) is not None:
+            return crystals, []
+        rows = []
+        for destination in self.runtime.world_map.locations.values():
+            if not destination.teleport_gate:
+                continue
+            floor = self.runtime.world.floors[destination.floor_number]
+            if not floor.unlocked or not floor.main_town_gate_active:
+                continue
+            try:
+                require_location_access(actor, destination.location_id)
+            except ValueError:
+                continue
+            rows.append({
+                "destination_id": destination.location_id,
+                "name": destination.name,
+                "floor_number": destination.floor_number,
+            })
+        return crystals, sorted(rows, key=lambda row: (row["floor_number"], row["destination_id"]))
+
+    def _available_quest_ids(self, observer_id: str, local_npc_ids: set[str]) -> list[str]:
+        active = self.runtime.quests.progress_by_actor.get(observer_id, {})
+        completed = self.runtime.quests.completed_by_actor.get(observer_id, set())
+        rows = []
+        for quest_id, definition in self.runtime.quests.definitions.items():
+            if definition.giver_id not in local_npc_ids:
+                continue
+            progress = active.get(quest_id)
+            if progress is not None and not progress.claimed and not progress.terminated:
+                continue
+            if quest_id in completed and not definition.repeatable:
+                continue
+            if self.runtime.world.now_ms < self.runtime.quests.global_accept_block_until_ms.get(quest_id, 0):
+                continue
+            if any(required not in completed for required in definition.prerequisites):
+                continue
+            rows.append(quest_id)
+        return sorted(rows)
+
+    def _claimable_quest_ids(self, observer_id: str, local_npc_ids: set[str]) -> list[str]:
+        actor = self.runtime.actors[observer_id]
+        rows = []
+        for quest_id, progress in self.runtime.quests.progress_by_actor.get(observer_id, {}).items():
+            if progress.claimed or progress.terminated:
+                continue
+            definition = self.runtime.quests.definitions[quest_id]
+            if definition.turn_in_id not in local_npc_ids:
+                continue
+            ready = True
+            for objective in definition.objectives:
+                if not objective.required_for_completion:
+                    continue
+                if objective.kind is QuestObjectiveKind.COLLECT:
+                    current = sum(
+                        item.quantity
+                        for item in actor.inventory.values()
+                        if item.template_id == objective.target_id
+                    )
+                else:
+                    current = progress.counters.get(objective.objective_id, 0)
+                if current < objective.required:
+                    ready = False
+                    break
+            if ready:
+                rows.append(quest_id)
+        return sorted(rows)
+
+    def _capabilities(self, observer_id: str, visible_entities: list[dict[str, Any]], encounters: dict[str, Any]) -> dict[str, Any]:
+        actor = self.runtime.actors[observer_id]
+        local_npc_ids = {
+            row["npc_id"]
+            for row in visible_entities
+            if isinstance(row, dict) and isinstance(row.get("npc_id"), str)
+        }
+        crystals, teleport_options = self._teleport_options(observer_id)
+        knowledge = self.runtime.knowledge_state(observer_id)
+        return {
+            "travel_options": self._travel_options(observer_id),
+            "teleport_crystal_instance_ids": crystals,
+            "teleport_options": teleport_options,
+            "interactable_npc_ids": sorted(local_npc_ids),
+            "inventory_instance_ids": sorted(actor.inventory),
+            "equipped_slots": sorted(actor.equipment),
+            "knowledge_fact_ids": sorted(knowledge.get("facts", {})),
+            "available_quest_ids": self._available_quest_ids(observer_id, local_npc_ids),
+            "claimable_quest_ids": self._claimable_quest_ids(observer_id, local_npc_ids),
+            "encounter_ids": sorted(encounters),
+        }
+
     def _messages(self, observer_id: str) -> list[dict[str, Any]]:
         if not hasattr(self.runtime, "message_inbox"):
             return []
@@ -324,20 +454,23 @@ class GMObservationGate:
             allowed_encounters.update(additional_encounter_ids)
         viewpoints = {}
         for observer_id in observer_ids:
+            visible_entities = self._visible_entities(observer_id)
+            encounters = self._encounters(
+                observer_id,
+                allowed_encounter_ids=allowed_encounters,
+                event_offsets=event_offsets,
+            )
             viewpoints[observer_id] = {
                 "observer": self._self_actor(observer_id),
                 "location": self._location(observer_id),
-                "visible_entities": self._visible_entities(observer_id),
+                "visible_entities": visible_entities,
                 "knowledge": self.runtime.knowledge_state(observer_id),
                 "quest_log": self._quest_log(observer_id),
                 "guild": self._guild(observer_id),
                 "relationships": self._relationships(observer_id),
                 "messages": self._messages(observer_id),
-                "encounters": self._encounters(
-                    observer_id,
-                    allowed_encounter_ids=allowed_encounters,
-                    event_offsets=event_offsets,
-                ),
+                "encounters": encounters,
+                "capabilities": self._capabilities(observer_id, visible_entities, encounters),
             }
         return {
             "world_now_ms": self.runtime.world.now_ms,

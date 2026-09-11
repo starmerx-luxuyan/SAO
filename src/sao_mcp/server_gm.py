@@ -20,33 +20,55 @@ def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=_default)
 
 
-def register_gm_tools(mcp, gm_turn_executor) -> None:
+def register_gm_tools(mcp, gm_turn_executor, gm_decision_runtime) -> None:
     @mcp.tool()
-    def execute_gm_turn(
-        actions: list[dict[str, Any]],
+    def preview_gm_decision(
+        proposed_actions: list[dict[str, Any]],
         observer_actor_ids: list[str],
         world_tick_ms: int = 0,
     ) -> str:
-        """Execute a structured GM action plan and return only player-viewpoint-gated state.
+        """Validate a proposed ordinary GM plan strictly against a fresh player-viewpoint observation.
 
-        The action plan still resolves through authoritative runtime mechanics. The returned packet does
-        not expose raw action results, NPC actor-core plans, guild strategy internals, world-event
-        occurrences, canonical timeline expectations or another entity's private knowledge.
+        This is a pure preview. It does not mutate the campaign and does not expose raw runtime state.
         """
-        return _json(
-            gm_turn_executor.execute(
-                actions,
-                observer_actor_ids=observer_actor_ids,
-                world_tick_ms=world_tick_ms,
-            )
+        observation = gm_turn_executor.observe(observer_actor_ids)
+        decision = gm_decision_runtime.decide(
+            observation,
+            proposed_actions,
+            world_tick_ms=world_tick_ms,
         )
+        return _json(decision.to_dict())
 
     @mcp.tool()
-    def get_gm_turn_action_contract() -> str:
-        """Return the exact structured action names accepted by execute_gm_turn."""
-        return _json({"actions": gm_turn_executor.supported_actions()})
+    def execute_gm_decision(
+        proposed_actions: list[dict[str, Any]],
+        observer_actor_ids: list[str],
+        world_tick_ms: int = 0,
+    ) -> str:
+        """Ground a proposed ordinary player-action plan in a fresh observation, then execute it.
+
+        The decision runtime receives only the gated observation packet. Hidden NPC goals, guild strategy,
+        world-event state and other server-only authorities cannot be used as decision inputs.
+        """
+        observation = gm_turn_executor.observe(observer_actor_ids)
+        decision = gm_decision_runtime.decide(
+            observation,
+            proposed_actions,
+            world_tick_ms=world_tick_ms,
+        )
+        execution = gm_turn_executor.execute(
+            list(decision.actions),
+            observer_actor_ids=list(decision.observer_actor_ids),
+            world_tick_ms=decision.world_tick_ms,
+        )
+        return _json({"decision": decision.to_dict(), "execution": execution})
+
+    @mcp.tool()
+    def get_gm_decision_contract() -> str:
+        """Return the player-observable action surface accepted by the GM decision gate."""
+        return _json(gm_decision_runtime.contract())
 
     @mcp.tool()
     def get_gm_observation(observer_actor_ids: list[str]) -> str:
-        """Return current observable state for explicit player viewpoints only."""
+        """Return current observable state and decision capabilities for explicit player viewpoints."""
         return _json(gm_turn_executor.observe(observer_actor_ids))

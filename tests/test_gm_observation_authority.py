@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_server_gm_exposes_only_gated_observation_and_action_execution_surfaces():
     source = (ROOT / "src/sao_mcp/server_gm.py").read_text(encoding="utf-8")
     assert "def get_gm_observation" in source
+    assert "def execute_gm_decision" in source
+    assert "def preview_gm_decision" in source
     assert "observer_actor_ids" in source
     for forbidden in (
         "get_npc_agenda",
