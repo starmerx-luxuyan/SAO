@@ -64,3 +64,4 @@ jobs:
           name: SAO-Aincrad-v1.0.0-plugin
           path: release/SAO-Aincrad-v1.0.0
           if-no-files-found: error
+          include-hidden-files: true
