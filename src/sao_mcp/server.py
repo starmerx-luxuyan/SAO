@@ -9,6 +9,7 @@ from typing import Any
 from mcp.server.apps import Apps
 from mcp.server.mcpserver import MCPServer
 
+from sao_mcp import __version__
 from sao_mcp.domain.models import DefenseMode, EnhancementTrack
 from sao_mcp.rules.crafting import preview_enhancement
 from sao_mcp.rules.progression import skill_slot_count
@@ -66,12 +67,12 @@ mcp = MCPServer(
 
 @mcp.tool()
 def health() -> str:
-    """Return runtime/plugin health and schema version."""
+    """Return runtime/plugin health and release version."""
     return _json(
         {
             "ok": True,
             "runtime": "sao-aincrad",
-            "version": "0.1.0",
+            "version": __version__,
             "actors": len(runtime.actors),
             "encounters": len(runtime.encounters),
             "spatial": hasattr(runtime, "attack_authoritative"),
