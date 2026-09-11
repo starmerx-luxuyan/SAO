@@ -56,7 +56,7 @@ jobs:
           cp .mcp.json release/SAO-Aincrad-v1.0.0/
           cp -R skills/sao-gm release/SAO-Aincrad-v1.0.0/skills/
           cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.0.0/
-          cp docs/RELEASE.md release/SAO-Aincrad-v1.0.0/docs/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md release/SAO-Aincrad-v1.0.0/docs/
           cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.0.0/dist/
       - name: Upload plugin bundle
         uses: actions/upload-artifact@v4
