@@ -1,0 +1,35 @@
+name: Round 13 Economy Accounting
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round13 economy accounting fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply economy accounting fix
+        run: python scripts/round13_economy_accounting_fix.py
+      - name: Verify economy accounting
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified accounting fix
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/rules/economy_loop.py src/sao_mcp/runtime/property_economy.py src/sao_mcp/rules/economy.py tests/test_economy_loop.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Separate production from system market restock"
+          git push origin HEAD:main
