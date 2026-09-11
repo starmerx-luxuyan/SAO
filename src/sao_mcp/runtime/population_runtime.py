@@ -579,8 +579,12 @@ class PopulationAincradRuntime(HousingAincradRuntime):
         for cohort_id, cohort in self.population.cohorts.items():
             movement = self.population_movements.get(cohort_id)
             if movement is None:
+                if cohort.headcount == 0 and not cohort.settled:
+                    if cohort.floor_number is not None or cohort.location_id is not None:
+                        raise RuntimeError(f"extinct population cohort has partial location state: {cohort_id}")
+                    continue
                 if not cohort.settled or cohort.location_id not in self.world_map.locations:
-                    raise RuntimeError(f"settled population cohort lacks an authoritative location: {cohort_id}")
+                    raise RuntimeError(f"living settled population cohort lacks an authoritative location: {cohort_id}")
                 location = self.world_map.locations[cohort.location_id]
                 if cohort.floor_number != location.floor_number:
                     raise RuntimeError(f"population cohort floor/location mismatch: {cohort_id}")

@@ -172,3 +172,31 @@ def test_population_cohorts_require_authoritative_world_locations_and_safe_split
     with pytest.raises(ValueError, match="new_cohort_id"):
         runtime.reclassify_population_cohort("mid_tier_pool", "frontline", count=5)
     assert runtime.player_population_state()["abstract_living_players"] == 20
+
+
+def test_population_cohort_can_be_extinguished_in_transit_without_creating_a_ghost_location():
+    runtime = PopulationAincradRuntime(seed=515)
+    runtime.add_population_cohort("doomed_patrol", "frontline", 5, TOWN, 6.0, "field_patrol")
+    runtime.schedule_population_movement("doomed_patrol", WEST_FIELD, reason="field_patrol")
+    assert runtime.population.cohorts["doomed_patrol"].location_id is None
+
+    runtime.apply_population_losses("doomed_patrol", 5, cause="route_ambush")
+    state = runtime.player_population_state()
+    cohort = runtime.population.cohorts["doomed_patrol"]
+    assert cohort.headcount == 0
+    assert cohort.location_id is None and cohort.floor_number is None
+    assert "doomed_patrol" not in runtime.population_movements
+    assert state["abstract_registered_players"] == 5
+    assert state["abstract_living_players"] == 0
+    assert state["abstract_cumulative_deaths"] == 5
+    assert state["conservation_balance"] == 0
+    assert runtime.population_location_state(TOWN)["headcount"] == 0
+    assert runtime.population_location_state(WEST_FIELD)["headcount"] == 0
+
+    restored = import_runtime(export_runtime(runtime))
+    restored_state = restored.player_population_state()
+    assert restored_state["abstract_registered_players"] == 5
+    assert restored_state["abstract_living_players"] == 0
+    assert restored_state["abstract_cumulative_deaths"] == 5
+    assert restored.population.cohorts["doomed_patrol"].location_id is None
+
