@@ -11,6 +11,7 @@ from sao_mcp.runtime.persistence import SAVE_SCHEMA
 
 
 ROOT = Path(__file__).resolve().parents[1]
+HOSTED_MCP_URL = "https://sao-aincrad-mcp-production.up.railway.app/mcp"
 
 
 def test_release_version_metadata_is_consistent():
@@ -25,6 +26,16 @@ def test_release_version_metadata_is_consistent():
     from sao_mcp.server import health
 
     assert json.loads(health())["version"] == __version__
+
+
+def test_release_plugin_uses_hosted_mcp():
+    manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    mcp_config = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
+
+    assert manifest["mcpServers"] == "./.mcp.json"
+    assert set(mcp_config["mcpServers"]) == {"sao_aincrad"}
+    server = mcp_config["mcpServers"]["sao_aincrad"]
+    assert server == {"type": "http", "url": HOSTED_MCP_URL}
 
 
 def test_release_persistence_schema_is_v3():
