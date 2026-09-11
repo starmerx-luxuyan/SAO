@@ -1,0 +1,37 @@
+name: Round 18 GM Decision Runtime
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round18 gm decision runtime'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply GM decision runtime closure
+        run: |
+          python scripts/round18_gm_decision_runtime_patch.py
+          python scripts/round18_gm_decision_fix.py
+      - name: Verify GM decision runtime
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified GM decision runtime
+        run: |
+          git config user.name 'starmerx-luxuyan'
+          git config user.email 'luxuyan@starmerx.com'
+          git add src/sao_mcp/runtime/gm_decision.py src/sao_mcp/runtime/gm_observation.py src/sao_mcp/runtime/gm_turn.py src/sao_mcp/server_gm.py src/sao_mcp/server_bootstrap.py skills/sao-gm/SKILL.md tests/test_gm_decision_runtime.py tests/test_gm_decision_authority.py tests/test_gm_observation_gate.py tests/test_gm_observation_authority.py
+          git diff --cached --quiet && exit 1
+          git commit -m 'Seal GM decision runtime'
+          git push origin HEAD:main
