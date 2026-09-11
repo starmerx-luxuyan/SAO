@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sao_mcp.domain.models import EntityKind, ZoneKind
 from sao_mcp.rules.communications import CommunicationsRuntime, MessageChannel
+from sao_mcp.rules.state_authority import authoritative_guild_id
 from sao_mcp.runtime.property_runtime import PropertyFamilyAincradRuntime
 
 
@@ -28,7 +29,7 @@ class CommunicatingAincradRuntime(PropertyFamilyAincradRuntime):
             ZoneKind.BOSS_ROOM,
         }
 
-    def learn_player_identity(self, observer_id: str, target_id: str) -> dict:
+    def _validate_identity_meeting(self, observer_id: str, target_id: str):
         observer = self.actors[observer_id]
         target = self.actors[target_id]
         if observer.kind is not EntityKind.PLAYER or target.kind is not EntityKind.PLAYER:
@@ -42,6 +43,13 @@ class CommunicatingAincradRuntime(PropertyFamilyAincradRuntime):
         )
         if not colocated and not shared_encounter:
             raise ValueError("player identity cannot be learned without an actual meeting")
+        return observer, target
+
+    def _player_identity_known(self, observer_id: str, target_id: str) -> bool:
+        return target_id in set(self.actors[observer_id].metadata.get("known_player_ids", ()))
+
+    def learn_player_identity(self, observer_id: str, target_id: str) -> dict:
+        observer, target = self._validate_identity_meeting(observer_id, target_id)
         known = set(observer.metadata.get("known_player_ids", ()))
         known.add(target_id)
         observer.metadata["known_player_ids"] = sorted(known)
@@ -60,7 +68,9 @@ class CommunicatingAincradRuntime(PropertyFamilyAincradRuntime):
             return MessageChannel.SPOUSE
         if self.relationships.are_friends(sender_id, target_id):
             return MessageChannel.FRIEND
-        if sender.guild_id and sender.guild_id == target.guild_id:
+        sender_guild = authoritative_guild_id(self, sender_id)
+        target_guild = authoritative_guild_id(self, target_id)
+        if sender_guild is not None and sender_guild == target_guild:
             return MessageChannel.GUILD
         return MessageChannel.STRANGER_INSTANT
 
@@ -81,8 +91,7 @@ class CommunicatingAincradRuntime(PropertyFamilyAincradRuntime):
         if channel is MessageChannel.GUILD and self._in_dungeon(sender_id):
             raise ValueError("guild short messages are unavailable from within a dungeon")
         if channel is MessageChannel.STRANGER_INSTANT:
-            known = set(sender.metadata.get("known_player_ids", ()))
-            if target_id not in known:
+            if not self._player_identity_known(sender_id, target_id):
                 raise ValueError("stranger instant message requires the sender to know the recipient identity")
             sender_floor = self._location_floor(sender.location_id)
             target_floor = self._location_floor(target.location_id)

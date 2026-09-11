@@ -91,6 +91,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     population_dump = getattr(runtime, "dump_population_state", None)
     monster_ecology_dump = getattr(runtime, "dump_monster_ecology_state", None)
     quest_ecology_dump = getattr(runtime, "dump_quest_ecology_state", None)
+    social_communication_dump = getattr(runtime, "dump_social_communication_state", None)
     world_event_dump = getattr(runtime, "dump_world_event_state", None)
     canonical_timeline_dump = getattr(runtime, "dump_canonical_timeline_state", None)
     payload = {
@@ -118,6 +119,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "population_state": population_dump() if population_dump is not None else {},
         "monster_ecology_state": monster_ecology_dump() if monster_ecology_dump is not None else {},
         "quest_ecology_state": quest_ecology_dump() if quest_ecology_dump is not None else {},
+        "social_communication_state": social_communication_dump() if social_communication_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -126,10 +128,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     payload = _upgrade_payload(json.loads(payload_json))
 
     if into is None:
-        from sao_mcp.runtime.quest_ecology_runtime import QuestEcologyAincradRuntime
+        from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
         from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
-        runtime: GameRuntime = QuestEcologyAincradRuntime()
+        runtime: GameRuntime = SocialCommunicationAincradRuntime()
         install_floor22_witch_scenario(runtime)
     else:
         runtime = into
@@ -238,6 +240,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     communications_load = getattr(runtime, "load_communications_state", None)
     if communications_load is not None:
         communications_load(payload.get("communications_state", {}))
+    social_communication_load = getattr(runtime, "load_social_communication_state", None)
+    if social_communication_load is not None:
+        social_communication_load(payload.get("social_communication_state", {}))
     housing_load = getattr(runtime, "load_housing_state", None)
     if housing_load is not None:
         housing_load(payload.get("housing_state", {}))

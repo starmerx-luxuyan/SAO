@@ -61,6 +61,21 @@ CORE_NPCS: dict[str, NPCDefinition] = {
             notes="Runtime tutorial NPC; not an SAO canon character.",
         ),
     ),
+    "pc_argo": NPCDefinition(
+        npc_id="pc_argo",
+        name="Argo",
+        home_location_id="floor_1_town_of_beginnings",
+        roles=("named_player", "information_broker", "guide_writer"),
+        knowledge_tags=("information_brokerage", "rumors", "quests", "frontline"),
+        provenance=Provenance(
+            ProvenanceKind.CANON_INFERRED,
+            sources=("Sword Art Online Progressive Volume 1",),
+            notes=(
+                "Argo the Rat is a canon early-Aincrad information broker. The static Town of Beginnings "
+                "home is a runtime seed for autonomous routing, not a claim of permanent canon residence."
+            ),
+        ),
+    ),
     "pc_lisbeth": NPCDefinition(
         npc_id="pc_lisbeth",
         name="Lisbeth",

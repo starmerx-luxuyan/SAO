@@ -132,6 +132,14 @@ class KnowledgeAincradRuntime(CommunicatingAincradRuntime):
     def knowledge_event(self, event_id: str) -> KnowledgeEvent:
         return self._knowledge_event_index[event_id]
 
+    def knowledge_event_count(self) -> int:
+        return len(self.knowledge_events)
+
+    def knowledge_events_since(self, offset: int) -> tuple[KnowledgeEvent, ...]:
+        if not isinstance(offset, int) or isinstance(offset, bool) or not 0 <= offset <= len(self.knowledge_events):
+            raise ValueError("knowledge event offset is outside the authoritative event log")
+        return tuple(self.knowledge_events[offset:])
+
     def _event_view(self, event: KnowledgeEvent) -> dict[str, Any]:
         row = asdict(event)
         row["age_ms"] = self.world.now_ms - event.learned_at_ms
@@ -273,6 +281,69 @@ class KnowledgeAincradRuntime(CommunicatingAincradRuntime):
             transmission_depth=max(event.transmission_depth for event in evidence),
         )
 
+    def receive_reported_fact(
+        self,
+        recipient_id: str,
+        *,
+        reporter_id: str,
+        source_event_id: str,
+        confidence_factor: float,
+        learned_location_id: str | None = None,
+    ) -> KnowledgeEvent:
+        source_event = self.knowledge_event(source_event_id)
+        reporter_owner = self._knowledge_owner_id(reporter_id)
+        if source_event.knower_id != reporter_owner:
+            raise ValueError("reported fact source event does not belong to the reporter")
+        if source_event.stale_at(self.world.now_ms):
+            raise ValueError("reported fact source event is stale")
+        factor = float(confidence_factor)
+        if not 0.0 < factor <= 1.0:
+            raise ValueError("reported fact confidence factor must be in (0, 1]")
+        if learned_location_id is None:
+            learned_location_id = self._knowledge_entity_location_id(recipient_id)
+        return self._record_knowledge_event(
+            recipient_id,
+            source_event.fact_id,
+            source_event.value,
+            basis=EpistemicBasis.REPORTED,
+            source_id=reporter_id,
+            confidence=source_event.confidence * factor,
+            expires_at_ms=source_event.expires_at_ms,
+            learned_location_id=learned_location_id,
+            evidence_event_ids=(source_event.event_id,),
+            transmission_depth=source_event.transmission_depth + 1,
+        )
+
+    def send_known_fact_message(
+        self, sender_id: str, target_id: str, fact_id: str, text: str
+    ):
+        source_event = self.belief(sender_id, fact_id)
+        if source_event is None:
+            raise ValueError("sender does not know a current version of the requested fact")
+        message = self.send_short_message(sender_id, target_id, text)
+        self.communications.attach_fact(message.message_id, fact_id, source_event.event_id)
+        return message
+
+    def read_message(self, actor_id: str, message_id: str):
+        message = super().read_message(actor_id, message_id)
+        if (
+            message.attached_fact_id
+            and message.source_knowledge_event_id
+            and message.received_knowledge_event_id is None
+        ):
+            source_event = self.knowledge_event(message.source_knowledge_event_id)
+            if not source_event.stale_at(self.world.now_ms):
+                factor = 0.80 if message.channel.value == "stranger_instant" else REPORT_CONFIDENCE_FACTOR
+                received = self.receive_reported_fact(
+                    actor_id,
+                    reporter_id=message.sender_id,
+                    source_event_id=source_event.event_id,
+                    confidence_factor=factor,
+                    learned_location_id=self._knowledge_entity_location_id(actor_id),
+                )
+                self.communications.mark_fact_received(message.message_id, received.event_id)
+        return message
+
     def share_known_fact(self, sender_id: str, recipient_id: str, fact_id: str) -> KnowledgeEvent:
         source_belief = self.belief(sender_id, fact_id)
         if source_belief is None:
@@ -355,19 +426,22 @@ class KnowledgeAincradRuntime(CommunicatingAincradRuntime):
             },
         }
 
+    def _player_identity_known(self, observer_id: str, target_id: str) -> bool:
+        return self.belief(observer_id, f"player_identity:{target_id}") is not None
+
     def learn_player_identity(self, observer_id: str, target_id: str) -> dict:
-        result = super().learn_player_identity(observer_id, target_id)
+        observer, target = self._validate_identity_meeting(observer_id, target_id)
         location_id = self._knowledge_entity_location_id(observer_id)
         if location_id is None:
             raise RuntimeError("identity observation completed without a settled observation location")
         self.record_observation(
             observer_id,
             f"player_identity:{target_id}",
-            self.actors[target_id].name,
+            target.name,
             observation_location_id=location_id,
             source_id=target_id,
         )
-        return result
+        return {"observerId": observer_id, "targetId": target_id, "known": True, "name": target.name}
 
     def dump_knowledge_state(self) -> dict:
         return {

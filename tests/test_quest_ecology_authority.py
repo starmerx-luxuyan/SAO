@@ -6,6 +6,7 @@ from pathlib import Path
 from sao_mcp.rules.quest_ecology import QuestContractState
 from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
 from sao_mcp.runtime.quest_ecology_runtime import QuestEcologyAincradRuntime
+from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,9 +57,11 @@ def test_scenarios_cannot_mutate_quest_ecology_or_world_progress_directly():
     assert violations == []
 
 
-def test_server_bootstrap_uses_quest_ecology_as_authoritative_top_runtime():
+def test_server_bootstrap_preserves_quest_ecology_under_social_top_runtime():
     source = (ROOT / "src/sao_mcp/server_bootstrap.py").read_text(encoding="utf-8")
-    assert "QuestEcologyAincradRuntime" in source
+    assert SocialCommunicationAincradRuntime.__bases__ == (QuestEcologyAincradRuntime,)
+    assert "SocialCommunicationAincradRuntime" in source
+    assert "QuestEcologyAincradRuntime(seed=0xA1C0)" not in source
     assert "MonsterEcologyAincradRuntime(seed=0xA1C0)" not in source
     assert "register_quest_ecology_tools" in source
 

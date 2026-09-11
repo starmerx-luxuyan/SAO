@@ -27,6 +27,9 @@ class ShortMessage:
     sent_at_ms: int
     read_at_ms: int | None = None
     delivery_confirmation_visible: bool = True
+    attached_fact_id: str | None = None
+    source_knowledge_event_id: str | None = None
+    received_knowledge_event_id: str | None = None
 
 
 class CommunicationsRuntime:
@@ -55,6 +58,8 @@ class CommunicationsRuntime:
         *,
         now_ms: int,
         delivery_confirmation_visible: bool,
+        attached_fact_id: str | None = None,
+        source_knowledge_event_id: str | None = None,
     ) -> ShortMessage:
         clean = self.validate_text(text)
         message = ShortMessage(
@@ -65,10 +70,33 @@ class CommunicationsRuntime:
             text=clean,
             sent_at_ms=now_ms,
             delivery_confirmation_visible=delivery_confirmation_visible,
+            attached_fact_id=attached_fact_id,
+            source_knowledge_event_id=source_knowledge_event_id,
         )
         self.messages[message.message_id] = message
         self.inbox_by_actor.setdefault(recipient.actor_id, []).append(message.message_id)
         self.outbox_by_actor.setdefault(sender.actor_id, []).append(message.message_id)
+        return message
+
+    def attach_fact(self, message_id: str, fact_id: str, source_knowledge_event_id: str) -> ShortMessage:
+        message = self.messages[message_id]
+        if message.attached_fact_id is not None or message.source_knowledge_event_id is not None:
+            raise ValueError("short message already carries a structured fact")
+        if not fact_id or not source_knowledge_event_id:
+            raise ValueError("structured fact attachment requires fact and source event IDs")
+        message.attached_fact_id = fact_id
+        message.source_knowledge_event_id = source_knowledge_event_id
+        return message
+
+    def mark_fact_received(self, message_id: str, received_knowledge_event_id: str) -> ShortMessage:
+        message = self.messages[message_id]
+        if not message.source_knowledge_event_id or not message.attached_fact_id:
+            raise ValueError("short message has no structured fact attachment")
+        if message.received_knowledge_event_id is not None:
+            if message.received_knowledge_event_id != received_knowledge_event_id:
+                raise RuntimeError("short message structured fact was already bound to another knowledge event")
+            return message
+        message.received_knowledge_event_id = received_knowledge_event_id
         return message
 
     def inbox(self, actor_id: str, *, unread_only: bool = False) -> list[ShortMessage]:
@@ -106,6 +134,9 @@ class CommunicationsRuntime:
                 sent_at_ms=int(row["sent_at_ms"]),
                 read_at_ms=row.get("read_at_ms"),
                 delivery_confirmation_visible=bool(row.get("delivery_confirmation_visible", True)),
+                attached_fact_id=row.get("attached_fact_id"),
+                source_knowledge_event_id=row.get("source_knowledge_event_id"),
+                received_knowledge_event_id=row.get("received_knowledge_event_id"),
             )
             for message_id, row in payload.get("messages", {}).items()
         }

@@ -7,6 +7,7 @@ from sao_mcp.rules.economy_loop import RegionalMarketState, VendorStockState
 from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
 from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
 from sao_mcp.runtime.quest_ecology_runtime import QuestEcologyAincradRuntime
+from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
 from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
 
 
@@ -51,7 +52,8 @@ def test_server_bootstrap_preserves_economy_loop_under_the_new_authoritative_top
     source = (ROOT / "src/sao_mcp/server_bootstrap.py").read_text(encoding="utf-8")
     assert MonsterEcologyAincradRuntime.__bases__ == (EconomyLoopAincradRuntime,)
     assert QuestEcologyAincradRuntime.__bases__ == (MonsterEcologyAincradRuntime,)
-    assert "QuestEcologyAincradRuntime" in source
+    assert SocialCommunicationAincradRuntime.__bases__ == (QuestEcologyAincradRuntime,)
+    assert "SocialCommunicationAincradRuntime" in source
     assert "PopulationAincradRuntime(seed=0xA1C0)" not in source
     assert "EconomyLoopAincradRuntime(seed=0xA1C0)" not in source
     assert "MonsterEcologyAincradRuntime(seed=0xA1C0)" not in source
