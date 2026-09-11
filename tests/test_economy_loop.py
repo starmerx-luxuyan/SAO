@@ -1,6 +1,6 @@
 import pytest
 
-from sao_mcp.rules.economy_loop import ECONOMY_TICK_MS
+from sao_mcp.rules.economy_loop import ECONOMY_TICK_MS, background_demand_units
 from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 
@@ -151,3 +151,76 @@ def test_system_vendor_restock_is_accounted_separately_from_player_production():
     assert row["background_production_units"] == 0
     assert row["system_restock_units"] > 0
     assert row["background_supply_units"] == row["system_restock_units"]
+
+
+def test_background_demand_budget_is_shared_between_player_market_and_vendor_channel():
+    runtime = EconomyLoopAincradRuntime(seed=608)
+    seller = runtime.create_character("PotionSeller")
+    potion_id = next(
+        instance_id
+        for instance_id, item in seller.inventory.items()
+        if item.template_id == "healing_potion_basic"
+    )
+    runtime.economy.create_player_listing(
+        seller,
+        potion_id,
+        location_id=TOWN,
+        unit_price_col=10,
+        quantity=2,
+        now_ms=0,
+    )
+    runtime.add_population_cohort("buyers", "casual", 1_000, TOWN, 2.0, "town_consumers")
+    expected = background_demand_units(
+        runtime.catalog,
+        "healing_potion_basic",
+        runtime.population_location_state(TOWN)["segment_totals"],
+    )
+    runtime.advance_world(ECONOMY_TICK_MS)
+    tick = next(
+        row
+        for row in reversed(runtime.economy.market_history)
+        if row["event"] == "economy_tick" and row["location_id"] == TOWN
+    )
+    potion_row = next(
+        item
+        for vendor in tick["vendors"]
+        if vendor["vendor_id"] == VENDOR
+        for item in vendor["items"]
+        if item["template_id"] == "healing_potion_basic"
+    )
+    player_units = tick["player_market_units_by_template"]["healing_potion_basic"]
+    assert player_units == 2
+    assert potion_row["background_consumed_units"] + player_units == expected
+    assert potion_row["background_demand_remaining_units"] == 0
+
+
+def test_named_vendor_col_sink_and_injection_are_recorded_without_copying_actor_balance():
+    runtime = EconomyLoopAincradRuntime(seed=609)
+    actor = runtime.create_character("Trader")
+    actor.col = 10_000
+    purchase = runtime.economy.buy_from_vendor(
+        actor,
+        VENDOR,
+        "field_bread",
+        1,
+        runtime.catalog,
+        actor_location_id=actor.location_id,
+    )
+    runtime.unequip_item(actor.actor_id, "weapon")
+    weapon_id = next(
+        instance_id
+        for instance_id, item in actor.inventory.items()
+        if item.template_id == "starter_one_hand_sword"
+    )
+    sale = runtime.economy.sell_to_vendor(
+        actor,
+        VENDOR,
+        weapon_id,
+        runtime.catalog,
+        quantity=1,
+        actor_location_id=actor.location_id,
+    )
+    market = runtime.aincrad_economy_state(TOWN)["location"]["market"]
+    assert market["system_col_sunk"] == purchase.total_col
+    assert market["system_col_injected"] == sale.received_col
+    assert "actor_col" not in market

@@ -107,7 +107,9 @@ class GuardedEconomyRuntime(EconomyRuntime):
     ) -> None:
         vendor = self.vendors[vendor_id]
         self._stock(vendor_id).consume(template_id, quantity)
-        self._region(vendor.location_id).record_named_trade(total_col)
+        region = self._region(vendor.location_id)
+        region.record_named_trade(total_col)
+        region.record_system_col_flow(sunk_col=total_col)
         self._record_market(
             "named_vendor_purchase",
             vendor_id=vendor_id,
@@ -131,7 +133,9 @@ class GuardedEconomyRuntime(EconomyRuntime):
         restocked = 0
         if template_id in stock.stock_by_template:
             restocked = stock.restock(template_id, quantity)
-        self._region(vendor.location_id).record_named_trade(received_col)
+        region = self._region(vendor.location_id)
+        region.record_named_trade(received_col)
+        region.record_system_col_flow(injected_col=received_col)
         self._record_market(
             "named_vendor_sale",
             vendor_id=vendor_id,
@@ -229,18 +233,14 @@ class GuardedEconomyRuntime(EconomyRuntime):
         self,
         *,
         location_id: str,
-        segment_totals: dict[str, int],
+        max_units_by_template: dict[str, int],
         tick_ms: int,
-    ) -> tuple[int, int]:
-        budgets: dict[str, int] = {}
-        for listing in self.player_listings.values():
-            if listing.location_id != location_id:
-                continue
-            budgets.setdefault(
-                listing.item.template_id,
-                max(0, background_demand_units(self.runtime.catalog, listing.item.template_id, segment_totals) // 3),
-            )
-        units = 0
+    ) -> tuple[dict[str, int], int]:
+        budgets = {
+            template_id: max(0, int(units))
+            for template_id, units in max_units_by_template.items()
+        }
+        sold_by_template: dict[str, int] = {}
         gross_col = 0
         for listing in sorted(
             tuple(self.player_listings.values()),
@@ -248,13 +248,14 @@ class GuardedEconomyRuntime(EconomyRuntime):
         ):
             if listing.location_id != location_id:
                 continue
-            budget = budgets.get(listing.item.template_id, 0)
+            template_id = listing.item.template_id
+            budget = budgets.get(template_id, 0)
             if budget <= 0:
                 continue
             seller = self.runtime.actors.get(listing.seller_id)
             if seller is None or not seller.alive or seller.metadata.get("permanent_death"):
                 continue
-            reference = self.reference_unit_price(location_id, listing.item.template_id)
+            reference = self.reference_unit_price(location_id, template_id)
             if listing.unit_price_col > max(1, int(round(reference * 1.10))):
                 continue
             quantity = min(budget, listing.item.quantity)
@@ -267,8 +268,8 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 self.player_listings.pop(listing.listing_id)
             seller.col += total
             finance = self._income(seller, total, "background_player_market_sale")
-            budgets[listing.item.template_id] -= quantity
-            units += quantity
+            budgets[template_id] -= quantity
+            sold_by_template[template_id] = sold_by_template.get(template_id, 0) + quantity
             gross_col += total
             self._record_market(
                 "background_player_market_purchase",
@@ -276,14 +277,14 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 listing_id=listing.listing_id,
                 seller_id=seller.actor_id,
                 location_id=location_id,
-                template_id=listing.item.template_id,
+                template_id=template_id,
                 quantity=quantity,
                 unit_price_col=listing.unit_price_col,
                 total_col=total,
                 listing_closed=closed,
                 finance=finance,
             )
-        return units, gross_col
+        return sold_by_template, gross_col
 
     def advance_living_market_tick(self, tick_ms: int) -> None:
         if tick_ms != self.next_tick_at_ms:
@@ -301,56 +302,96 @@ class GuardedEconomyRuntime(EconomyRuntime):
             region = self._region(location_id)
             demand_index, supply_index = regional_pressure(segment_totals, int(population["headcount"]))
             region.set_pressure(demand_index, supply_index, tick_ms=tick_ms)
-            location_demand = 0
+
+            vendors = sorted(
+                (row for row in self.vendors.values() if row.location_id == location_id),
+                key=lambda row: row.vendor_id,
+            )
+            template_ids = {
+                listing.template_id
+                for vendor in vendors
+                for listing in vendor.listings
+            } | {
+                listing.item.template_id
+                for listing in self.player_listings.values()
+                if listing.location_id == location_id
+            }
+            demand_requested = {
+                template_id: background_demand_units(self.runtime.catalog, template_id, segment_totals)
+                for template_id in template_ids
+            }
+            production_remaining = {
+                template_id: background_supply_units(self.runtime.catalog, template_id, segment_totals)
+                for template_id in template_ids
+            }
+            player_market_caps = {
+                template_id: units // 3
+                for template_id, units in demand_requested.items()
+            }
+            sold_by_template, market_col = self._clear_background_player_market(
+                location_id=location_id,
+                max_units_by_template=player_market_caps,
+                tick_ms=tick_ms,
+            )
+            market_units = sum(sold_by_template.values())
+            demand_remaining = {
+                template_id: max(0, units - sold_by_template.get(template_id, 0))
+                for template_id, units in demand_requested.items()
+            }
+
+            location_vendor_demand = 0
             location_production = 0
             location_system_restock = 0
             vendor_rows = []
-            for vendor in sorted(
-                (row for row in self.vendors.values() if row.location_id == location_id),
-                key=lambda row: row.vendor_id,
-            ):
+            for vendor in vendors:
                 stock = self._stock(vendor.vendor_id)
                 item_rows = []
                 for listing in vendor.listings:
                     template_id = listing.template_id
-                    production_requested = background_supply_units(
-                        self.runtime.catalog, template_id, segment_totals
+                    production_requested_units = production_remaining.get(template_id, 0)
+                    production_supplied = stock.restock(template_id, production_requested_units)
+                    production_remaining[template_id] = max(
+                        0, production_requested_units - production_supplied
                     )
-                    production_supplied = stock.restock(template_id, production_requested)
                     system_requested = system_restock_units(
                         stock.available(template_id),
                         stock.target_by_template[template_id],
                     )
                     system_supplied = stock.restock(template_id, system_requested)
-                    demanded = background_demand_units(self.runtime.catalog, template_id, segment_totals)
-                    consumed = min(stock.available(template_id), demanded)
+                    demanded_requested = demand_remaining.get(template_id, 0)
+                    consumed = min(stock.available(template_id), demanded_requested)
                     if consumed:
                         stock.consume(template_id, consumed)
+                    demand_remaining[template_id] = max(0, demanded_requested - consumed)
                     location_production += production_supplied
                     location_system_restock += system_supplied
-                    location_demand += consumed
+                    location_vendor_demand += consumed
                     item_rows.append(
                         {
                             "template_id": template_id,
-                            "production_requested_units": production_requested,
+                            "production_requested_units": production_requested_units,
                             "production_supplied_units": production_supplied,
                             "system_restock_requested_units": system_requested,
                             "system_restock_units": system_supplied,
+                            "background_demand_requested_units": demanded_requested,
                             "background_consumed_units": consumed,
+                            "background_demand_remaining_units": demand_remaining[template_id],
                             "stock_after": stock.available(template_id),
-                            "current_unit_price_col": self.vendor_quote(vendor.vendor_id, template_id)["current_unit_price_col"],
+                            "current_unit_price_col": self.vendor_quote(
+                                vendor.vendor_id, template_id
+                            )["current_unit_price_col"],
                         }
                     )
                 vendor_rows.append({"vendor_id": vendor.vendor_id, "items": item_rows})
+
+            fulfilled_demand = market_units + location_vendor_demand
+            unmet_demand = sum(demand_remaining.values())
+            unabsorbed_production = sum(production_remaining.values())
             region.record_background(
-                demand_units=location_demand,
+                demand_units=fulfilled_demand,
+                unmet_demand_units=unmet_demand,
                 production_units=location_production,
                 system_restock_units=location_system_restock,
-            )
-            market_units, market_col = self._clear_background_player_market(
-                location_id=location_id,
-                segment_totals=segment_totals,
-                tick_ms=tick_ms,
             )
             if market_units:
                 region.record_player_market(units=market_units, gross_col=market_col)
@@ -362,12 +403,17 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 segment_totals=segment_totals,
                 demand_index=region.demand_index,
                 supply_index=region.supply_index,
-                background_vendor_demand_units=location_demand,
+                background_requested_demand_units=sum(demand_requested.values()),
+                background_fulfilled_demand_units=fulfilled_demand,
+                background_unmet_demand_units=unmet_demand,
+                background_vendor_demand_units=location_vendor_demand,
                 background_production_units=location_production,
+                unabsorbed_production_units=unabsorbed_production,
                 system_restock_units=location_system_restock,
                 background_supply_units=location_production + location_system_restock,
                 background_player_market_units=market_units,
                 background_player_market_col=market_col,
+                player_market_units_by_template=sold_by_template,
                 vendors=vendor_rows,
             )
         self.next_tick_at_ms += ECONOMY_TICK_MS
@@ -530,12 +576,14 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 supply_index=float(row["supply_index"]),
                 last_tick_ms=int(row["last_tick_ms"]),
                 cumulative_background_demand_units=int(row.get("cumulative_background_demand_units", 0)),
+                cumulative_unmet_demand_units=int(row.get("cumulative_unmet_demand_units", 0)),
                 cumulative_production_units=int(row.get("cumulative_production_units", 0)),
                 cumulative_system_restock_units=int(row.get("cumulative_system_restock_units", 0)),
                 cumulative_player_market_units=int(row.get("cumulative_player_market_units", 0)),
                 cumulative_player_market_col=int(row.get("cumulative_player_market_col", 0)),
                 cumulative_named_trade_col=int(row.get("cumulative_named_trade_col", 0)),
                 system_col_injected=int(row.get("system_col_injected", 0)),
+                system_col_sunk=int(row.get("system_col_sunk", 0)),
                 revision=int(row.get("revision", 0)),
             )
             if markets[location_id].location_id != location_id:

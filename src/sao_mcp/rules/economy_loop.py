@@ -67,12 +67,14 @@ class RegionalMarketState:
     supply_index: float = 1.0
     last_tick_ms: int = 0
     cumulative_background_demand_units: int = 0
+    cumulative_unmet_demand_units: int = 0
     cumulative_production_units: int = 0
     cumulative_system_restock_units: int = 0
     cumulative_player_market_units: int = 0
     cumulative_player_market_col: int = 0
     cumulative_named_trade_col: int = 0
     system_col_injected: int = 0
+    system_col_sunk: int = 0
     revision: int = 0
 
     def __post_init__(self) -> None:
@@ -84,12 +86,14 @@ class RegionalMarketState:
             raise ValueError("regional market indices cannot be negative")
         for value in (
             self.cumulative_background_demand_units,
+            self.cumulative_unmet_demand_units,
             self.cumulative_production_units,
             self.cumulative_system_restock_units,
             self.cumulative_player_market_units,
             self.cumulative_player_market_col,
             self.cumulative_named_trade_col,
             self.system_col_injected,
+            self.system_col_sunk,
         ):
             if value < 0:
                 raise ValueError("regional market cumulative counters cannot be negative")
@@ -108,15 +112,22 @@ class RegionalMarketState:
         self,
         *,
         demand_units: int = 0,
+        unmet_demand_units: int = 0,
         production_units: int = 0,
         system_restock_units: int = 0,
     ) -> None:
-        if demand_units < 0 or production_units < 0 or system_restock_units < 0:
+        if (
+            demand_units < 0
+            or unmet_demand_units < 0
+            or production_units < 0
+            or system_restock_units < 0
+        ):
             raise ValueError("background market units cannot be negative")
         self.cumulative_background_demand_units += demand_units
+        self.cumulative_unmet_demand_units += unmet_demand_units
         self.cumulative_production_units += production_units
         self.cumulative_system_restock_units += system_restock_units
-        if demand_units or production_units or system_restock_units:
+        if demand_units or unmet_demand_units or production_units or system_restock_units:
             self.revision += 1
 
     def record_player_market(self, *, units: int, gross_col: int) -> None:
@@ -132,6 +143,14 @@ class RegionalMarketState:
             raise ValueError("named market trade cannot have negative Col volume")
         if gross_col:
             self.cumulative_named_trade_col += gross_col
+            self.revision += 1
+
+    def record_system_col_flow(self, *, injected_col: int = 0, sunk_col: int = 0) -> None:
+        if injected_col < 0 or sunk_col < 0:
+            raise ValueError("system Col flow cannot be negative")
+        self.system_col_injected += injected_col
+        self.system_col_sunk += sunk_col
+        if injected_col or sunk_col:
             self.revision += 1
 
 
@@ -219,11 +238,13 @@ def market_state_row(region: RegionalMarketState) -> dict[str, Any]:
         "supply_index": region.supply_index,
         "last_tick_ms": region.last_tick_ms,
         "cumulative_background_demand_units": region.cumulative_background_demand_units,
+        "cumulative_unmet_demand_units": region.cumulative_unmet_demand_units,
         "cumulative_production_units": region.cumulative_production_units,
         "cumulative_system_restock_units": region.cumulative_system_restock_units,
         "cumulative_player_market_units": region.cumulative_player_market_units,
         "cumulative_player_market_col": region.cumulative_player_market_col,
         "cumulative_named_trade_col": region.cumulative_named_trade_col,
         "system_col_injected": region.system_col_injected,
+        "system_col_sunk": region.system_col_sunk,
         "revision": region.revision,
     }
