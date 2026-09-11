@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply social communication autonomy closure
-        run: python scripts/round16_social_communication_autonomy_patch.py
+        run: |
+          python scripts/round16_builder_fix.py
+          python scripts/round16_social_communication_autonomy_patch.py
       - name: Verify social communication autonomy
         run: |
           python -m pip install -e '.[dev]'
