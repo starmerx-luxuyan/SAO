@@ -4,6 +4,10 @@ from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from sao_mcp.rules.canonical_timeline import (
+    CanonicalTimelineLedger,
+    canonical_timeline_profile_catalog,
+)
 from sao_mcp.rules.world_events import (
     TERMINAL_WORLD_EVENT_STATUSES,
     WorldEventLedger,
@@ -35,6 +39,7 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
         self.world_event_rules: dict[str, WorldEventRule] = {}
         self.world_event_services: dict[str, object] = {}
         self.world_events = WorldEventLedger()
+        self.canonical_timeline = CanonicalTimelineLedger()
         self._evaluating_world_events = False
 
     def register_world_advance_hook(self, hook: WorldAdvanceHook) -> None:
@@ -50,6 +55,29 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
         service = factory()
         self.world_event_services[clean_service_id] = service
         return service
+
+    def canonical_timeline_profiles(self) -> list[dict[str, Any]]:
+        return canonical_timeline_profile_catalog()
+
+    def select_canonical_timeline_profile(
+        self,
+        profile_id: str | None,
+        *,
+        anchor_world_ms: int = 0,
+    ) -> dict[str, Any]:
+        self.canonical_timeline.select_profile(profile_id, anchor_world_ms=anchor_world_ms)
+        self.canonical_timeline.reconcile_floor_bosses(self.world)
+        return self.canonical_timeline_state()
+
+    def canonical_timeline_state(self) -> dict[str, Any]:
+        return self.canonical_timeline.state(now_ms=self.world.now_ms)
+
+    def dump_canonical_timeline_state(self) -> dict[str, Any]:
+        return self.canonical_timeline.dump_state()
+
+    def load_canonical_timeline_state(self, payload: dict[str, Any]) -> None:
+        self.canonical_timeline.load_state(payload)
+        self.canonical_timeline.reconcile_floor_bosses(self.world)
 
     def register_world_event_rule(
         self,
@@ -80,6 +108,39 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
             created_at_ms=self.world.now_ms,
             expected_at_ms=expected_at_ms,
             payload=payload,
+        )
+
+    def plan_canonical_world_event(
+        self,
+        occurrence_id: str,
+        rule_id: str,
+        canonical_seed_id: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> WorldEventOccurrence:
+        reserved = {"canonical_profile_id", "canonical_seed_id", "canonical_expected_window_end_ms"}
+        supplied = set((payload or {}).keys())
+        conflict = sorted(reserved & supplied)
+        if conflict:
+            raise ValueError(f"canonical event payload cannot override reserved keys: {conflict}")
+        profile = self.canonical_timeline.profile
+        expected_at_ms = None
+        expected_end_ms = None
+        if profile is not None:
+            expected_at_ms, expected_end_ms = self.canonical_timeline.expected_window(canonical_seed_id)
+        merged = dict(payload or {})
+        merged.update(
+            {
+                "canonical_profile_id": profile.profile_id if profile is not None else None,
+                "canonical_seed_id": canonical_seed_id,
+                "canonical_expected_window_end_ms": expected_end_ms,
+            }
+        )
+        return self.plan_world_event(
+            occurrence_id,
+            rule_id,
+            expected_at_ms=expected_at_ms,
+            payload=merged,
         )
 
     def transition_world_event(
@@ -231,6 +292,23 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
 
     def load_world_event_state(self, payload: dict[str, Any]) -> None:
         self.world_events.load_state(payload)
+
+    def floor_boss_defeated(self, floor_number: int) -> None:
+        already_defeated = self.world.floors[floor_number].floor_boss_defeated
+        super().floor_boss_defeated(floor_number)
+        if already_defeated:
+            return
+        seed = self.canonical_timeline.seed_for_floor_boss(floor_number)
+        if seed is None:
+            return
+        actual_at_ms = self.world.floors[floor_number].floor_boss_defeated_at_ms
+        if actual_at_ms is None:
+            raise RuntimeError("floor-boss defeat committed without an authoritative timestamp")
+        self.canonical_timeline.observe(
+            seed.seed_id,
+            actual_at_ms=int(actual_at_ms),
+            details={"floor_number": floor_number},
+        )
 
     def _emit_world_advance(self, before_ms: int) -> None:
         after_ms = self.world.now_ms
