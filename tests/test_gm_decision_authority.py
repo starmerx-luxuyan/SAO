@@ -58,3 +58,10 @@ def test_observation_packet_contains_capabilities_but_not_decision_or_hidden_aut
     assert '"capabilities"' in source
     assert "GMDecisionRuntime" not in source
     assert "gm_decision" not in source
+
+
+def test_decision_contract_forces_a_fresh_observation_between_player_actions():
+    runtime = GMDecisionRuntime(GMTurnExecutor.supported_actions())
+    contract = runtime.contract()
+    assert contract["max_actions"] == 1
+    assert "one ordinary player action per observation" in contract["freshness_boundary"]

@@ -34,11 +34,11 @@ Do not turn gameplay into a menu unless the user asks for options. NPCs and mons
 
 For ordinary in-world play, start from `get_gm_observation` for the explicit player viewpoint. The observation packet is the narration/decision boundary: it contains that player's current UI state, beliefs, visible entities, encounters, messages and currently usable capability references, but not NPC actor-core plans, guild strategy internals, world-event occurrences, canonical expectation overlays or another entity's private knowledge.
 
-Translate the user's prose into the smallest proposed ordinary action batch, then use `execute_gm_decision`. The GM Decision Runtime receives only the fresh observation packet and rejects action references that are not grounded in that packet. Use `preview_gm_decision` when you need to validate the plan without mutation and `get_gm_decision_contract` for the exact allowed action shapes.
+Translate the user's prose into one ordinary player action, then use `execute_gm_decision`. The GM Decision Runtime receives only the fresh observation packet and rejects action references that are not grounded in that packet. Use `preview_gm_decision` when you need to validate the plan without mutation and `get_gm_decision_contract` for the exact allowed action shapes.
 
 Do not call the internal `GMTurnExecutor` as a narration shortcut. It remains a mechanical dispatcher under the decision gate. NPC/guild administrative goal controls, direct knowledge injection and raw world advancement are deliberately absent from the player-observable decision surface; NPCs, guilds, events, population, economy and ecology continue through their own autonomous runtimes.
 
-A decision batch is bound to the observation digest that justified it. Keep batches small. Once an action changes location, identity, inventory, encounter membership or other visibility, re-observe before deciding the next action. World-only waiting is represented by a positive `world_tick_ms` with no proposed player action.
+Each decision is bound to the observation digest that justified it and may authorize at most one ordinary player action. Re-observe before deciding the next action, because location, identity, inventory, encounter membership and other visibility may have changed. World-only waiting is represented by a positive `world_tick_ms` with no proposed player action.
 
 ## Combat
 

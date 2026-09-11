@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 
-MAX_DECISION_ACTIONS = 8
+MAX_DECISION_ACTIONS = 1
 PLAYER_DECISION_OPS = frozenset({
     "travel",
     "teleport",
@@ -108,6 +108,7 @@ class GMDecisionRuntime:
                 for op in sorted(self._action_contract)
             },
             "requires_fresh_observation": True,
+            "freshness_boundary": "one ordinary player action per observation; re-observe before the next action",
             "world_progression": "world_tick_ms only; direct advance_world is not a decision action",
         }
 
@@ -177,7 +178,9 @@ class GMDecisionRuntime:
                 raise ValueError("teleport crystal is not in the player's observable inventory")
             encounter_id = action.get("encounter_id")
             if encounter_id is not None:
-                self._encounter_view(observation, encounter_id)
+                _, encounter = self._encounter_view(observation, encounter_id)
+                if actor_id not in encounter.get("participants", {}):
+                    raise ValueError("controlled player is not a participant in the referenced encounter")
             return f"viewpoints.{actor_id}.capabilities.teleport_options"
 
         if op in {"move_encounter", "timeline_attack", "use_item", "equip", "unequip", "interact_npc", "accept_quest", "claim_quest"}:
@@ -197,7 +200,9 @@ class GMDecisionRuntime:
                 if action["instance_id"] not in set(caps.get("inventory_instance_ids", [])):
                     raise ValueError("item instance is not in the player's observable inventory")
                 if op == "use_item" and action.get("encounter_id") is not None:
-                    self._encounter_view(observation, action["encounter_id"])
+                    _, encounter = self._encounter_view(observation, action["encounter_id"])
+                    if actor_id not in encounter.get("participants", {}):
+                        raise ValueError("controlled player is not a participant in the referenced encounter")
                 return f"viewpoints.{actor_id}.capabilities.inventory_instance_ids"
             if op == "unequip":
                 if action["slot"] not in set(caps.get("equipped_slots", [])):
@@ -218,7 +223,10 @@ class GMDecisionRuntime:
             observer_ids = set(observation["observer_actor_ids"])
             if action["outgoing_id"] not in observer_ids or action["incoming_id"] not in observer_ids:
                 raise ValueError("Switch may only control player actors explicitly supplied as viewpoints")
-            if action["target_id"] not in encounter.get("participants", {}):
+            participants = encounter.get("participants", {})
+            if action["outgoing_id"] not in participants or action["incoming_id"] not in participants:
+                raise ValueError("Switch players are not both participants in the referenced encounter")
+            if action["target_id"] not in participants:
                 raise ValueError("Switch target is not an observable encounter participant")
             return f"viewpoints.*.encounters.{encounter_id}"
 

@@ -83,16 +83,16 @@ def test_world_only_wait_is_a_valid_decision_but_zero_work_is_not():
     assert result["observation"]["observer_actor_ids"] == [player.actor_id]
 
 
-def test_action_batch_is_grounded_in_initial_packet_and_cannot_assume_second_leg_visibility():
+def test_one_observation_can_authorize_at_most_one_player_action():
     runtime, executor, decision = make_runtime(1806)
     player = runtime.create_character("Walker")
     observation = executor.observe([player.actor_id])
-    with pytest.raises(ValueError, match="observable travel options"):
+    with pytest.raises(ValueError, match="at most 1 actions"):
         decision.decide(
             observation,
             [
+                {"op": "interact_npc", "actor_id": player.actor_id, "npc_id": "npc_tutorial_instructor"},
                 {"op": "travel", "actor_id": player.actor_id, "destination_id": WEST},
-                {"op": "travel", "actor_id": player.actor_id, "destination_id": HORUNKA},
             ],
         )
 
@@ -121,3 +121,28 @@ def test_decision_id_changes_when_observation_changes():
     plan2 = decision.decide(second, [], world_tick_ms=1)
     assert plan1.observation_digest != plan2.observation_digest
     assert plan1.decision_id != plan2.decision_id
+
+
+def test_actor_cannot_borrow_another_viewpoints_encounter_reference_for_item_use():
+    runtime, executor, decision = make_runtime(1809)
+    outsider = runtime.create_character("Outsider")
+    fighter = runtime.create_character("Fighter")
+    fighter.location_id = WEST
+    monster = runtime.create_training_monster(level=1)
+    encounter = runtime.start_encounter([fighter.actor_id, monster.actor_id], zone_id=WEST)
+    potion_id = next(
+        item.instance_id
+        for item in outsider.inventory.values()
+        if item.template_id == "healing_potion_basic"
+    )
+    observation = executor.observe([outsider.actor_id, fighter.actor_id])
+    with pytest.raises(ValueError, match="not a participant"):
+        decision.decide(
+            observation,
+            [{
+                "op": "use_item",
+                "actor_id": outsider.actor_id,
+                "instance_id": potion_id,
+                "encounter_id": encounter.encounter_id,
+            }],
+        )
