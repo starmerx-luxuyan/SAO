@@ -1,6 +1,6 @@
 {
   "name": "sao-aincrad",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Run detailed Sword Art Online Aincrad campaigns with rules, combat, items, progression and native UI.",
   "author": {"name": "starmerx-luxuyan"},
   "repository": "https://github.com/starmerx-luxuyan/SAO",
