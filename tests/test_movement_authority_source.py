@@ -8,8 +8,10 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "sao_mcp"
 
 # These modules are the only places allowed to commit live world-location mutation.
 # Scenario/services must call one of these authorities rather than editing location_id directly.
+# rules/population.py owns only anonymous PopulationCohortState settlement/transit state.
 LOCATION_AUTHORITY_FILES = {
     Path("rules/travel.py"),
+    Path("rules/population.py"),
     Path("rules/group_travel.py"),
     Path("rules/transport.py"),
     Path("rules/spawn.py"),
