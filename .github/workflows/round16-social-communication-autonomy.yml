@@ -18,21 +18,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply social communication autonomy closure
-        run: |
-          python scripts/round16_builder_fix.py
-          python scripts/round16_social_communication_autonomy_patch.py
-          python scripts/round16_social_fix.py
+      - name: Apply final social authority audit
+        run: python scripts/round16_social_audit_fix.py
       - name: Verify social communication autonomy
         run: |
           python -m pip install -e '.[dev]'
           python -m compileall -q src
           pytest -q
-      - name: Commit verified social communication autonomy
+      - name: Commit verified social authority audit
         run: |
           git config user.name 'starmerx-luxuyan'
           git config user.email 'luxuyan@starmerx.com'
-          git add src/sao_mcp/rules/communications.py src/sao_mcp/rules/npcs.py src/sao_mcp/rules/social_communication.py src/sao_mcp/runtime/communications_runtime.py src/sao_mcp/runtime/knowledge_runtime.py src/sao_mcp/runtime/social_communication_runtime.py src/sao_mcp/runtime/persistence.py src/sao_mcp/server_social_autonomy.py src/sao_mcp/server_bootstrap.py tests/test_social_communication_autonomy.py tests/test_social_communication_authority.py tests/test_quest_ecology_authority.py tests/test_monster_ecology_authority.py tests/test_economy_loop_authority.py tests/test_server_bootstrap.py
+          git add src/sao_mcp/runtime/social_communication_runtime.py tests/test_knowledge_authority_source.py
           git diff --cached --quiet && exit 1
-          git commit -m 'Seal social and communication autonomy'
+          git commit -m 'Keep social propagation behind knowledge authority'
           git push origin HEAD:main
