@@ -45,3 +45,22 @@ jobs:
           names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
           assert {"health", "export_save_json", "execute_gm_decision"} <= names
           PY
+      - name: Assemble plugin bundle
+        run: |
+          rm -rf release/SAO-Aincrad-v1.0.0
+          mkdir -p release/SAO-Aincrad-v1.0.0/.codex-plugin
+          mkdir -p release/SAO-Aincrad-v1.0.0/skills
+          mkdir -p release/SAO-Aincrad-v1.0.0/docs
+          mkdir -p release/SAO-Aincrad-v1.0.0/dist
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.0.0/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.0.0/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.0.0/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.0.0/
+          cp docs/RELEASE.md release/SAO-Aincrad-v1.0.0/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.0.0/dist/
+      - name: Upload plugin bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAO-Aincrad-v1.0.0-plugin
+          path: release/SAO-Aincrad-v1.0.0
+          if-no-files-found: error
