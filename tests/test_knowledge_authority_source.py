@@ -52,6 +52,6 @@ def test_no_source_module_outside_knowledge_runtime_reads_or_mutates_raw_knowled
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr == "knowledge_events":
-                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+            if isinstance(node, ast.Attribute) and node.attr in {"knowledge_events", "_knowledge_event_index"}:
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}:{node.attr}")
     assert violations == []

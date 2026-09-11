@@ -496,15 +496,15 @@ class SocialCommunicationAincradRuntime(QuestEcologyAincradRuntime):
             if actor is None or actor.kind is not EntityKind.PLAYER:
                 raise RuntimeError("Argo subscriber is not a current player actor")
         for event_id in self.argo_publishable_event_ids:
-            event = self._knowledge_event_index.get(event_id)
-            if event is None or event.knower_id != ARGO_NPC_ID:
+            event = self.knowledge_event(event_id)
+            if event.knower_id != ARGO_NPC_ID:
                 raise RuntimeError("Argo publishable event lacks authoritative Argo knowledge")
         seen = set()
         for delivery_id, delivery in self.social_deliveries.items():
             if delivery.delivery_id != delivery_id:
                 raise RuntimeError("social delivery registry key/id mismatch")
-            source = self._knowledge_event_index.get(delivery.source_event_id)
-            if source is None or source.fact_id != delivery.fact_id:
+            source = self.knowledge_event(delivery.source_event_id)
+            if source.fact_id != delivery.fact_id:
                 raise RuntimeError("social delivery source fact disagrees with Knowledge authority")
             if source.knower_id != self._knowledge_owner_id(delivery.sender_id):
                 raise RuntimeError("social delivery sender does not own its source KnowledgeEvent")
@@ -515,8 +515,8 @@ class SocialCommunicationAincradRuntime(QuestEcologyAincradRuntime):
             if delivery.pending and delivery.due_at_ms <= self.world.now_ms:
                 raise RuntimeError("pending social delivery crossed its due boundary")
             if delivery.status is SocialDeliveryStatus.DELIVERED:
-                received = self._knowledge_event_index.get(str(delivery.received_event_id))
-                if received is None or delivery.source_event_id not in received.evidence_event_ids:
+                received = self.knowledge_event(str(delivery.received_event_id))
+                if delivery.source_event_id not in received.evidence_event_ids:
                     raise RuntimeError("delivered social fact lacks exact Knowledge evidence chain")
                 if received.knower_id != self._knowledge_owner_id(delivery.recipient_id):
                     raise RuntimeError("delivered social fact went to the wrong Knowledge owner")
