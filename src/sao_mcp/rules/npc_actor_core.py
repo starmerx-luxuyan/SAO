@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from sao_mcp.rules.npc_scheduler import NPCPlanActionKind
+
 
 class NPCGoalSource(StrEnum):
     ROLE = "role"
@@ -39,16 +41,32 @@ class NPCGoalState:
 @dataclass(slots=True)
 class NPCPlanStep:
     step_id: str
-    action_kind: str
-    target_location_id: str
+    action_kind: NPCPlanActionKind
+    target_location_id: str | None = None
+    duration_ms: int = 0
+    payload: dict[str, Any] = field(default_factory=dict)
+    interruptible: bool = False
 
     def __post_init__(self) -> None:
+        self.action_kind = NPCPlanActionKind(self.action_kind)
         if not self.step_id:
             raise ValueError("NPC plan step_id must be non-empty")
-        if self.action_kind != "travel":
-            raise ValueError(f"unsupported NPC plan action_kind: {self.action_kind}")
-        if not self.target_location_id:
-            raise ValueError("NPC plan target_location_id must be non-empty")
+        if not isinstance(self.duration_ms, int) or isinstance(self.duration_ms, bool) or self.duration_ms < 0:
+            raise ValueError("NPC plan duration_ms must be a non-negative integer")
+        if not isinstance(self.payload, dict):
+            raise ValueError("NPC plan payload must be an object")
+        if self.action_kind is NPCPlanActionKind.TRAVEL:
+            if not self.target_location_id:
+                raise ValueError("NPC travel plan step requires target_location_id")
+            if self.duration_ms != 0:
+                raise ValueError("NPC travel duration is owned by the world graph")
+            if self.interruptible:
+                raise ValueError("NPC graph travel is only interruptible at route nodes")
+        elif self.action_kind is NPCPlanActionKind.ATTACK:
+            if self.duration_ms != 0:
+                raise ValueError("NPC attack duration is owned by the combat timeline")
+        elif self.duration_ms <= 0:
+            raise ValueError("stationary NPC plan steps require positive duration_ms")
 
 
 @dataclass(slots=True)
