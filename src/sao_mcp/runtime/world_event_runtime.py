@@ -4,13 +4,19 @@ from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from sao_mcp.rules.world_events import WorldEventLedger, WorldEventOccurrence
+from sao_mcp.rules.world_events import (
+    TERMINAL_WORLD_EVENT_STATUSES,
+    WorldEventLedger,
+    WorldEventOccurrence,
+    WorldEventResult,
+    WorldEventStatus,
+)
 from sao_mcp.runtime.knowledge_runtime import KnowledgeAincradRuntime
 
 
 WorldAdvanceHook = Callable[[int, int], None]
 WorldEventDiscover = Callable[[], Iterable[str]]
-WorldEventResolver = Callable[[str], dict[str, Any] | None]
+WorldEventResolver = Callable[[str], WorldEventResult | dict[str, Any] | None]
 
 
 @dataclass(slots=True, frozen=True)
@@ -21,7 +27,7 @@ class WorldEventRule:
 
 
 class WorldEventAincradRuntime(KnowledgeAincradRuntime):
-    """Knowledge-aware runtime with persistent conditional world-event resolution."""
+    """Knowledge-aware runtime with persistent state-driven world-event lifecycles."""
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
@@ -58,16 +64,74 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
             raise ValueError(f"world-event rule is already registered: {clean_rule_id}")
         self.world_event_rules[clean_rule_id] = WorldEventRule(clean_rule_id, discover, resolve)
 
+    def plan_world_event(
+        self,
+        occurrence_id: str,
+        rule_id: str,
+        *,
+        expected_at_ms: int | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> WorldEventOccurrence:
+        if rule_id not in self.world_event_rules:
+            raise KeyError(f"world-event rule is not registered: {rule_id}")
+        return self.world_events.plan(
+            occurrence_id=occurrence_id,
+            rule_id=rule_id,
+            created_at_ms=self.world.now_ms,
+            expected_at_ms=expected_at_ms,
+            payload=payload,
+        )
+
+    def transition_world_event(
+        self,
+        occurrence_id: str,
+        status: WorldEventStatus,
+        *,
+        payload: dict[str, Any] | None = None,
+        triggered_at_ms: int | None = None,
+    ) -> WorldEventOccurrence:
+        return self.world_events.transition(
+            occurrence_id,
+            status,
+            at_ms=self.world.now_ms,
+            triggered_at_ms=triggered_at_ms,
+            payload=payload,
+        )
+
+    def skip_world_event(self, occurrence_id: str, *, payload: dict[str, Any] | None = None) -> WorldEventOccurrence:
+        return self.transition_world_event(occurrence_id, WorldEventStatus.SKIPPED, payload=payload)
+
+    def fail_world_event(self, occurrence_id: str, *, payload: dict[str, Any] | None = None) -> WorldEventOccurrence:
+        return self.transition_world_event(occurrence_id, WorldEventStatus.FAILED, payload=payload)
+
+    def interrupt_world_event(self, occurrence_id: str, *, payload: dict[str, Any] | None = None) -> WorldEventOccurrence:
+        return self.transition_world_event(occurrence_id, WorldEventStatus.INTERRUPTED, payload=payload)
+
+    def resolve_world_event(self, occurrence_id: str, *, payload: dict[str, Any] | None = None) -> WorldEventOccurrence:
+        return self.transition_world_event(occurrence_id, WorldEventStatus.RESOLVED, payload=payload)
+
+    @staticmethod
+    def _normalize_world_event_result(value: WorldEventResult | dict[str, Any] | None) -> WorldEventResult:
+        if isinstance(value, WorldEventResult):
+            if value.status is WorldEventStatus.PENDING:
+                raise RuntimeError("world-event resolver cannot return pending")
+            return value
+        if value is None:
+            return WorldEventResult(WorldEventStatus.RESOLVED, {})
+        if not isinstance(value, dict):
+            raise TypeError("world-event resolver must return WorldEventResult, dict, or None")
+        return WorldEventResult(WorldEventStatus.RESOLVED, value)
+
     def evaluate_world_events(self) -> list[WorldEventOccurrence]:
-        """Resolve every newly-satisfied occurrence, including chains created by earlier resolutions."""
+        """Advance every discoverable occurrence until no rule can make another lifecycle transition."""
 
         if self._evaluating_world_events:
             return []
         self._evaluating_world_events = True
-        resolved: list[WorldEventOccurrence] = []
+        transitioned: list[WorldEventOccurrence] = []
         try:
             while True:
-                candidate: tuple[WorldEventRule, str] | None = None
+                candidate: tuple[WorldEventRule, str, WorldEventOccurrence | None] | None = None
                 for rule in self.world_event_rules.values():
                     occurrence_ids = tuple(rule.discover())
                     if len(set(occurrence_ids)) != len(occurrence_ids):
@@ -82,28 +146,65 @@ class WorldEventAincradRuntime(KnowledgeAincradRuntime):
                                     f"world-event occurrence id collision: {occurrence_id} belongs to {existing.rule_id}, "
                                     f"not {rule.rule_id}"
                                 )
-                            continue
-                        candidate = (rule, occurrence_id)
+                            if existing.status in TERMINAL_WORLD_EVENT_STATUSES:
+                                continue
+                        candidate = (rule, occurrence_id, existing)
                         break
                     if candidate is not None:
                         break
                 if candidate is None:
                     break
 
-                rule, occurrence_id = candidate
-                triggered_at_ms = self.world.now_ms
-                payload = rule.resolve(occurrence_id)
-                if payload is None:
-                    payload = {}
-                occurrence = self.world_events.record_resolved(
-                    occurrence_id=occurrence_id,
-                    rule_id=rule.rule_id,
-                    triggered_at_ms=triggered_at_ms,
-                    resolved_at_ms=self.world.now_ms,
-                    payload=payload,
-                )
-                resolved.append(occurrence)
-            return resolved
+                rule, occurrence_id, existing = candidate
+                started_at_ms = self.world.now_ms
+                result = self._normalize_world_event_result(rule.resolve(occurrence_id))
+                if existing is None:
+                    if result.status is WorldEventStatus.RESOLVED:
+                        occurrence = self.world_events.record_resolved(
+                            occurrence_id=occurrence_id,
+                            rule_id=rule.rule_id,
+                            triggered_at_ms=started_at_ms,
+                            resolved_at_ms=self.world.now_ms,
+                            payload=result.payload,
+                        )
+                    else:
+                        self.world_events.plan(
+                            occurrence_id=occurrence_id,
+                            rule_id=rule.rule_id,
+                            created_at_ms=started_at_ms,
+                        )
+                        occurrence = self.world_events.transition(
+                            occurrence_id,
+                            result.status,
+                            at_ms=(started_at_ms if result.status is WorldEventStatus.ACTIVE else self.world.now_ms),
+                            triggered_at_ms=(
+                                started_at_ms
+                                if result.status in {WorldEventStatus.ACTIVE, WorldEventStatus.FAILED}
+                                else None
+                            ),
+                            payload=result.payload,
+                        )
+                else:
+                    if existing.status is WorldEventStatus.ACTIVE and result.status is WorldEventStatus.ACTIVE:
+                        raise RuntimeError(f"active world-event resolver made no transition: {occurrence_id}")
+                    occurrence = self.world_events.transition(
+                        occurrence_id,
+                        result.status,
+                        at_ms=(started_at_ms if result.status is WorldEventStatus.ACTIVE else self.world.now_ms),
+                        triggered_at_ms=(
+                            started_at_ms
+                            if existing.status is WorldEventStatus.PENDING
+                            and result.status in {
+                                WorldEventStatus.ACTIVE,
+                                WorldEventStatus.RESOLVED,
+                                WorldEventStatus.FAILED,
+                            }
+                            else None
+                        ),
+                        payload=result.payload,
+                    )
+                transitioned.append(occurrence)
+            return transitioned
         finally:
             self._evaluating_world_events = False
 

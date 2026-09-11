@@ -99,11 +99,6 @@ def register_floor4_nocturne_tools(mcp, nocturne) -> None:
         return _json(nocturne.follow_river_ull_to_fallen_hideout(instance_id))
 
     @mcp.tool()
-    def trigger_progressive9_kysarah_interception(instance_id: str, actor_id: str) -> str:
-        """When an assigned Floor 8 responder physically enters the Floor 4 Labyrinth, reuse the real Kysarah four-key-bag holder and start an ordinary encounter."""
-        return _json(nocturne.trigger_kysarah_interception(instance_id, actor_id))
-
-    @mcp.tool()
     def resolve_progressive9_kysarah_falhari_truce(instance_id: str, actor_id: str) -> str:
         """Optional live branch: if the Floor 7 Civis still equips the exact revealed Doleful Nocturne, resolve the Falhari debt truce and record Kysarah's real Ichthyoid-tuber request."""
         return _json(nocturne.resolve_kysarah_falhari_truce(instance_id, actor_id))

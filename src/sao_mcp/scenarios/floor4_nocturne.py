@@ -35,6 +35,7 @@ from sao_mcp.rules.access import actor_faction_ids
 from sao_mcp.rules.group_travel import exit_encounter_via_travel, group_travel_record, travel_together
 from sao_mcp.rules.inventory import transfer_item
 from sao_mcp.rules.nightfolk import CIVIS_NOCTE, night_rank, tame_lower_level_monster
+from sao_mcp.rules.world_events import WorldEventResult, WorldEventStatus
 from sao_mcp.rules.transport import (
     authorized_transport,
     authorized_transport_record,
@@ -46,6 +47,7 @@ ROVIA = "floor_4_rovia"
 USCO = "floor_4_usco"
 LAVIK_BACKTRACK_MIN_MS = 90 * 60_000
 KYSARAH_INTERCEPTION_TRANSFER_MS = 20 * 60_000
+KYSARAH_INTERCEPTION_EVENT_RULE_ID = "floor4.kysarah_interception"
 
 
 class Floor4NocturneScenario:
@@ -56,12 +58,131 @@ class Floor4NocturneScenario:
             raise RuntimeError("Progressive 9 and Floor 7 campaign services must share one runtime")
         self.runtime = runtime
         self.floor7_campaign = floor7_campaign
+        runtime.register_world_event_rule(
+            KYSARAH_INTERCEPTION_EVENT_RULE_ID,
+            self._discover_kysarah_interception_events,
+            self._resolve_kysarah_interception_event,
+        )
+        runtime.evaluate_world_events()
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("progressive9_nocturne_instances", {})
 
     def _state(self, instance_id: str) -> dict:
         return self._states()[instance_id]
+
+    @staticmethod
+    def _kysarah_interception_event_id(instance_id: str) -> str:
+        return f"{KYSARAH_INTERCEPTION_EVENT_RULE_ID}:{instance_id}"
+
+    def _discover_kysarah_interception_events(self) -> list[str]:
+        ready: list[str] = []
+        for instance_id, state in self._states().items():
+            occurrence_id = self._kysarah_interception_event_id(instance_id)
+            occurrence = self.runtime.world_events.occurrences.get(occurrence_id)
+            if occurrence is None:
+                continue
+            if occurrence.status is WorldEventStatus.PENDING:
+                if state["stage"] != "parallel_nocturne_branches" or state["floor8_branch_stage"] != "departing_floor4":
+                    continue
+                if any(
+                    self.runtime.actors[actor_id].alive
+                    and self.runtime.actors[actor_id].location_id == "floor_4_labyrinth"
+                    for actor_id in state["floor8_actor_ids"]
+                ):
+                    ready.append(occurrence_id)
+                continue
+            if occurrence.status is not WorldEventStatus.ACTIVE:
+                continue
+            if state["floor8_branch_stage"] != "kysarah_interception":
+                continue
+            kysarah_id = state["kysarah_interception_actor_id"]
+            target_id = state["kysarah_interception_target_actor_id"]
+            if not kysarah_id or not target_id:
+                raise RuntimeError("active Kysarah interception is missing its participants")
+            kysarah = self.runtime.actors[kysarah_id]
+            target = self.runtime.actors[target_id]
+            if (
+                not kysarah.alive
+                and kysarah.metadata.get("defeat_resolved") is True
+            ) or target.metadata.get("permanent_death") is True:
+                ready.append(occurrence_id)
+        return ready
+
+    def _resolve_kysarah_interception_event(self, occurrence_id: str) -> WorldEventResult:
+        prefix = f"{KYSARAH_INTERCEPTION_EVENT_RULE_ID}:"
+        if not occurrence_id.startswith(prefix) or len(occurrence_id) == len(prefix):
+            raise RuntimeError(f"invalid Kysarah interception occurrence id: {occurrence_id}")
+        instance_id = occurrence_id[len(prefix):]
+        state = self._state(instance_id)
+        occurrence = self.runtime.world_events.occurrences[occurrence_id]
+        if occurrence.status is WorldEventStatus.PENDING:
+            candidates = [
+                actor_id
+                for actor_id in state["floor8_actor_ids"]
+                if self.runtime.actors[actor_id].alive
+                and self.runtime.actors[actor_id].location_id == "floor_4_labyrinth"
+            ]
+            if not candidates:
+                raise RuntimeError("Kysarah interception was discovered without a live responder in the Labyrinth")
+            bag_owner, _ = self._validate_inherited_keys(state)
+            if bag_owner.metadata.get("npc_definition_id") != KYSARAH_ID or not bag_owner.alive:
+                state["kysarah_interception_outcome"] = "skipped_kysarah_unavailable"
+                state["floor8_branch_stage"] = "kysarah_interception_skipped"
+                return WorldEventResult(
+                    WorldEventStatus.SKIPPED,
+                    {
+                        "instance_id": instance_id,
+                        "reason": "kysarah_unavailable_or_no_longer_holds_four_key_bag",
+                    },
+                )
+            target_id = candidates[0]
+            result = self._start_kysarah_interception(instance_id, target_id)
+            return WorldEventResult(
+                WorldEventStatus.ACTIVE,
+                {
+                    "instance_id": instance_id,
+                    "target_actor_id": target_id,
+                    "kysarah_actor_id": result["kysarah_interception_actor_id"],
+                    "encounter_id": result["kysarah_interception_encounter_id"],
+                },
+            )
+
+        if occurrence.status is not WorldEventStatus.ACTIVE:
+            raise RuntimeError("Kysarah event resolver can only advance pending or active occurrences")
+        kysarah = self.runtime.actors[state["kysarah_interception_actor_id"]]
+        target = self.runtime.actors[state["kysarah_interception_target_actor_id"]]
+        if not kysarah.alive and kysarah.metadata.get("defeat_resolved") is True:
+            state["kysarah_interception_outcome"] = "kysarah_defeated_interception_failed"
+            return WorldEventResult(
+                WorldEventStatus.FAILED,
+                {
+                    "instance_id": instance_id,
+                    "reason": "kysarah_defeated_by_responder",
+                    "target_actor_id": target.actor_id,
+                },
+            )
+        if target.metadata.get("permanent_death") is True:
+            encounter = self.runtime.encounters[state["kysarah_interception_encounter_id"]]
+            encounter.threat.clear()
+            success_route = exit_encounter_via_travel(
+                self.runtime,
+                encounter.encounter_id,
+                [kysarah.actor_id],
+                KYSARAH_TRANSFER_ROOM,
+            )
+            state["kysarah_interception_outcome"] = "kysarah_interception_succeeded"
+            state["kysarah_success_route"] = group_travel_record(success_route)
+            state["floor8_branch_stage"] = "kysarah_interception_player_defeated"
+            return WorldEventResult(
+                WorldEventStatus.RESOLVED,
+                {
+                    "instance_id": instance_id,
+                    "outcome": "interception_succeeded_after_responder_permanent_death",
+                    "target_actor_id": target.actor_id,
+                },
+            )
+        raise RuntimeError("active Kysarah event was rediscovered without a terminal condition")
 
     def _harin_state(self, harin_instance_id: str) -> dict:
         states = self.runtime.world.global_flags["floor7_harin_escape_instances"]
@@ -266,10 +387,13 @@ class Floor4NocturneScenario:
             "floor8_branch_stage": None,
             "hideout_branch_stage": None,
             "response_split_assigned_at_ms": None,
+            "kysarah_interception_event_id": None,
             "kysarah_interception_actor_id": None,
+            "kysarah_interception_target_actor_id": None,
             "kysarah_interception_encounter_id": None,
             "kysarah_interception_outcome": None,
             "kysarah_interception_transport": None,
+            "kysarah_success_route": None,
             "kysarah_truce_route": None,
             "kysarah_truce_at_ms": None,
             "kysarah_requested_item_template_id": None,
@@ -611,6 +735,20 @@ class Floor4NocturneScenario:
         state["hideout_branch_stage"] = "on_lake"
         state["response_split_assigned_at_ms"] = self.runtime.world.now_ms
         state["stage"] = "parallel_nocturne_branches"
+        occurrence_id = self._kysarah_interception_event_id(instance_id)
+        state["kysarah_interception_event_id"] = occurrence_id
+        self.runtime.plan_world_event(
+            occurrence_id,
+            KYSARAH_INTERCEPTION_EVENT_RULE_ID,
+            payload={"instance_id": instance_id, "floor8_actor_ids": list(floor8_ids)},
+        )
+        if floor8_ids:
+            self.runtime.evaluate_world_events()
+        else:
+            self.runtime.skip_world_event(
+                occurrence_id,
+                payload={"reason": "no_floor8_responder"},
+            )
         return self.status(instance_id)
 
     def follow_river_ull_to_fallen_hideout(self, instance_id: str) -> dict:
@@ -646,7 +784,7 @@ class Floor4NocturneScenario:
             state["stage"] = "floor4_fallen_hideout_reached"
         return self.status(instance_id)
 
-    def trigger_kysarah_interception(self, instance_id: str, actor_id: str) -> dict:
+    def _start_kysarah_interception(self, instance_id: str, actor_id: str) -> dict:
         state = self._state(instance_id)
         if state["stage"] != "parallel_nocturne_branches":
             raise ValueError("Kysarah interception belongs to an assigned Floor 8 response branch")
@@ -682,6 +820,7 @@ class Floor4NocturneScenario:
         )
         state["kysarah_interception_transport"] = authorized_transport_record(transfer)
         state["kysarah_interception_actor_id"] = bag_owner.actor_id
+        state["kysarah_interception_target_actor_id"] = actor_id
         state["kysarah_interception_encounter_id"] = encounter.encounter_id
         state["floor8_branch_stage"] = "kysarah_interception"
         return self.status(instance_id)
@@ -733,6 +872,14 @@ class Floor4NocturneScenario:
         state["kysarah_truce_at_ms"] = self.runtime.world.now_ms
         state["kysarah_requested_item_template_id"] = ICHTHYOID_TUBER_ID
         state["floor8_branch_stage"] = "kysarah_truce_resolved"
+        self.runtime.interrupt_world_event(
+            state["kysarah_interception_event_id"],
+            payload={
+                "reason": "falhari_truce",
+                "truce_actor_id": actor_id,
+                "requested_item_template_id": ICHTHYOID_TUBER_ID,
+            },
+        )
         return self.status(instance_id)
 
     def claim_four_key_bag_after_kysarah_defeat(self, instance_id: str, actor_id: str) -> dict:
@@ -809,6 +956,12 @@ class Floor4NocturneScenario:
                 "nickname": kelpie.metadata.get("nickname"),
                 "water_walking": kelpie.metadata.get("water_walking"),
             }
+        event_id = state.get("kysarah_interception_event_id")
+        event_state = (
+            self.runtime.world_event_state(event_id)
+            if event_id is not None and event_id in self.runtime.world_events.occurrences
+            else None
+        )
         kysarah_state = None
         if state["kysarah_interception_actor_id"] is not None:
             kysarah = self.runtime.actors[state["kysarah_interception_actor_id"]]
@@ -831,6 +984,7 @@ class Floor4NocturneScenario:
             "cetrann_location_id": cetrann_state.location_id,
             "kelpie": kelpie_state,
             "kysarah": kysarah_state,
+            "kysarah_interception_event": event_state,
             "five_key_assets_intact": True,
             "next_stage": (
                 "use the active Floor 4 gate and existing roads to reach Lavik on Lake Yofel's west shore"
@@ -895,4 +1049,11 @@ def install_floor4_nocturne_scenario(runtime, floor7_campaign) -> Floor4Nocturne
         raise RuntimeError("Morvarc'h natural weapon corpus was not loaded")
     if ICHTHYOID_TUBER_ID not in runtime.catalog.items:
         raise RuntimeError("Ichthyoid tuber corpus was not loaded")
-    return Floor4NocturneScenario(runtime, floor7_campaign)
+    service = runtime.install_world_event_service(
+        "floor4.nocturne", lambda: Floor4NocturneScenario(runtime, floor7_campaign)
+    )
+    if not isinstance(service, Floor4NocturneScenario):
+        raise RuntimeError("floor4.nocturne service registry contains the wrong service type")
+    if service.floor7_campaign is not floor7_campaign:
+        raise RuntimeError("floor4.nocturne service is already bound to a different Floor 7 campaign service")
+    return service

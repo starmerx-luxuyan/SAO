@@ -137,13 +137,13 @@ def test_migrated_conditional_events_are_not_exposed_as_manual_mcp_tools():
         "resolve_progressive9_cave_mouth_combat",
         "complete_progressive9_sluva_imprisonment_enforcement",
         "finish_floor22_witch_quest_return",
+        "trigger_progressive9_kysarah_interception",
     )
     assert all(name not in joined for name in forbidden)
     assert "wait_floor6_for_paralysis_release" in joined
 
 
 ACTION_DRIVEN_TRANSITIONS = {
-    ("floor4_nocturne.py", "trigger_kysarah_interception"),
     ("floor4_nocturne.py", "resolve_kysarah_falhari_truce"),
     ("floor5_karluin.py", "trigger_shrewman_robbery"),
     ("floor6_elfwar.py", "complete_bouhroum_trial"),

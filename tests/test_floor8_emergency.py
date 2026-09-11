@@ -26,7 +26,10 @@ from sao_mcp.rules.inventory import add_item
 from sao_mcp.rules.nightfolk import become_civis_nocte
 from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
-from sao_mcp.scenarios.floor4_nocturne import install_floor4_nocturne_scenario
+from sao_mcp.scenarios.floor4_nocturne import (
+    KYSARAH_INTERCEPTION_EVENT_RULE_ID,
+    install_floor4_nocturne_scenario,
+)
 from sao_mcp.scenarios.floor8_emergency import (
     ALS_GUILD_ID,
     DKB_GUILD_ID,
@@ -198,8 +201,11 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
     assert runtime.actors[kizmel.actor_id].location_id == "floor_4_fallen_elf_hideout"
     assert runtime.actors[a.actor_id].location_id == LAKE_YOFEL
 
+    event_id = f"{KYSARAH_INTERCEPTION_EVENT_RULE_ID}:{instance_id}"
+    assert runtime.world_event_state(event_id)["status"] == "pending"
     _move_to_floor4_labyrinth(runtime, a)
-    intercepted = nocturne.trigger_kysarah_interception(instance_id, a.actor_id)
+    intercepted = nocturne.status(instance_id)
+    assert runtime.world_event_state(event_id)["status"] == "active"
     encounter_id = intercepted["kysarah_interception_encounter_id"]
     encounter = runtime.encounters[encounter_id]
     assert kysarah.actor_id in encounter.participants
@@ -207,6 +213,8 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
 
     truce = nocturne.resolve_kysarah_falhari_truce(instance_id, a.actor_id)
     assert truce["kysarah_interception_outcome"] == "falhari_truce"
+    assert runtime.world_event_state(event_id)["status"] == "interrupted"
+    assert runtime.world_event_state(event_id)["payload"]["reason"] == "falhari_truce"
     assert truce["kysarah"]["location_id"] == KYSARAH_TRANSFER_ROOM
     assert truce["kysarah_requested_item_template_id"] == ICHTHYOID_TUBER_ID
     assert set(encounter.participants) == {a.actor_id}
@@ -269,6 +277,7 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
     assert persisted["floor8_responder_locations"] == {a.actor_id: ACORN_SHOP}
     assert restored.relationships.are_friends(argo_id, a.actor_id)
     assert restored_nocturne.status(instance_id)["kysarah_interception_outcome"] == "falhari_truce"
+    assert restored.world_event_state(event_id)["status"] == "interrupted"
     assert restored.actors[kysarah.actor_id].inventory[bag.instance_id].template_id == SACRED_KEY_BAG_ID
     assert restored.actors[fallen.actor_id].inventory[ruby.instance_id].template_id == RUBY_KEY_ID
 
@@ -276,18 +285,20 @@ def test_floor8_emergency_real_message_split_kysarah_truce_tuber_and_persistence
 def test_kysarah_can_be_defeated_and_real_four_key_bag_recovered_instead_of_forced_truce():
     runtime, campaign, nocturne, instance_id, a, b, kizmel, kysarah, bag, fallen, ruby = _setup_branch_state()
     state = nocturne._state(instance_id)
-    state["stage"] = "parallel_nocturne_branches"
-    state["floor8_actor_ids"] = [a.actor_id]
-    state["hideout_actor_ids"] = [b.actor_id]
-    state["floor8_branch_stage"] = "departing_floor4"
-    state["hideout_branch_stage"] = "on_lake"
+    state["stage"] = "floor8_emergency_received"
+    nocturne.assign_floor8_emergency_split(instance_id, [a.actor_id], [b.actor_id])
+    event_id = f"{KYSARAH_INTERCEPTION_EVENT_RULE_ID}:{instance_id}"
 
     _move_to_floor4_labyrinth(runtime, a)
-    intercepted = nocturne.trigger_kysarah_interception(instance_id, a.actor_id)
+    intercepted = nocturne.status(instance_id)
+    assert runtime.world_event_state(event_id)["status"] == "active"
     encounter = runtime.encounters[intercepted["kysarah_interception_encounter_id"]]
     kysarah.hp = 0
     kysarah.alive = False
     runtime._resolve_defeat(encounter, kysarah, a.actor_id)
+    failed = runtime.world_event_state(event_id)
+    assert failed["status"] == "failed"
+    assert failed["payload"]["reason"] == "kysarah_defeated_by_responder"
 
     recovered = nocturne.claim_four_key_bag_after_kysarah_defeat(instance_id, a.actor_id)
     assert recovered["kysarah_interception_outcome"] == "kysarah_defeated_four_keys_recovered"
@@ -365,3 +376,17 @@ def test_floor8_sacred_woods_and_cave_standoff_use_real_persistent_parties_and_p
     assert all(row["location_id"] == FOREST_ELF_ESCAPE_CAVE_MOUTH for row in persisted["forest_elf_actors"].values())
     assert set(persisted["frontline_parties"]) == set(incident["frontline_party_ids"])
     assert persisted["forest_elf_party"]["party_id"] == incident["forest_elf_party_id"]
+
+
+def test_kysarah_interception_is_skipped_when_no_floor8_responder_exists():
+    runtime, campaign, nocturne, instance_id, a, b, kizmel, kysarah, bag, fallen, ruby = _setup_branch_state()
+    state = nocturne._state(instance_id)
+    state["stage"] = "floor8_emergency_received"
+
+    split = nocturne.assign_floor8_emergency_split(instance_id, [], [a.actor_id, b.actor_id])
+    event_id = f"{KYSARAH_INTERCEPTION_EVENT_RULE_ID}:{instance_id}"
+    skipped = runtime.world_event_state(event_id)
+    assert split["floor8_branch_stage"] == "no_responder"
+    assert skipped["status"] == "skipped"
+    assert skipped["triggered_at_ms"] is None
+    assert skipped["payload"]["reason"] == "no_floor8_responder"
