@@ -1,6 +1,8 @@
 {
-  "sao-aincrad": {
-    "command": "sao-mcp",
-    "args": []
+  "mcpServers": {
+    "sao_aincrad": {
+      "type": "http",
+      "url": "https://sao-aincrad-mcp-production.up.railway.app/mcp"
+    }
   }
 }
