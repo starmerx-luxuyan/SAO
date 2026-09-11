@@ -29,6 +29,13 @@ def _tuplify(value: Any) -> Any:
     return value
 
 
+def _dump_world(world: WorldState) -> dict[str, Any]:
+    payload = WORLD_ADAPTER.dump_python(world, mode="json")
+    for floor in payload["floors"].values():
+        floor["discovered_locations"] = sorted(floor["discovered_locations"])
+    return payload
+
+
 def _upgrade_payload(payload: dict[str, Any]) -> dict[str, Any]:
     schema = payload.get("schema")
     if schema == SAVE_SCHEMA:
@@ -96,7 +103,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     canonical_timeline_dump = getattr(runtime, "dump_canonical_timeline_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
-        "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
+        "world": _dump_world(runtime.world),
         "actors": ACTORS_ADAPTER.dump_python(runtime.actors, mode="json"),
         "encounters": encounters,
         "rng_state": runtime.rng.getstate(),
