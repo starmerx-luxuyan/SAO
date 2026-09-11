@@ -207,20 +207,16 @@ class CommunityAincradRuntime(SocialTimelineAincradRuntime):
 
     def economy_buy_from_vendor(self, economy, actor_id: str, vendor_id: str, template_id: str, quantity: int):
         actor = self.actors[actor_id]
-        result = economy.buy_from_vendor(
+        return economy.buy_from_vendor(
             actor, vendor_id, template_id, quantity, self.catalog, actor_location_id=actor.location_id
         )
-        self._settle_expense_after_existing_debit(actor_id, result.total_col)
-        return result
 
     def economy_sell_to_vendor(self, economy, actor_id: str, vendor_id: str, instance_id: str, *, quantity: int | None):
         actor = self.actors[actor_id]
-        result = economy.sell_to_vendor(
+        return economy.sell_to_vendor(
             actor, vendor_id, instance_id, self.catalog,
             quantity=quantity, actor_location_id=actor.location_id,
         )
-        self._settle_income_after_existing_credit(actor_id, result.received_col, source="vendor_sale")
-        return result
 
     def economy_buy_player_listing(self, economy, buyer_id: str, listing_id: str, *, quantity: int | None):
         listing = economy.player_listings[listing_id]
@@ -230,13 +226,10 @@ class CommunityAincradRuntime(SocialTimelineAincradRuntime):
         buyer_marriage = self.relationships.marriage_for(buyer_id)
         if buyer_marriage and seller_id in buyer_marriage.partner_ids:
             raise ValueError("spouses already share inventory and wallet; buying one another's listing is invalid")
-        result = economy.buy_player_listing(
+        return economy.buy_player_listing(
             buyer, seller, listing_id, self.catalog,
             buyer_location_id=buyer.location_id, quantity=quantity,
         )
-        self._settle_expense_after_existing_debit(buyer_id, result.total_col)
-        self._settle_income_after_existing_credit(seller_id, result.total_col, source="player_market_sale")
-        return result
 
     def start_encounter(self, actor_ids, **kwargs):
         encounter = super().start_encounter(actor_ids, **kwargs)

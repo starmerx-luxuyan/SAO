@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import sao_mcp.server as core_server
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
-from sao_mcp.runtime.community_hooks import attach_community_economy
 from sao_mcp.runtime.gm_turn import GMTurnExecutor
-from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
-from sao_mcp.runtime.property_economy import make_runtime_economy
+from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
 from sao_mcp.scenarios.floor2_martial_arts import install_floor2_martial_arts_scenario
 from sao_mcp.scenarios.floor2_taurus_raid import install_floor2_taurus_raid_scenario
 from sao_mcp.scenarios.floor3_spiders import install_floor3_spider_scenario
@@ -59,8 +57,8 @@ from sao_mcp.server_timeline import register_timeline_tools
 
 # One authoritative game runtime. Floor-specific content is installed as scenario services,
 # not by adding another runtime subclass for every quest or floor.
-if not isinstance(core_server.runtime, PopulationAincradRuntime):
-    core_server.runtime = PopulationAincradRuntime(seed=0xA1C0)
+if not isinstance(core_server.runtime, EconomyLoopAincradRuntime):
+    core_server.runtime = EconomyLoopAincradRuntime(seed=0xA1C0)
 
 mcp = core_server.mcp
 runtime = core_server.runtime
@@ -91,10 +89,6 @@ floor8_standoff = install_floor8_cave_standoff_scenario(runtime, floor8_emergenc
 floor8_sluva = install_floor8_sluva_justice_scenario(runtime, floor8_emergency)
 floor22_witch = install_floor22_witch_scenario(runtime)
 gm_turn_executor = GMTurnExecutor(runtime)
-
-if not hasattr(runtime, "economy"):
-    runtime.economy = make_runtime_economy(runtime)
-attach_community_economy(runtime, runtime.economy)
 
 register_adventure_tools(mcp, runtime)
 register_inventory_tools(mcp, runtime)

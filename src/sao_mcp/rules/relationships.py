@@ -353,9 +353,14 @@ class RelationshipRuntime:
         return marriage.shared_wallet_col
 
     def guild_tax_for(self, actor: CombatantState, gross_col: int) -> tuple[int, GuildState | None]:
-        if gross_col <= 0 or not actor.guild_id or actor.guild_id not in self.guilds:
+        if gross_col <= 0:
             return 0, None
-        guild = self.guilds[actor.guild_id]
+        matches = [guild for guild in self.guilds.values() if actor.actor_id in guild.member_ids]
+        if len(matches) > 1:
+            raise RuntimeError(f"actor belongs to multiple authoritative guilds: {actor.actor_id}")
+        if not matches:
+            return 0, None
+        guild = matches[0]
         return max(0, int(gross_col * guild.tax_rate)), guild
 
     def deposit_storage(

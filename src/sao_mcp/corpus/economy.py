@@ -39,7 +39,7 @@ BEGINNER_VENDOR = VendorDefinition(
         VendorListingDefinition("field_bread", 5),
     ),
     buyback_rate=0.42,
-    infinite_stock=True,
+    infinite_stock=False,
     provenance=Provenance(
         ProvenanceKind.SIMULATION,
         notes=(
@@ -64,7 +64,7 @@ BEGINNER_REINFORCEMENT_VENDOR = VendorDefinition(
         VendorListingDefinition("iron_ingot", 26),
     ),
     buyback_rate=0.35,
-    infinite_stock=True,
+    infinite_stock=False,
     provenance=Provenance(
         ProvenanceKind.SIMULATION,
         sources=("Sword Art Online Progressive Volume 1: Rondo of a Fragile Blade",),

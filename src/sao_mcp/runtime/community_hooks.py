@@ -4,11 +4,11 @@ from __future__ import annotations
 def attach_community_economy(runtime, economy) -> None:
     """Bind EconomyRuntime mutations to the authoritative shared-wallet/guild-tax layer."""
 
-    def on_income(actor, amount: int, source: str) -> None:
-        runtime._settle_income_after_existing_credit(actor.actor_id, amount, source=source)
+    def on_income(actor, amount: int, source: str):
+        return runtime._settle_income_after_existing_credit(actor.actor_id, amount, source=source)
 
-    def on_expense(actor, amount: int, source: str) -> None:
-        runtime._settle_expense_after_existing_debit(actor.actor_id, amount)
+    def on_expense(actor, amount: int, source: str):
+        return runtime._settle_expense_after_existing_debit(actor.actor_id, amount)
 
     def validate_player_purchase(buyer, seller, amount: int) -> None:
         marriage = runtime.relationships.marriage_for(buyer.actor_id)

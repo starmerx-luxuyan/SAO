@@ -3,12 +3,15 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass
-from typing import Callable
+from typing import Any, Callable
 
 from sao_mcp.corpus.core import Catalog
 from sao_mcp.corpus.economy import CORE_VENDORS, VendorDefinition
 from sao_mcp.domain.models import CombatantState, ItemInstance
 from sao_mcp.rules.inventory import add_item, can_receive, carry_capacity, inventory_weight
+
+
+ECONOMY_STATE_SCHEMA = "economy.v2"
 
 
 @dataclass(slots=True, frozen=True)
@@ -75,13 +78,69 @@ class EconomyRuntime:
         self.on_expense: Callable[[CombatantState, int, str], None] | None = None
         self.validate_player_purchase: Callable[[CombatantState, CombatantState, int], None] | None = None
 
-    def _income(self, actor: CombatantState, amount: int, source: str) -> None:
+    def _income(self, actor: CombatantState, amount: int, source: str) -> Any:
         if self.on_income is not None and amount:
-            self.on_income(actor, amount, source)
+            return self.on_income(actor, amount, source)
+        return None
 
-    def _expense(self, actor: CombatantState, amount: int, source: str) -> None:
+    def _expense(self, actor: CombatantState, amount: int, source: str) -> Any:
         if self.on_expense is not None and amount:
-            self.on_expense(actor, amount, source)
+            return self.on_expense(actor, amount, source)
+        return None
+
+    @staticmethod
+    def _base_item_value(template_id: str, catalog: Catalog) -> int:
+        template = catalog.item(template_id)
+        base = template.base_value_col
+        if base is not None:
+            return int(base)
+        if template_id in catalog.weapons:
+            weapon = catalog.weapons[template_id]
+            return max(10, int(round((weapon.attack_min + weapon.attack_max) * 1.8)))
+        if template_id in catalog.armors:
+            armor = catalog.armors[template_id]
+            return max(8, armor.armor * 2)
+        return 5
+
+    def _vendor_unit_price(self, vendor_id: str, listing) -> int:
+        return int(listing.unit_price_col)
+
+    def _validate_vendor_purchase_quantity(self, vendor_id: str, template_id: str, quantity: int) -> None:
+        return None
+
+    def _vendor_buyback_multiplier(self, vendor_id: str, template_id: str) -> float:
+        return 1.0
+
+    def _commit_vendor_purchase(
+        self,
+        *,
+        vendor_id: str,
+        template_id: str,
+        quantity: int,
+        unit_price_col: int,
+        total_col: int,
+    ) -> None:
+        return None
+
+    def _commit_vendor_sale(
+        self,
+        *,
+        vendor_id: str,
+        template_id: str,
+        quantity: int,
+        received_col: int,
+    ) -> None:
+        return None
+
+    def _commit_player_purchase(
+        self,
+        *,
+        location_id: str,
+        template_id: str,
+        quantity: int,
+        total_col: int,
+    ) -> None:
+        return None
 
     def vendor_catalog(self, vendor_id: str) -> VendorDefinition:
         return self.vendors[vendor_id]
@@ -104,7 +163,11 @@ class EconomyRuntime:
         listing = next((row for row in vendor.listings if row.template_id == template_id), None)
         if listing is None:
             raise ValueError("vendor does not sell this template")
-        total = listing.unit_price_col * quantity
+        self._validate_vendor_purchase_quantity(vendor_id, template_id, quantity)
+        unit_price_col = self._vendor_unit_price(vendor_id, listing)
+        if unit_price_col < 1:
+            raise RuntimeError("vendor quote must remain positive")
+        total = unit_price_col * quantity
         if buyer.col < total:
             raise ValueError("insufficient Col")
 
@@ -124,6 +187,13 @@ class EconomyRuntime:
         for item in created:
             add_item(buyer, item, catalog)
         self._expense(buyer, total, "vendor_purchase")
+        self._commit_vendor_purchase(
+            vendor_id=vendor_id,
+            template_id=template_id,
+            quantity=quantity,
+            unit_price_col=unit_price_col,
+            total_col=total,
+        )
         return VendorPurchaseResolution(
             vendor_id,
             buyer.actor_id,
@@ -154,27 +224,35 @@ class EconomyRuntime:
         qty = item.quantity if quantity is None else quantity
         if qty < 1 or qty > item.quantity:
             raise ValueError("invalid sale quantity")
-        template = catalog.item(item.template_id)
-        base = template.base_value_col
-        if base is None:
-            if item.template_id in catalog.weapons:
-                weapon = catalog.weapons[item.template_id]
-                base = max(10, int(round((weapon.attack_min + weapon.attack_max) * 1.8)))
-            elif item.template_id in catalog.armors:
-                armor = catalog.armors[item.template_id]
-                base = max(8, armor.armor * 2)
-            else:
-                base = 5
+        base = self._base_item_value(item.template_id, catalog)
         condition = 1.0
         if item.durability is not None and item.max_durability:
             condition = max(0.15, item.durability / item.max_durability)
         quality = max(0.5, min(1.35, item.quality))
-        received = max(1, int(round(base * qty * vendor.buyback_rate * condition * quality)))
+        received = max(
+            1,
+            int(
+                round(
+                    base
+                    * qty
+                    * vendor.buyback_rate
+                    * condition
+                    * quality
+                    * self._vendor_buyback_multiplier(vendor_id, item.template_id)
+                )
+            ),
+        )
         item.quantity -= qty
         if item.quantity <= 0:
             seller.inventory.pop(instance_id)
         seller.col += received
         self._income(seller, received, "vendor_sale")
+        self._commit_vendor_sale(
+            vendor_id=vendor_id,
+            template_id=item.template_id,
+            quantity=qty,
+            received_col=received,
+        )
         return VendorSaleResolution(vendor_id, seller.actor_id, item.template_id, qty, received)
 
     def create_player_listing(
@@ -270,6 +348,12 @@ class EconomyRuntime:
             self.player_listings.pop(listing_id)
         self._expense(buyer, total, "player_market_purchase")
         self._income(seller, total, "player_market_sale")
+        self._commit_player_purchase(
+            location_id=listing.location_id,
+            template_id=moving.template_id,
+            quantity=qty,
+            total_col=total,
+        )
         return PlayerPurchaseResolution(
             listing_id,
             seller.actor_id,
@@ -284,6 +368,8 @@ class EconomyRuntime:
 
     def dump_state(self) -> dict:
         return {
+            "schema": ECONOMY_STATE_SCHEMA,
+            "mode": "transactional",
             "player_listings": {
                 listing_id: {
                     "listing_id": listing.listing_id,
@@ -294,12 +380,22 @@ class EconomyRuntime:
                     "created_at_ms": listing.created_at_ms,
                 }
                 for listing_id, listing in self.player_listings.items()
-            }
+            },
         }
 
     def load_state(self, payload: dict) -> None:
+        schema = payload.get("schema")
+        if schema not in {None, ECONOMY_STATE_SCHEMA}:
+            if payload.get("player_listings"):
+                raise ValueError(f"unsupported non-empty economy schema: {schema!r}")
+            self.player_listings = {}
+            return
         self.player_listings = {}
         for listing_id, value in payload.get("player_listings", {}).items():
+            if value.get("listing_id") != listing_id:
+                raise ValueError(f"economy listing key/id mismatch: {listing_id}")
+            if "location_id" not in value:
+                raise ValueError("legacy player listing lacks authoritative physical location")
             item_payload = dict(value["item"])
             enhancements = item_payload.get("enhancements", {})
             from sao_mcp.domain.models import EnhancementTrack
@@ -308,7 +404,7 @@ class EconomyRuntime:
             self.player_listings[listing_id] = PlayerListing(
                 listing_id=value["listing_id"],
                 seller_id=value["seller_id"],
-                location_id=value.get("location_id", "floor_1_town_of_beginnings"),
+                location_id=value["location_id"],
                 item=ItemInstance(**item_payload),
                 unit_price_col=int(value["unit_price_col"]),
                 created_at_ms=int(value["created_at_ms"]),

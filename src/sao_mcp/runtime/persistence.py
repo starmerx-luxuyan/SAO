@@ -122,10 +122,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     payload = _upgrade_payload(json.loads(payload_json))
 
     if into is None:
-        from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
+        from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
         from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
-        runtime: GameRuntime = PopulationAincradRuntime()
+        runtime: GameRuntime = EconomyLoopAincradRuntime()
         install_floor22_witch_scenario(runtime)
     else:
         runtime = into
@@ -204,8 +204,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
 
     from sao_mcp.runtime.property_economy import make_runtime_economy
 
-    economy = make_runtime_economy(runtime)
-    runtime.economy = economy
+    economy = getattr(runtime, "economy", None)
+    if economy is None:
+        economy = make_runtime_economy(runtime)
+        runtime.economy = economy
     economy.load_state(payload.get("economy_state", {}))
 
     timeline_load = getattr(runtime, "load_timeline_state", None)

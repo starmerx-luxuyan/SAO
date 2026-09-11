@@ -47,13 +47,38 @@ def _require_forge(actor) -> None:
 
 def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
     @mcp.tool()
+    def get_aincrad_economy_state(location_id: str | None = None) -> str:
+        """Inspect living regional supply/demand, vendor stock, prices, population and guild-HQ resources."""
+        state = getattr(runtime, "aincrad_economy_state", None)
+        if state is None:
+            raise RuntimeError("living economy state is unavailable on this runtime")
+        return _json(state(location_id))
+
+    @mcp.tool()
+    def quote_vendor_item(vendor_id: str, template_id: str) -> str:
+        """Quote current finite stock and population-sensitive price for one NPC vendor item."""
+        quote = getattr(economy, "vendor_quote", None)
+        if quote is None:
+            raise RuntimeError("living vendor quotes are unavailable on this economy runtime")
+        return _json(quote(vendor_id, template_id))
+
+    @mcp.tool()
+    def get_economy_history(limit: int = 50) -> str:
+        """Inspect recent committed named/background market flows and hourly economy ticks."""
+        history = getattr(runtime, "economy_history", None)
+        if history is None:
+            raise RuntimeError("living economy history is unavailable on this runtime")
+        return _json({"events": history(limit=limit)})
+
+    @mcp.tool()
     def list_vendors(location_id: str | None = None) -> str:
         """List NPC vendors and their limited system-priced assortments."""
         rows = []
+        living_state = getattr(economy, "vendor_state", None)
         for vendor in economy.vendors.values():
             if location_id is not None and vendor.location_id != location_id:
                 continue
-            rows.append(asdict(vendor))
+            rows.append(living_state(vendor.vendor_id) if living_state is not None else asdict(vendor))
         return _json({"vendors": rows})
 
     @mcp.tool()
