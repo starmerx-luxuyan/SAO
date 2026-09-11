@@ -1,0 +1,35 @@
+name: Round 8 NPC Actor Core
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round8 NPC actor core finalization'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply actor-core finalization
+        run: python scripts/round8_actor_core_finalize.py
+      - name: Verify actor core
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified actor core
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/runtime/npc_autonomy_runtime.py src/sao_mcp/runtime/gm_turn.py tests/test_npc_autonomy.py tests/test_npc_actor_core_authority.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Finalize NPC autonomous actor core"
+          git push origin HEAD:main
