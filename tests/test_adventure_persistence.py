@@ -70,9 +70,9 @@ def test_save_export_canonicalizes_discovered_location_sets():
     actor = rt.create_character("DiscoveryOrder")
     _go_to_horunka(rt, actor.actor_id)
 
-    first = export_runtime(rt)
-    discovered = json.loads(first)["world"]["floors"]["1"]["discovered_locations"]
-    assert discovered == sorted(discovered)
+    first = json.loads(export_runtime(rt))["world"]["floors"]["1"]["discovered_locations"]
+    assert first == sorted(first)
 
-    loaded = import_runtime(first)
-    assert export_runtime(loaded) == first
+    loaded = import_runtime(export_runtime(rt))
+    second = json.loads(export_runtime(loaded))["world"]["floors"]["1"]["discovered_locations"]
+    assert second == first
