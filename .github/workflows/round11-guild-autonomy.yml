@@ -1,0 +1,37 @@
+name: Round 11 Guild Autonomy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round11 guild autonomy integration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply guild-autonomy migration
+        run: |
+          python scripts/round11_guild_autonomy_patch.py
+          python scripts/round11_guild_autonomy_fix.py
+      - name: Verify guild autonomy
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified guild autonomy
+        run: |
+          git config user.name "starmerx-luxuyan"
+          git config user.email "luxuyan@starmerx.com"
+          git add src/sao_mcp/rules/guild_autonomy.py src/sao_mcp/runtime/guild_autonomy_runtime.py src/sao_mcp/rules/live_state.py src/sao_mcp/runtime/gm_turn.py src/sao_mcp/server_gm.py tests/test_guild_autonomy_integration.py tests/test_guild_autonomy_authority.py
+          git diff --cached --quiet && exit 1
+          git commit -m "Seal autonomous guild strategy and squad operations"
+          git push origin HEAD:main
