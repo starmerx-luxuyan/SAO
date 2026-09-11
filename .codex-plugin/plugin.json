@@ -2,7 +2,11 @@
   "name": "sao-aincrad",
   "version": "1.0.0",
   "description": "Run detailed Sword Art Online Aincrad campaigns with rules, combat, items, progression and native UI.",
-  "author": {"name": "starmerx-luxuyan"},
+  "author": {
+    "name": "starmerx-luxuyan",
+    "url": "https://github.com/starmerx-luxuyan"
+  },
+  "homepage": "https://github.com/starmerx-luxuyan/SAO",
   "repository": "https://github.com/starmerx-luxuyan/SAO",
   "license": "MIT",
   "keywords": ["sao", "aincrad", "rpg", "gm", "mcp", "combat"],
@@ -11,10 +15,13 @@
   "interface": {
     "displayName": "SAO Aincrad GM",
     "shortDescription": "Detailed Aincrad rules, runtime and HUD",
-    "longDescription": "A granular Aincrad game runtime for character progression, Sword Skills, equipment, crafting, combat, parties, raids, crime, quests, floors and persistent GM play.",
+    "longDescription": "A granular Aincrad game runtime for character progression, Sword Skills, equipment, crafting, combat, parties, raids, crime, quests, floors and stateful GM play.",
     "developerName": "starmerx-luxuyan",
     "category": "Games",
-    "capabilities": ["Read", "Write"],
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/starmerx-luxuyan/SAO",
+    "privacyPolicyURL": "https://github.com/starmerx-luxuyan/SAO/blob/main/docs/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/starmerx-luxuyan/SAO/blob/main/docs/TERMS.md",
     "defaultPrompt": [
       "Start a new Aincrad campaign and show my character HUD.",
       "Inspect my equipment and recommend a legal upgrade from my current inventory.",
