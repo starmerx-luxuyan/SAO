@@ -18,20 +18,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply GM observable-state closure
-        run: |
-          python scripts/round17_gm_observable_state_gate_patch.py
-          python scripts/round17_gm_observable_state_gate_fix.py
+      - name: Apply final GM visibility audit
+        run: python scripts/round17_gm_observable_state_gate_audit_fix.py
       - name: Verify GM observable-state gate
         run: |
           python -m pip install -e '.[dev]'
           python -m compileall -q src
           pytest -q
-      - name: Commit verified GM observable-state gate
+      - name: Commit verified GM visibility audit
         run: |
           git config user.name 'starmerx-luxuyan'
           git config user.email 'luxuyan@starmerx.com'
-          git add src/sao_mcp/runtime/gm_observation.py src/sao_mcp/runtime/gm_turn.py src/sao_mcp/server_gm.py tests/test_gm_turn.py tests/test_gm_observation_gate.py tests/test_gm_observation_authority.py tests/test_guild_autonomy_integration.py tests/test_npc_actor_core_authority.py
+          git add src/sao_mcp/runtime/gm_observation.py tests/test_gm_observation_gate.py
           git diff --cached --quiet && exit 1
-          git commit -m 'Seal GM observable-state gate'
+          git commit -m 'Hide unread message content from GM observation'
           git push origin HEAD:main
