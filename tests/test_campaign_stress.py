@@ -83,6 +83,12 @@ def _assert_same_campaign_state(left_runtime, right_runtime) -> None:
     assert difference is None, difference
 
 
+def _assert_payload_unchanged(before: dict, runtime, label: str) -> None:
+    after = _payload(runtime)
+    difference = _first_difference(before, after)
+    assert difference is None, f"{label} mutated authoritative state: {difference}"
+
+
 def test_campaign_long_advance_matches_hourly_scheduler_partitioning():
     runtime, _ = _campaign_seed(1901)
     baseline = export_runtime(runtime)
@@ -196,6 +202,19 @@ def test_long_campaign_keeps_cross_system_authorities_bounded_and_gm_decision_us
     export_runtime(runtime)
 
 
+def test_campaign_observation_queries_are_state_pure_after_long_autonomy():
+    runtime, observer_id = _campaign_seed(1906)
+    runtime.advance_world(12 * HOUR)
+    before = _payload(runtime)
+
+    runtime.player_population_state()
+    runtime.npc_agenda_state("npc_tutorial_instructor")
+    runtime.npc_location_id("npc_tutorial_instructor")
+    GMTurnExecutor(runtime).observe([observer_id])
+
+    _assert_payload_unchanged(before, runtime, "campaign observation queries")
+
+
 def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encounter_state():
     runtime = SocialCommunicationAincradRuntime(seed=1905)
 
@@ -258,6 +277,12 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
 
     assert checkpointed.world.now_ms == uninterrupted.world.now_ms
 
+    # Preserve the exact assertion ordering that failed once in the earlier stress run:
+    # checkpoint churn must already be fully equivalent before any semantic read occurs.
+    _assert_same_campaign_state(uninterrupted, checkpointed)
+    checkpointed_before_reads = _payload(checkpointed)
+    uninterrupted_before_reads = _payload(uninterrupted)
+
     restored_operation = checkpointed.guild_operations[operation.operation_id]
     assert restored_operation.status.value == "completed", "guild route should complete within one hour"
     assert checkpointed.actors[member.actor_id].location_id == TOLBANA
@@ -266,5 +291,7 @@ def test_checkpoint_churn_preserves_simultaneous_npc_guild_social_and_live_encou
     assert checkpointed.encounters[encounter.encounter_id].active is True
     assert fighter.actor_id in checkpointed.encounters[encounter.encounter_id].participants
 
+    _assert_payload_unchanged(checkpointed_before_reads, checkpointed, "checkpoint semantic reads")
+    _assert_payload_unchanged(uninterrupted_before_reads, uninterrupted, "uninterrupted comparison snapshot")
     _assert_same_campaign_state(uninterrupted, checkpointed)
     export_runtime(checkpointed)
