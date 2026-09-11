@@ -12,6 +12,27 @@ from sao_mcp.runtime.persistence import SAVE_SCHEMA
 
 ROOT = Path(__file__).resolve().parents[1]
 HOSTED_MCP_URL = "https://sao-aincrad-mcp-production.up.railway.app/mcp"
+PUBLIC_TOOL_NAMES = {
+    "health",
+    "create_character",
+    "get_character_state",
+    "inspect_catalog_entry",
+    "list_catalog",
+    "export_save_json",
+    "import_save_json",
+    "get_gm_observation",
+    "get_gm_decision_contract",
+    "preview_gm_decision",
+    "execute_gm_decision",
+    "character_hud",
+    "system_menu",
+    "boss_raid_hud",
+}
+PUBLIC_UI_URIS = {
+    "ui://sao/aincrad-hud.html",
+    "ui://sao/system-menu.html",
+    "ui://sao/boss-raid.html",
+}
 
 
 def test_release_version_metadata_is_consistent():
@@ -63,22 +84,42 @@ def test_release_ui_resources_are_packaged_with_python_module():
     assert ui.joinpath("boss_raid.html").is_file()
 
 
-def test_release_public_mcp_surface_contains_critical_tools():
+def test_hosted_public_mcp_surface_is_exact_and_gated():
+    from sao_mcp.server_public import mcp
+
+    names = {tool.name for tool in asyncio.run(mcp.list_tools())}
+    assert names == PUBLIC_TOOL_NAMES
+    assert {
+        "mark_floor_boss_defeated",
+        "advance_world_time",
+        "add_player_population_cohort",
+        "materialize_wild_monster",
+        "set_npc_goal",
+        "assign_guild_goal",
+    }.isdisjoint(names)
+
+
+def test_full_internal_surface_remains_available_for_development():
     from sao_mcp.server_bootstrap import mcp
 
-    tools = asyncio.run(mcp.list_tools())
-    names = {tool.name for tool in tools}
-    required = {
-        "health",
-        "create_character",
-        "attack",
-        "get_inventory",
-        "list_locations",
-        "advance_world_time",
-        "export_save_json",
-        "import_save_json",
-        "get_gm_observation",
-        "preview_gm_decision",
-        "execute_gm_decision",
-    }
-    assert required <= names
+    names = {tool.name for tool in asyncio.run(mcp.list_tools())}
+    assert {"mark_floor_boss_defeated", "advance_world_time"} <= names
+    assert PUBLIC_TOOL_NAMES - {"system_menu", "boss_raid_hud"} <= names
+
+
+def test_public_ui_declares_csp_and_widget_domain():
+    from sao_mcp.server_public import apps
+    from sao_mcp.ui.app_security import WIDGET_DOMAIN
+
+    resources = {str(binding.resource.uri): binding.resource for binding in apps.resources()}
+    assert set(resources) == PUBLIC_UI_URIS
+    for resource in resources.values():
+        assert resource.mime_type == "text/html;profile=mcp-app"
+        ui_meta = resource.meta["ui"]
+        assert ui_meta["domain"] == WIDGET_DOMAIN
+        assert ui_meta["csp"] == {
+            "connectDomains": [],
+            "resourceDomains": [],
+            "frameDomains": [],
+            "baseUriDomains": [],
+        }

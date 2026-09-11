@@ -34,16 +34,41 @@ jobs:
           from importlib.resources import files
 
           import sao_mcp
-          from sao_mcp import server_bootstrap
+          from sao_mcp import server_bootstrap, server_public
+          from sao_mcp.ui.app_security import WIDGET_DOMAIN
 
+          expected_public = {
+              "health",
+              "create_character",
+              "get_character_state",
+              "inspect_catalog_entry",
+              "list_catalog",
+              "export_save_json",
+              "import_save_json",
+              "get_gm_observation",
+              "get_gm_decision_contract",
+              "preview_gm_decision",
+              "execute_gm_decision",
+              "character_hud",
+              "system_menu",
+              "boss_raid_hud",
+          }
           assert sao_mcp.__version__ == "1.0.0"
-          assert server_bootstrap.mcp is not None
-          assert server_bootstrap.runtime is not None
+          assert server_bootstrap.runtime is server_public.runtime
           assert files("sao_mcp.ui").joinpath("hud.html").is_file()
           assert files("sao_mcp.ui").joinpath("system_menu.html").is_file()
           assert files("sao_mcp.ui").joinpath("boss_raid.html").is_file()
-          names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
-          assert {"health", "export_save_json", "execute_gm_decision"} <= names
+          public_names = {tool.name for tool in asyncio.run(server_public.mcp.list_tools())}
+          full_names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
+          assert public_names == expected_public
+          assert {"mark_floor_boss_defeated", "advance_world_time"}.isdisjoint(public_names)
+          assert {"mark_floor_boss_defeated", "advance_world_time"} <= full_names
+          resources = {str(binding.resource.uri): binding.resource for binding in server_public.apps.resources()}
+          assert len(resources) == 3
+          for resource in resources.values():
+              ui_meta = resource.meta["ui"]
+              assert ui_meta["domain"] == WIDGET_DOMAIN
+              assert "csp" in ui_meta
           PY
       - name: Assemble plugin bundle
         run: |

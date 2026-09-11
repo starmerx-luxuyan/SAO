@@ -8,7 +8,7 @@ A production-oriented Sword Art Online / Aincrad game runtime, MCP server, GM sk
 
 **v1.0.0** is the first release-ready Aincrad runtime baseline.
 
-The runtime provides one authoritative campaign state shared by mechanics, MCP tools, GM observation/decision flow and UI. It supports persistent Aincrad play across combat, exploration, floor progression, inventory, economy, crafting/reinforcement, parties and raids, PvP/legal state, quests, NPC schedules and autonomy, relationships/family/housing, guild activity, population/ecology, communications, world events and save/load.
+The runtime provides one authoritative campaign state shared by mechanics, GM observation/decision flow and UI. It supports persistent Aincrad play across combat, exploration, floor progression, inventory, economy, crafting/reinforcement, parties and raids, PvP/legal state, quests, NPC schedules and autonomy, relationships/family/housing, guild activity, population/ecology, communications, world events and save/load.
 
 The world model contains all 100 floors. Canon-backed and authored scenario coverage is intentionally denser on floors for which this repository has explicit corpus/scenario material; unsupported canon details are not fabricated as official facts.
 
@@ -19,7 +19,7 @@ The world model contains all 100 floors. Canon-backed and authored scenario cove
 - **Observation purity.** Player/GM observation queries do not lazily repair or mutate authoritative campaign state.
 - **Canon/simulation provenance.** Data records distinguish canon, inferred canon and simulation material.
 - **Versioned persistence.** The current save schema is `sao.aincrad.save.v3`; legacy v1/v2 payloads are migrated only where exact migration is possible.
-- **Thin MCP surface.** Tool adapters expose normal Python rules/runtime behavior instead of containing a second rules engine.
+- **Separated MCP surfaces.** The hosted ChatGPT endpoint exposes a narrow player/GM API; the full administrative surface remains available for local development and maintenance.
 
 ## Architecture
 
@@ -36,14 +36,14 @@ SAO/
 │  ├─ rules/                     deterministic rule functions
 │  ├─ runtime/                   authoritative campaign/state transitions
 │  ├─ scenarios/                 installable floor/adventure scenario services
-│  ├─ ui/                        packaged HTML resources and view models
-│  ├─ server*.py                 thin MCP tool-registration modules
-│  ├─ server_bootstrap.py        full production MCP/runtime composition
-│  └─ cli.py                     stdio / Streamable HTTP entry point
+│  ├─ ui/                        packaged HTML resources, CSP/domain metadata and view models
+│  ├─ server_public.py           narrow hosted ChatGPT surface
+│  ├─ server_bootstrap.py        complete internal/development surface
+│  └─ cli.py                     surface + stdio / Streamable HTTP selection
 └─ tests/                        mechanics, authority, persistence and campaign stress regressions
 ```
 
-`server_bootstrap.py` is the production composition root. It creates the single authoritative Aincrad runtime, installs scenario services and registers the complete public MCP tool families onto one `MCPServer`.
+`server_bootstrap.py` remains the complete composition root: it creates the single authoritative Aincrad runtime and installs every scenario/runtime service. `server_public.py` reuses that same runtime but publishes only the tools appropriate for ordinary ChatGPT play.
 
 ## Hosted plugin endpoint
 
@@ -53,26 +53,35 @@ The bundled plugin MCP configuration points directly at the hosted Streamable HT
 https://sao-aincrad-mcp-production.up.railway.app/mcp
 ```
 
-The plugin therefore does not require a local Python installation to use its normal hosted MCP path. The release bundle still includes the Python wheel so the same v1.0.0 runtime can be self-hosted or run locally.
+Streamable HTTP defaults to the `public` surface. It does not advertise direct floor-boss completion flags, raw world advancement, NPC/guild administration, population/ecology controls or other maintenance tools. Ordinary in-world mutations must pass through the fresh-observation GM Decision Gate.
 
-## Public MCP surface
+The hosted runtime is currently a **single private campaign process**, not a public multi-tenant game service. Authentication and per-user/per-campaign isolation are separate deployment work and are required before opening this endpoint to unrelated users.
 
-The full server exposes tools in these stable capability families:
+## Hosted public MCP surface
 
-- health, character creation/state and catalog inspection
-- combat, Sword Skills, Switch, parties and raids
-- inventory, equipment, loot, crafting, repair and reinforcement
-- world locations, travel, teleportation, floor gates and world time
-- monsters, bosses, spatial combat and ecology
-- quests, NPC interaction, NPC schedules/autonomy and knowledge boundaries
-- economy, property, housing, relationships, family and communications
-- PvP/duels, legal state and social/guild autonomy
-- population, quest ecology, world events and canonical timeline profiles
-- GM observation -> decision -> execution tools
-- complete runtime save export/import
-- packaged Aincrad HUD, system-menu and boss/raid UI resources
+The hosted server intentionally exposes exactly these capability groups:
 
-The release contract tests assert a critical subset of these tools through the SDK's public `MCPServer.list_tools()` API so accidental bootstrap omissions fail CI. They also lock the plugin's hosted MCP URL so the packaged plugin cannot silently drift back to a missing local command.
+- health and character creation/state
+- catalog listing and provenance-aware entry inspection
+- `get_gm_observation`
+- `get_gm_decision_contract`
+- `preview_gm_decision`
+- `execute_gm_decision`
+- explicit save export/import
+- Aincrad HUD, System Menu and Boss Raid UI tools
+
+The three UI resources declare explicit MCP Apps CSP metadata and a dedicated widget domain. Their HTML is self-contained, so the CSP grants no external network, static-resource, nested-frame or base-URI domains.
+
+## Full internal surface
+
+The full surface still contains the detailed combat, inventory, economy, spatial, timeline, duel, relationship, housing, population, ecology, autonomy, floor-scenario and boss administration tools used by development and maintenance. It is intentionally not the default hosted ChatGPT surface.
+
+Local stdio defaults to `full`. You can select the surface explicitly with:
+
+```text
+SAO_MCP_SURFACE=public
+SAO_MCP_SURFACE=full
+```
 
 ## Plugin bundle
 
@@ -82,7 +91,7 @@ The CI release job assembles `SAO-Aincrad-v1.0.0-plugin` with:
 - `.mcp.json` pointing to the hosted MCP endpoint
 - `skills/sao-gm/SKILL.md`
 - the v1.0.0 Python wheel for self-hosting
-- release/source-policy/license documentation
+- release/source-policy/license/privacy/terms documentation
 
 ## Local development and self-hosting
 
@@ -112,13 +121,13 @@ The package entry point is `sao-mcp = sao_mcp.cli:main`.
 
 ## Transport
 
-`stdio` is the default local transport:
+`stdio` is the default local transport and defaults to the full development surface:
 
 ```bash
 sao-mcp
 ```
 
-For self-hosted Streamable HTTP:
+For self-hosted Streamable HTTP, the public surface is the default:
 
 ```bash
 # macOS/Linux
@@ -134,7 +143,7 @@ $env:SAO_MCP_PORT = "8000"
 sao-mcp
 ```
 
-`SAO_MCP_TRANSPORT` accepts only `stdio` or `streamable-http`.
+`SAO_MCP_TRANSPORT` accepts only `stdio` or `streamable-http`; `SAO_MCP_SURFACE` accepts only `public` or `full`.
 
 ## Persistence
 
@@ -155,10 +164,11 @@ The normal CI path performs:
 1. editable development install;
 2. Python compile pass;
 3. full pytest suite, including campaign stress and release-contract invariants;
-4. real wheel build;
-5. installation of that wheel into a clean virtual environment;
-6. smoke import of the packaged production bootstrap and packaged UI resources;
-7. assembly of the installable plugin bundle including hidden manifest/config files.
+4. exact hosted-public-tool-surface and UI CSP/domain checks;
+5. real wheel build;
+6. installation of that wheel into a clean virtual environment;
+7. smoke import of both the public and full surfaces plus packaged UI resources;
+8. assembly of the installable plugin bundle including hidden manifest/config files.
 
 This is intentionally aimed at release failures that ordinary source-tree unit tests do not catch.
 
