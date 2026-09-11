@@ -25,10 +25,13 @@ def test_scenarios_cannot_bypass_npc_actor_core_or_agenda_authority():
     assert violations == []
 
 
-def test_gm_exposes_actor_core_inspection_surface():
+def test_npc_actor_core_remains_runtime_authority_but_is_not_a_gm_observation_surface():
+    runtime_source = (ROOT / "src/sao_mcp/runtime/npc_autonomy_runtime.py").read_text(encoding="utf-8")
     server = (ROOT / "src/sao_mcp/server_gm.py").read_text(encoding="utf-8")
-    assert "def get_npc_actor_core" in server
-    assert "npc_actor_core_state(npc_id)" in server
+    assert "def npc_actor_core_state" in runtime_source
+    assert "def get_npc_actor_core" not in server
+    assert "npc_actor_core_state(npc_id)" not in server
+    assert "def get_gm_observation" in server
 
 
 def test_gm_set_npc_goal_contract_accepts_actor_core_decision_constraints():

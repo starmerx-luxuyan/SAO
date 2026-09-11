@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
-from enum import Enum
 from typing import Any
 
 from sao_mcp.domain.models import DefenseMode
+from sao_mcp.runtime.gm_observation import GMObservationGate
 
 
 _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
@@ -109,36 +108,6 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 }
 
 
-def _plain(value: Any) -> Any:
-    if is_dataclass(value):
-        return _plain(asdict(value))
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, dict):
-        return {str(key): _plain(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_plain(item) for item in value]
-    return value
-
-
-def _observable_actor(actor) -> dict:
-    return {
-        "actor_id": actor.actor_id,
-        "name": actor.name,
-        "kind": actor.kind.value,
-        "level": actor.level,
-        "hp": actor.hp,
-        "max_hp": actor.max_hp,
-        "alive": actor.alive,
-        "location_id": actor.location_id,
-        "cursor": actor.cursor.value,
-        "col": actor.col,
-        "equipment": dict(actor.equipment),
-        "statuses": [status.status_type.value for status in actor.statuses],
-        "committed_until_ms": actor.committed_until_ms,
-        "recovery_until_ms": actor.recovery_until_ms,
-    }
-
 
 class GMTurnExecutor:
     """Ordered GM action dispatcher over the existing authoritative runtime.
@@ -150,6 +119,7 @@ class GMTurnExecutor:
 
     def __init__(self, runtime) -> None:
         self.runtime = runtime
+        self.observation_gate = GMObservationGate(runtime)
 
     @staticmethod
     def supported_actions() -> dict[str, dict[str, list[str]]]:
@@ -376,139 +346,41 @@ class GMTurnExecutor:
             }
         raise RuntimeError(f"validated GM turn action has no executor: {op}")
 
-    @staticmethod
-    def _actor_ids(actions: list[dict[str, Any]]) -> set[str]:
-        scalar_fields = {
-            "actor_id",
-            "attacker_id",
-            "target_id",
-            "outgoing_id",
-            "incoming_id",
-            "leader_id",
-        }
-        actor_ids = {
-            value
-            for action in actions
-            for key, value in action.items()
-            if key in scalar_fields and isinstance(value, str)
-        }
-        for action in actions:
-            member_ids = action.get("assigned_member_ids")
-            if isinstance(member_ids, list):
-                actor_ids.update(actor_id for actor_id in member_ids if isinstance(actor_id, str))
-        return actor_ids
+    def observe(self, observer_actor_ids: list[str] | tuple[str, ...]) -> dict[str, Any]:
+        return self.observation_gate.observe(observer_actor_ids)
 
-    @staticmethod
-    def _encounter_ids(actions: list[dict[str, Any]]) -> set[str]:
-        return {
-            value
-            for action in actions
-            for key, value in action.items()
-            if key == "encounter_id" and isinstance(value, str)
-        }
-
-    @staticmethod
-    def _knowledge_entity_ids(actions: list[dict[str, Any]]) -> set[str]:
-        fields = {"entity_id", "sender_id", "recipient_id"}
-        return {
-            value
-            for action in actions
-            for key, value in action.items()
-            if key in fields and isinstance(value, str)
-        }
-
-    @staticmethod
-    def _guild_ids(actions: list[dict[str, Any]]) -> set[str]:
-        return {
-            action["guild_id"]
-            for action in actions
-            if isinstance(action.get("guild_id"), str)
-        }
-
-    def execute(self, actions: list[dict[str, Any]], *, world_tick_ms: int = 0) -> dict:
+    def execute(
+        self,
+        actions: list[dict[str, Any]],
+        *,
+        observer_actor_ids: list[str] | tuple[str, ...],
+        world_tick_ms: int = 0,
+    ) -> dict[str, Any]:
         self._validate_plan(actions, world_tick_ms)
+        observer_ids = self.observation_gate.validate_observer_actor_ids(observer_actor_ids)
         runtime = self.runtime
         world_before = runtime.world.now_ms
         event_counts = {
             encounter_id: len(encounter.events)
             for encounter_id, encounter in runtime.encounters.items()
         }
+        encounter_ids_before = self.observation_gate.current_observer_encounter_ids(observer_ids)
 
-        steps = []
-        for index, action in enumerate(actions):
-            result = self._execute_action(action)
-            steps.append(
-                {
-                    "index": index,
-                    "op": action["op"],
-                    "result": _plain(result),
-                }
-            )
+        for action in actions:
+            self._execute_action(action)
 
         activated = runtime.advance_world(world_tick_ms) if world_tick_ms else []
-        actor_ids = self._actor_ids(actions)
-        encounter_ids = self._encounter_ids(actions)
-        knowledge_entity_ids = self._knowledge_entity_ids(actions)
-        guild_ids = self._guild_ids(actions)
-        new_events = {}
-        for encounter_id, encounter in runtime.encounters.items():
-            start = event_counts.get(encounter_id, 0)
-            if len(encounter.events) > start:
-                new_events[encounter_id] = _plain(encounter.events[start:])
-
-        encounters = {}
-        for encounter_id in sorted(encounter_ids):
-            encounter = runtime.encounters[encounter_id]
-            row = {
-                "encounter_id": encounter_id,
-                "time_ms": encounter.time_ms,
-                "zone_id": encounter.zone_id,
-                "participants": {
-                    actor_id: {
-                        "hp": actor.hp,
-                        "max_hp": actor.max_hp,
-                        "alive": actor.alive,
-                    }
-                    for actor_id, actor in encounter.participants.items()
-                },
-            }
-            if hasattr(runtime, "timeline_state"):
-                row["timeline"] = _plain(runtime.timeline_state(encounter_id))
-            encounters[encounter_id] = row
-
-        npc_ids = {
-            action["npc_id"]
-            for action in actions
-            if isinstance(action.get("npc_id"), str)
-        }
+        encounter_ids_after = self.observation_gate.current_observer_encounter_ids(observer_ids)
+        observation = self.observation_gate.observe(
+            observer_ids,
+            event_offsets=event_counts,
+            additional_encounter_ids=encounter_ids_before | encounter_ids_after,
+        )
         return {
             "world_time_before_ms": world_before,
             "world_time_after_ms": runtime.world.now_ms,
             "final_world_tick_ms": world_tick_ms,
             "activated_floor_gates": list(activated),
-            "steps": steps,
-            "new_events": new_events,
-            "actors": {
-                actor_id: _observable_actor(runtime.actors[actor_id])
-                for actor_id in sorted(actor_ids)
-                if actor_id in runtime.actors
-            },
-            "npc_agendas": {
-                npc_id: runtime.npc_agenda_state(npc_id)
-                for npc_id in sorted(npc_ids)
-            },
-            "npc_schedulers": {
-                npc_id: runtime.npc_scheduler_state(npc_id)
-                for npc_id in sorted(npc_ids)
-                if hasattr(runtime, "npc_scheduler_state")
-            },
-            "guild_agendas": {
-                guild_id: runtime.guild_agenda_state(guild_id)
-                for guild_id in sorted(guild_ids)
-            },
-            "knowledge": {
-                entity_id: runtime.knowledge_state(entity_id)
-                for entity_id in sorted(knowledge_entity_ids)
-            },
-            "encounters": encounters,
+            "actions_executed": len(actions),
+            "observation": observation,
         }

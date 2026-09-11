@@ -26,17 +26,19 @@ def test_authoritative_runtime_executes_and_persists_explicit_guild_operation():
     member = members[0]
     executor = GMTurnExecutor(runtime)
 
-    assigned = executor.execute([
-        {
+    assigned = executor.execute(
+        [{
             "op": "assign_guild_goal",
             "guild_id": guild.guild_id,
             "leader_id": leader.actor_id,
             "goal_id": "scout_tolbana",
             "target_location_id": TOLBANA,
             "assigned_member_ids": [member.actor_id],
-        }
-    ])
-    agenda = assigned["guild_agendas"][guild.guild_id]
+        }],
+        observer_actor_ids=[leader.actor_id],
+    )
+    assert "guild_agendas" not in assigned
+    agenda = runtime.guild_agenda_state(guild.guild_id)
     assert agenda["active"] is True
     assert agenda["from_location_id"] == TOWN
     assert agenda["next_location_id"] == WEST
@@ -61,15 +63,17 @@ def test_authoritative_runtime_executes_and_persists_explicit_guild_operation():
     assert restored.actors[member.actor_id].location_id == TOLBANA
 
     restored_executor = GMTurnExecutor(restored)
-    cleared = restored_executor.execute([
-        {
+    cleared = restored_executor.execute(
+        [{
             "op": "clear_guild_goal",
             "guild_id": guild.guild_id,
             "leader_id": leader.actor_id,
             "goal_id": "scout_tolbana",
-        }
-    ])
-    assert cleared["guild_agendas"][guild.guild_id]["goal_id"] is None
+        }],
+        observer_actor_ids=[leader.actor_id],
+    )
+    assert "guild_agendas" not in cleared
+    assert restored.guild_agenda_state(guild.guild_id)["goal_id"] is None
 
 
 def test_strategy_autonomously_splits_two_real_squads_without_member_reuse():
