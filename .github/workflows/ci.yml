@@ -19,3 +19,29 @@ jobs:
         run: python -m compileall -q src
       - name: Test
         run: pytest -q
+      - name: Build release wheel
+        run: |
+          rm -rf dist
+          python -m pip wheel . --no-deps --wheel-dir dist
+      - name: Smoke installed wheel
+        run: |
+          WHEEL=$(find dist -maxdepth 1 -name 'starmerx_sao_mcp-*.whl' -print -quit)
+          test -n "$WHEEL"
+          python -m venv /tmp/sao-release-smoke
+          /tmp/sao-release-smoke/bin/python -m pip install "$WHEEL"
+          /tmp/sao-release-smoke/bin/python - <<'PY'
+          import asyncio
+          from importlib.resources import files
+
+          import sao_mcp
+          from sao_mcp import server_bootstrap
+
+          assert sao_mcp.__version__ == "1.0.0"
+          assert server_bootstrap.mcp is not None
+          assert server_bootstrap.runtime is not None
+          assert files("sao_mcp.ui").joinpath("hud.html").is_file()
+          assert files("sao_mcp.ui").joinpath("system_menu.html").is_file()
+          assert files("sao_mcp.ui").joinpath("boss_raid.html").is_file()
+          names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
+          assert {"health", "export_save_json", "execute_gm_decision"} <= names
+          PY
