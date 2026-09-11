@@ -1,0 +1,35 @@
+name: Round 17 GM Observable State Gate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Run round17 gm observable state gate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply GM observable-state closure
+        run: python scripts/round17_gm_observable_state_gate_patch.py
+      - name: Verify GM observable-state gate
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m compileall -q src
+          pytest -q
+      - name: Commit verified GM observable-state gate
+        run: |
+          git config user.name 'starmerx-luxuyan'
+          git config user.email 'luxuyan@starmerx.com'
+          git add src/sao_mcp/runtime/gm_observation.py src/sao_mcp/runtime/gm_turn.py src/sao_mcp/server_gm.py tests/test_gm_turn.py tests/test_gm_observation_gate.py tests/test_gm_observation_authority.py
+          git diff --cached --quiet && exit 1
+          git commit -m 'Seal GM observable-state gate'
+          git push origin HEAD:main
