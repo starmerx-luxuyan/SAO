@@ -115,11 +115,19 @@ def test_actor_core_goal_can_be_gated_by_current_npc_belief():
     assert blocked["current_goal_id"] == SHOP_RETURN_GOAL_ID
     assert blocked["active"] is False
 
-    runtime.record_observation(AGIL, fact_id, True, source_id="verified_route_report")
+    observed = runtime.record_observation(
+        AGIL,
+        fact_id,
+        True,
+        observation_location_id=AGIL_SHOP,
+        source_id="verified_route_report",
+    )
     runtime.advance_world(1)
     selected = runtime.npc_actor_core_state(AGIL)
     assert selected["current_goal_id"] == "inspect_verified_frontline"
     assert selected["decision_basis_fact_ids"] == [fact_id]
+    assert selected["decision_basis_event_ids"] == [observed.event_id]
+    assert selected["decision_beliefs"][fact_id]["event_id"] == observed.event_id
     assert selected["decision_beliefs"][fact_id]["value"] is True
     assert selected["active"] is True
 
@@ -183,14 +191,34 @@ def test_shop_owner_routine_depends_on_current_belief_about_home():
     runtime.npcs.states[AGIL].location_id = ALGADE
     unavailable_fact = f"{LOCATION_UNAVAILABLE_FACT_PREFIX}{AGIL_SHOP}"
 
-    runtime.record_inference(AGIL, unavailable_fact, True, source_id="market_rumor")
+    rumor = runtime.record_observation(
+        AGIL,
+        "market_rumor:shop_unavailable",
+        True,
+        observation_location_id=ALGADE,
+        source_id="market_rumor",
+        confidence=0.6,
+    )
+    runtime.record_inference(
+        AGIL,
+        unavailable_fact,
+        True,
+        evidence_fact_ids=[rumor.fact_id],
+        source_id="merchant_judgment",
+    )
     runtime.advance_world(10 * 60_000)
     blocked = runtime.npc_actor_core_state(AGIL)
     assert blocked["active"] is False
     assert blocked["current_goal_id"] is None
     assert blocked["location_id"] == ALGADE
 
-    runtime.record_observation(AGIL, unavailable_fact, False, source_id="verified_shop_status")
+    runtime.record_observation(
+        AGIL,
+        unavailable_fact,
+        False,
+        observation_location_id=ALGADE,
+        source_id="verified_shop_status",
+    )
     runtime.advance_world(1)
     returning = runtime.npc_actor_core_state(AGIL)
     assert returning["current_goal_id"] == SHOP_RETURN_GOAL_ID

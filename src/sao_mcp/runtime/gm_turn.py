@@ -61,12 +61,12 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset(),
     ),
     "observe_fact": (
-        frozenset({"entity_id", "fact_id", "value"}),
-        frozenset({"source_id"}),
+        frozenset({"entity_id", "fact_id", "value", "observation_location_id"}),
+        frozenset({"source_id", "confidence", "expires_after_ms"}),
     ),
     "infer_fact": (
-        frozenset({"entity_id", "fact_id", "value"}),
-        frozenset({"source_id"}),
+        frozenset({"entity_id", "fact_id", "value", "evidence_fact_ids"}),
+        frozenset({"source_id", "confidence"}),
     ),
     "share_fact": (
         frozenset({"sender_id", "recipient_id", "fact_id"}),
@@ -156,6 +156,14 @@ class GMTurnExecutor:
                 raise ValueError(
                     f"GM turn action {index} ({op}) has unknown fields: {', '.join(sorted(unknown))}"
                 )
+            if op == "infer_fact":
+                evidence_fact_ids = action["evidence_fact_ids"]
+                if not isinstance(evidence_fact_ids, list) or not evidence_fact_ids or any(
+                    not isinstance(fact_id, str) or not fact_id for fact_id in evidence_fact_ids
+                ):
+                    raise ValueError(
+                        f"GM turn action {index} (infer_fact) evidence_fact_ids must be a non-empty string list"
+                    )
             if op == "assign_guild_goal":
                 member_ids = action["assigned_member_ids"]
                 if not isinstance(member_ids, list) or not member_ids or any(
@@ -258,14 +266,27 @@ class GMTurnExecutor:
                 action["entity_id"],
                 action["fact_id"],
                 action["value"],
+                observation_location_id=action["observation_location_id"],
                 source_id=action.get("source_id"),
+                confidence=float(action.get("confidence", 1.0)),
+                expires_after_ms=(
+                    int(action["expires_after_ms"])
+                    if action.get("expires_after_ms") is not None
+                    else None
+                ),
             )
         if op == "infer_fact":
             return runtime.record_inference(
                 action["entity_id"],
                 action["fact_id"],
                 action["value"],
+                evidence_fact_ids=action["evidence_fact_ids"],
                 source_id=action.get("source_id"),
+                confidence=(
+                    float(action["confidence"])
+                    if action.get("confidence") is not None
+                    else None
+                ),
             )
         if op == "share_fact":
             return runtime.share_known_fact(

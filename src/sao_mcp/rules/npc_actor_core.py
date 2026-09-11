@@ -62,6 +62,7 @@ class NPCActorCoreState:
     short_term_plan: list[NPCPlanStep] = field(default_factory=list)
     plan_cursor: int = 0
     decision_basis_fact_ids: tuple[str, ...] = ()
+    decision_basis_event_ids: tuple[str, ...] = ()
     decision_relation_actor_ids: tuple[str, ...] = ()
     last_decision_at_ms: int | None = None
     revision: int = 0
@@ -102,6 +103,7 @@ class NPCActorCoreState:
             )
             self.short_term_plan = []
             self.plan_cursor = 0
+            self.decision_basis_event_ids = ()
             self.revision += 1
         self.last_decision_at_ms = decided_at_ms
         goal = self.current_goal
@@ -114,12 +116,18 @@ class NPCActorCoreState:
             else ()
         )
 
+    def set_decision_basis_events(self, event_ids: tuple[str, ...]) -> None:
+        if self.decision_basis_event_ids != event_ids:
+            self.decision_basis_event_ids = event_ids
+            self.revision += 1
+
     def clear_current_goal(self) -> None:
         self.current_goal_id = None
         self.current_business_id = None
         self.short_term_plan = []
         self.plan_cursor = 0
         self.decision_basis_fact_ids = ()
+        self.decision_basis_event_ids = ()
         self.decision_relation_actor_ids = ()
 
     def replace_plan(self, steps: list[NPCPlanStep]) -> None:

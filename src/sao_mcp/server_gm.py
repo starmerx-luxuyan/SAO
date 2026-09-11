@@ -76,14 +76,17 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
     @mcp.tool()
     def get_entity_knowledge_history(entity_id: str) -> str:
-        """Inspect the entity's full dynamic knowledge history, preserving rumors, mistakes and corrections."""
-        knower_id = gm_turn_executor.runtime._knowledge_owner_id(entity_id)
-        rows = [
-            event
-            for event in gm_turn_executor.runtime.knowledge_events
-            if event.knower_id == knower_id
-        ]
-        return _json({"knower_id": knower_id, "events": rows})
+        """Inspect full belief history with confidence, expiry, evidence and correction provenance."""
+        runtime = gm_turn_executor.runtime
+        return _json({
+            "knower_id": runtime._knowledge_owner_id(entity_id),
+            "events": runtime.knowledge_history(entity_id),
+        })
+
+    @mcp.tool()
+    def get_knowledge_event_chain(event_id: str) -> str:
+        """Trace one belief event back through the exact observations/reports/inferences that support it."""
+        return _json({"events": gm_turn_executor.runtime.knowledge_event_chain(event_id)})
 
     @mcp.tool()
     def get_world_event_state(occurrence_id: str | None = None) -> str:

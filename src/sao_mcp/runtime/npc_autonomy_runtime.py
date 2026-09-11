@@ -22,7 +22,7 @@ from sao_mcp.runtime.world_event_runtime import WorldEventAincradRuntime
 
 LOCATION_UNAVAILABLE_FACT_PREFIX = "location_unavailable:"
 SHOP_RETURN_GOAL_ID = "routine:return_to_shop"
-NPC_AUTONOMY_SCHEMA = "npc-autonomy.v2"
+NPC_AUTONOMY_SCHEMA = "npc-autonomy.v3"
 
 
 class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
@@ -36,6 +36,7 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         for npc_id in self.npcs.definitions:
             self._ensure_actor_core(npc_id)
         self.register_world_advance_hook(self._resolve_due_npc_activities)
+        self.register_knowledge_update_hook(self._on_knowledge_update)
 
     def _ensure_actor_core(self, npc_id: str) -> NPCActorCoreState:
         if npc_id not in self.npcs.definitions:
@@ -391,6 +392,24 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
             raise RuntimeError("location_unavailable belief value must be boolean")
         return belief.value
 
+    def _knowledge_event_affects_goal_selection(self, npc_id: str, fact_id: str) -> bool:
+        core = self._ensure_actor_core(npc_id)
+        if any(goal.required_fact_id == fact_id for goal in core.long_term_goals.values()):
+            return True
+        definition = self.npcs.definitions[npc_id]
+        if "shop_owner" in definition.roles:
+            return fact_id == f"{LOCATION_UNAVAILABLE_FACT_PREFIX}{definition.home_location_id}"
+        return False
+
+    def _on_knowledge_update(self, event) -> None:
+        if event.knower_id not in self.npcs.definitions:
+            return
+        if not self._knowledge_event_affects_goal_selection(event.knower_id, event.fact_id):
+            return
+        agenda = self._agenda(event.knower_id)
+        if not agenda.active:
+            self._evaluate_npc_decision(event.knower_id, self.world.now_ms)
+
     def _evaluate_npc_decision(self, npc_id: str, decision_at_ms: int) -> None:
         agenda = self._agenda(npc_id)
         core = self._ensure_actor_core(npc_id)
@@ -407,7 +426,15 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         previous_id = core.current_goal_id
         core.select_goal(selected_id, decided_at_ms=decision_at_ms)
         if selected is None:
+            core.set_decision_basis_events(())
             return
+        if selected.required_fact_id is not None:
+            decision_belief = self.belief(npc_id, selected.required_fact_id)
+            if decision_belief is None:
+                raise RuntimeError("eligible NPC goal lost its decision belief before selection")
+            core.set_decision_basis_events((decision_belief.event_id,))
+        else:
+            core.set_decision_basis_events(())
         needs_plan = previous_id != selected_id or (
             core.current_plan_step is None
             and selected.target_location_id is not None
@@ -484,11 +511,13 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
         agenda = self._agenda(npc_id)
         location_id = self.npc_location_id(npc_id)
         goal = core.current_goal
+        decision_events = {
+            event_id: self.knowledge_event_state(event_id)
+            for event_id in core.decision_basis_event_ids
+        }
         beliefs = {
-            fact_id: (
-                asdict(belief) if (belief := self.belief(npc_id, fact_id)) is not None else None
-            )
-            for fact_id in core.decision_basis_fact_ids
+            row["fact_id"]: row
+            for row in decision_events.values()
         }
         relationships = {
             actor_id: self.npcs.states[npc_id].relationship_by_actor.get(actor_id, 0)
@@ -512,8 +541,10 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
             "plan_cursor": core.plan_cursor,
             "current_plan_step": asdict(core.current_plan_step) if core.current_plan_step is not None else None,
             "decision_basis_fact_ids": list(core.decision_basis_fact_ids),
+            "decision_basis_event_ids": list(core.decision_basis_event_ids),
             "decision_relation_actor_ids": list(core.decision_relation_actor_ids),
             "decision_beliefs": beliefs,
+            "decision_evidence": decision_events,
             "decision_relationships": relationships,
             "last_decision_at_ms": core.last_decision_at_ms,
             "revision": core.revision,
@@ -558,6 +589,12 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
                 raise RuntimeError(f"NPC {npc_id} has current business without a current goal")
             if core.plan_cursor < 0 or core.plan_cursor > len(core.short_term_plan):
                 raise RuntimeError(f"NPC {npc_id} actor-core plan cursor is invalid")
+            for event_id in core.decision_basis_event_ids:
+                event = self.knowledge_event(event_id)
+                if event.knower_id != npc_id:
+                    raise RuntimeError(f"NPC {npc_id} decision evidence belongs to another knower")
+                if event.fact_id not in core.decision_basis_fact_ids:
+                    raise RuntimeError(f"NPC {npc_id} decision evidence disagrees with decision fact IDs")
             for goal in core.long_term_goals.values():
                 if goal.target_location_id is not None and goal.target_location_id not in self.world_map.locations:
                     raise RuntimeError(f"NPC {npc_id} goal references unknown location {goal.target_location_id}")
@@ -599,9 +636,9 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
             return
         schema = payload.get("schema")
         if schema != NPC_AUTONOMY_SCHEMA:
-            if payload.get("agendas"):
+            if payload.get("actor_cores") or payload.get("agendas"):
                 raise ValueError(
-                    "legacy NPC autonomy state mixes goals into agenda activities and cannot be migrated exactly"
+                    "legacy NPC autonomy state lacks exact knowledge-event decision provenance and cannot be migrated"
                 )
             self.npc_actor_cores = {}
             self.npc_agendas = {}
@@ -647,6 +684,7 @@ class NPCAutonomyAincradRuntime(WorldEventAincradRuntime):
                 short_term_plan=[NPCPlanStep(**step) for step in row.get("short_term_plan", [])],
                 plan_cursor=int(row.get("plan_cursor", 0)),
                 decision_basis_fact_ids=tuple(row.get("decision_basis_fact_ids", ())),
+                decision_basis_event_ids=tuple(row.get("decision_basis_event_ids", ())),
                 decision_relation_actor_ids=tuple(row.get("decision_relation_actor_ids", ())),
                 last_decision_at_ms=row.get("last_decision_at_ms"),
                 revision=int(row.get("revision", 0)),
