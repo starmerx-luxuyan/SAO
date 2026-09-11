@@ -282,7 +282,7 @@ def register_adventure_tools(mcp, runtime) -> None:
 
     @mcp.tool()
     def import_save_json(save_json: str) -> str:
-        """Load a previously exported sao.aincrad.save.v1 payload into this runtime."""
+        """Load a current or exactly migratable legacy Aincrad save into this runtime."""
         import_runtime(save_json, into=runtime)
         return _json(
             {
