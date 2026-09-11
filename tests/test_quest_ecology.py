@@ -195,3 +195,16 @@ def test_generic_adventure_monster_materialization_consumes_ecology_capacity_con
     monster = runtime.materialize_ecological_monster("frenzy_boar")
     assert monster.metadata["ecology_monster_id"] == "frenzy_boar"
     assert runtime.monster_ecology["frenzy_boar"].available_units == before - 1
+
+
+def test_living_contract_visibility_is_local_to_posting_board_not_static_quest_list_projection():
+    runtime = QuestEcologyAincradRuntime(seed=809)
+    runtime.advance_world(QUEST_ECOLOGY_TICK_MS)
+    contract = _monster_contract(runtime)
+    player = runtime.create_character("BoardReader")
+    assert player.location_id == contract.posting_location_id
+    assert contract.quest_id in runtime.quests.definitions
+    runtime.travel_actor(player.actor_id, WEST)
+    assert player.location_id != contract.posting_location_id
+    # Runtime contract remains real, but location is what controls the player-facing task-board view.
+    assert runtime.world_events.occurrences[contract.occurrence_id].status is WorldEventStatus.ACTIVE

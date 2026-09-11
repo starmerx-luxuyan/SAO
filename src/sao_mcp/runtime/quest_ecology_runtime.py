@@ -15,6 +15,7 @@ from sao_mcp.rules.quest_ecology import (
     QuestContractState,
 )
 from sao_mcp.rules.quests import QuestObjectiveKind
+from sao_mcp.rules.state_authority import authoritative_guild_id
 from sao_mcp.rules.world_events import WorldEventStatus
 from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
 
@@ -315,11 +316,33 @@ class QuestEcologyAincradRuntime(MonsterEcologyAincradRuntime):
                     ):
                         eligible.append(recipient.actor_id)
             winners = tuple(sorted(set(eligible)))
+            winner_kind = "named_outsider"
+            winner_ref_id = killer_id
+            if winners:
+                guild_ids = {
+                    authoritative_guild_id(self, actor_id)
+                    for actor_id in winners
+                }
+                if len(guild_ids) == 1 and None not in guild_ids:
+                    winner_kind = "guild_members"
+                    winner_ref_id = next(iter(guild_ids))
+                else:
+                    winner_kind = "named_player"
+            elif killer is not None:
+                npc_id = killer.metadata.get("npc_definition_id")
+                if isinstance(npc_id, str) and npc_id:
+                    winner_kind = "named_npc"
+                    winner_ref_id = npc_id
+                else:
+                    guild_id = authoritative_guild_id(self, killer.actor_id)
+                    if guild_id is not None:
+                        winner_kind = "guild_outsider"
+                        winner_ref_id = guild_id
             self._resolve_contract(
                 contract,
-                winner_kind=("named_player" if winners else "named_outsider"),
+                winner_kind=winner_kind,
                 winner_ids=winners,
-                winner_ref_id=killer_id,
+                winner_ref_id=winner_ref_id,
             )
 
     def _process_background_hunt_progress(self) -> None:

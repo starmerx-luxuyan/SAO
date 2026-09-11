@@ -196,7 +196,10 @@ def register_adventure_tools(mcp, runtime) -> None:
         active = runtime.quests.progress_by_actor.get(actor_id, {})
         completed = runtime.quests.completed_by_actor.get(actor_id, set())
         rows = []
+        dynamic_contracts = getattr(runtime, "quest_contracts", {})
         for quest_id, definition in runtime.quests.definitions.items():
+            if quest_id in dynamic_contracts:
+                continue
             progress = active.get(quest_id)
             ready = False
             if progress is not None and not progress.claimed:

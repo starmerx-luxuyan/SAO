@@ -20,6 +20,21 @@ def _json(value: Any) -> str:
 
 def register_quest_ecology_tools(mcp, runtime) -> None:
     @mcp.tool()
+    def list_ecological_quests(actor_id: str) -> str:
+        """List active living-world contracts posted at the player's current task board."""
+        actor = runtime.actors[actor_id]
+        if actor.location_id is None:
+            return _json({"actorId": actor_id, "locationId": None, "contracts": []})
+        rows = []
+        for contract_id, contract in sorted(runtime.quest_contracts.items()):
+            occurrence = runtime.world_events.occurrences[contract.occurrence_id]
+            if contract.posting_location_id != actor.location_id or occurrence.status.value != "active":
+                continue
+            row = runtime.quest_contract_state(contract_id)
+            rows.append(row)
+        return _json({"actorId": actor_id, "locationId": actor.location_id, "contracts": rows})
+
+    @mcp.tool()
     def get_quest_ecology_state(contract_id: str | None = None) -> str:
         """Inspect living quest contracts and their authoritative WorldEvent lifecycle."""
         return _json(runtime.quest_ecology_state(contract_id))

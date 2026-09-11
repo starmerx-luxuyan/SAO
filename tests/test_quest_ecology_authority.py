@@ -65,6 +65,8 @@ def test_server_bootstrap_uses_quest_ecology_as_authoritative_top_runtime():
 
 def test_quest_ecology_server_has_no_manual_publish_or_resolve_surface():
     source = (ROOT / "src/sao_mcp/server_quest_ecology.py").read_text(encoding="utf-8")
+    assert "def list_ecological_quests" in source
+    assert "contract.posting_location_id != actor.location_id" in source
     assert "def get_quest_ecology_state" in source
     assert "def get_quest_ecology_history" in source
     assert "def accept_ecological_quest" in source
@@ -77,3 +79,9 @@ def test_adventure_catalog_spawn_routes_through_living_ecology_authority():
     source = (ROOT / "src/sao_mcp/server_adventure.py").read_text(encoding="utf-8")
     assert "materialize_ecological_monster" in source
     assert "living ecology encounters cannot override catalog monster level" in source
+
+
+def test_static_adventure_quest_list_excludes_dynamic_contract_projection():
+    source = (ROOT / "src/sao_mcp/server_adventure.py").read_text(encoding="utf-8")
+    assert 'dynamic_contracts = getattr(runtime, "quest_contracts", {})' in source
+    assert "if quest_id in dynamic_contracts" in source

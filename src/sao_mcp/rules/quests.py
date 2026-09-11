@@ -84,7 +84,7 @@ class QuestClaimResolution:
 
 
 class QuestRuntime:
-    """Persistent quest state. Definitions are immutable corpus; progress is campaign state."""
+    """Persistent quest progress plus a runtime-local registry of corpus and dynamic definitions."""
 
     def __init__(self, definitions: dict[str, QuestDefinition]) -> None:
         self.definitions = dict(definitions)
