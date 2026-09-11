@@ -58,11 +58,35 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset(),
     ),
     "assign_guild_goal": (
-        frozenset({"guild_id", "leader_id", "goal_id", "target_location_id", "assigned_member_ids"}),
-        frozenset({"basis_fact_id"}),
+        frozenset({"guild_id", "leader_id", "goal_id", "target_location_id"}),
+        frozenset({
+            "assigned_member_ids",
+            "basis_fact_id",
+            "required_member_fact_id",
+            "member_resource_requirements",
+            "guild_resource_requirements",
+            "min_members",
+            "max_members",
+            "desired_squads",
+            "max_concurrent_squads",
+            "allow_leader_assignment",
+            "priority",
+        }),
     ),
     "clear_guild_goal": (
         frozenset({"guild_id", "leader_id"}),
+        frozenset({"goal_id"}),
+    ),
+    "withdraw_guild_operation": (
+        frozenset({"guild_id", "leader_id", "operation_id"}),
+        frozenset({"regroup_location_id"}),
+    ),
+    "hold_guild_operation": (
+        frozenset({"guild_id", "leader_id", "operation_id"}),
+        frozenset(),
+    ),
+    "reorganize_guild_operation": (
+        frozenset({"guild_id", "leader_id", "operation_id", "assigned_member_ids"}),
         frozenset(),
     ),
     "observe_fact": (
@@ -169,13 +193,13 @@ class GMTurnExecutor:
                     raise ValueError(
                         f"GM turn action {index} (infer_fact) evidence_fact_ids must be a non-empty string list"
                     )
-            if op == "assign_guild_goal":
+            if op in {"assign_guild_goal", "reorganize_guild_operation"} and "assigned_member_ids" in action:
                 member_ids = action["assigned_member_ids"]
                 if not isinstance(member_ids, list) or not member_ids or any(
-                    not isinstance(actor_id, str) for actor_id in member_ids
+                    not isinstance(actor_id, str) or not actor_id for actor_id in member_ids
                 ):
                     raise ValueError(
-                        f"GM turn action {index} (assign_guild_goal) assigned_member_ids must be a non-empty string list"
+                        f"GM turn action {index} ({op}) assigned_member_ids must be a non-empty string list"
                     )
 
     def _execute_action(self, action: dict[str, Any]) -> Any:
@@ -268,11 +292,44 @@ class GMTurnExecutor:
                 action["leader_id"],
                 action["goal_id"],
                 action["target_location_id"],
-                action["assigned_member_ids"],
+                action.get("assigned_member_ids"),
                 basis_fact_id=action.get("basis_fact_id"),
+                required_member_fact_id=action.get("required_member_fact_id"),
+                member_resource_requirements=action.get("member_resource_requirements"),
+                guild_resource_requirements=action.get("guild_resource_requirements"),
+                min_members=int(action.get("min_members", 1)),
+                max_members=int(action.get("max_members", 6)),
+                desired_squads=int(action.get("desired_squads", 1)),
+                max_concurrent_squads=int(action.get("max_concurrent_squads", 1)),
+                allow_leader_assignment=bool(action.get("allow_leader_assignment", False)),
+                priority=int(action.get("priority", 100)),
             )
         if op == "clear_guild_goal":
-            return runtime.clear_guild_goal(action["guild_id"], action["leader_id"])
+            return runtime.clear_guild_goal(
+                action["guild_id"],
+                action["leader_id"],
+                action.get("goal_id"),
+            )
+        if op == "withdraw_guild_operation":
+            return runtime.request_guild_operation_withdrawal(
+                action["guild_id"],
+                action["leader_id"],
+                action["operation_id"],
+                regroup_location_id=action.get("regroup_location_id"),
+            )
+        if op == "hold_guild_operation":
+            return runtime.hold_guild_operation(
+                action["guild_id"],
+                action["leader_id"],
+                action["operation_id"],
+            )
+        if op == "reorganize_guild_operation":
+            return runtime.reorganize_guild_operation(
+                action["guild_id"],
+                action["leader_id"],
+                action["operation_id"],
+                action["assigned_member_ids"],
+            )
         if op == "observe_fact":
             return runtime.record_observation(
                 action["entity_id"],

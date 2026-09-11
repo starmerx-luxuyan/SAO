@@ -43,19 +43,20 @@ def actor_route_state(runtime, actor_id: str) -> dict | None:
                 }
             )
 
-    guild_agendas = getattr(runtime, "guild_agendas", {})
-    for guild_id, agenda in guild_agendas.items():
-        if agenda.active and actor_id in agenda.assigned_member_ids:
+    guild_operations = getattr(runtime, "guild_operations", {})
+    for operation_id, operation in guild_operations.items():
+        if operation.active and actor_id in operation.assigned_member_ids:
             matches.append(
                 {
                     "kind": "guild_travel",
-                    "owner_id": guild_id,
-                    "actor_ids": list(agenda.assigned_member_ids),
-                    "from_location_id": agenda.from_location_id,
-                    "to_location_id": agenda.next_location_id,
-                    "started_at_ms": agenda.started_at_ms,
-                    "due_at_ms": agenda.due_at_ms,
-                    "traversal_tags": list(agenda.traversal_tags),
+                    "owner_id": operation_id,
+                    "guild_id": operation.guild_id,
+                    "actor_ids": list(operation.assigned_member_ids),
+                    "from_location_id": operation.from_location_id,
+                    "to_location_id": operation.next_location_id,
+                    "started_at_ms": operation.started_at_ms,
+                    "due_at_ms": operation.due_at_ms,
+                    "traversal_tags": list(operation.traversal_tags),
                 }
             )
 
@@ -90,6 +91,9 @@ def assert_runtime_live_state(runtime) -> None:
     scheduler_assert = getattr(runtime, "_assert_npc_scheduler_authority", None)
     if scheduler_assert is not None:
         scheduler_assert()
+    guild_assert = getattr(runtime, "_assert_guild_autonomy_authority", None)
+    if guild_assert is not None:
+        guild_assert()
 
     active_actor_encounter: dict[str, str] = {}
     for encounter_id, encounter in runtime.encounters.items():
@@ -153,24 +157,24 @@ def assert_runtime_live_state(runtime) -> None:
                 raise RuntimeError(f"travelling NPC {npc_id} has a settled location")
             route_actor[materialized.actor_id] = f"npc:{npc_id}"
 
-    guild_agendas = getattr(runtime, "guild_agendas", {})
-    for guild_id, agenda in guild_agendas.items():
-        if not agenda.active:
+    guild_operations = getattr(runtime, "guild_operations", {})
+    for operation_id, operation in guild_operations.items():
+        if not operation.active:
             continue
-        if agenda.activity_kind != "travel":
-            raise RuntimeError(f"guild {guild_id} has unsupported active activity {agenda.activity_kind!r}")
-        if agenda.from_location_id not in runtime.world_map.locations or agenda.next_location_id not in runtime.world_map.locations:
-            raise RuntimeError(f"guild {guild_id} active route references an unknown location")
-        if not _has_direct_edge(runtime, agenda.from_location_id, agenda.next_location_id):
-            raise RuntimeError(f"guild {guild_id} active route is not a world-graph edge")
-        if agenda.started_at_ms is None or agenda.due_at_ms is None or not (agenda.started_at_ms <= now < agenda.due_at_ms):
-            raise RuntimeError(f"guild {guild_id} has invalid active-route timing")
-        for actor_id in agenda.assigned_member_ids:
+        if operation.activity_kind != "travel":
+            raise RuntimeError(f"guild operation {operation_id} has unsupported active activity {operation.activity_kind!r}")
+        if operation.from_location_id not in runtime.world_map.locations or operation.next_location_id not in runtime.world_map.locations:
+            raise RuntimeError(f"guild operation {operation_id} active route references an unknown location")
+        if not _has_direct_edge(runtime, operation.from_location_id, operation.next_location_id):
+            raise RuntimeError(f"guild operation {operation_id} active route is not a world-graph edge")
+        if operation.started_at_ms is None or operation.due_at_ms is None or not (operation.started_at_ms <= now < operation.due_at_ms):
+            raise RuntimeError(f"guild operation {operation_id} has invalid active-route timing")
+        for actor_id in operation.assigned_member_ids:
             actor = runtime.actors[actor_id]
             if actor.location_id is not None:
                 raise RuntimeError(f"travelling guild member {actor_id} has a settled location")
-            previous = route_actor.setdefault(actor_id, f"guild:{guild_id}")
-            if previous != f"guild:{guild_id}":
+            previous = route_actor.setdefault(actor_id, f"guild:{operation_id}")
+            if previous != f"guild:{operation_id}":
                 raise RuntimeError(f"actor {actor_id} has multiple active route authorities")
 
     for actor_id, route_owner in route_actor.items():

@@ -63,8 +63,13 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
     @mcp.tool()
     def get_guild_agenda(guild_id: str) -> str:
-        """Inspect one guild's current strategic goal, assigned real members and concurrent travel leg."""
+        """Inspect one guild's strategic goals, eligible member groups, resources and concurrent operations."""
         return _json(gm_turn_executor.runtime.guild_agenda_state(guild_id))
+
+    @mcp.tool()
+    def get_guild_operation(operation_id: str) -> str:
+        """Inspect one real guild squad operation, including route, members, status and withdrawal state."""
+        return _json(gm_turn_executor.runtime.guild_operation_state(operation_id))
 
     @mcp.tool()
     def get_guild_activity_history(guild_id: str | None = None) -> str:
