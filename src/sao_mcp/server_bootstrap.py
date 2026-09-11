@@ -3,7 +3,7 @@ from __future__ import annotations
 import sao_mcp.server as core_server
 from sao_mcp.corpus.social_seed import apply_social_catalog_seed
 from sao_mcp.runtime.gm_turn import GMTurnExecutor
-from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
+from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
 from sao_mcp.scenarios.floor2_martial_arts import install_floor2_martial_arts_scenario
 from sao_mcp.scenarios.floor2_taurus_raid import install_floor2_taurus_raid_scenario
 from sao_mcp.scenarios.floor3_spiders import install_floor3_spider_scenario
@@ -49,6 +49,7 @@ from sao_mcp.server_floor22 import register_floor22_tools
 from sao_mcp.server_gm import register_gm_tools
 from sao_mcp.server_housing import register_housing_tools
 from sao_mcp.server_inventory import register_inventory_tools
+from sao_mcp.server_ecology import register_monster_ecology_tools
 from sao_mcp.server_population import register_population_tools
 from sao_mcp.server_progression import register_progression_tools
 from sao_mcp.server_relationships import register_relationship_tools
@@ -57,8 +58,8 @@ from sao_mcp.server_timeline import register_timeline_tools
 
 # One authoritative game runtime. Floor-specific content is installed as scenario services,
 # not by adding another runtime subclass for every quest or floor.
-if not isinstance(core_server.runtime, EconomyLoopAincradRuntime):
-    core_server.runtime = EconomyLoopAincradRuntime(seed=0xA1C0)
+if not isinstance(core_server.runtime, MonsterEcologyAincradRuntime):
+    core_server.runtime = MonsterEcologyAincradRuntime(seed=0xA1C0)
 
 mcp = core_server.mcp
 runtime = core_server.runtime
@@ -102,6 +103,7 @@ register_family_tools(mcp, runtime)
 register_communication_tools(mcp, runtime)
 register_housing_tools(mcp, runtime)
 register_population_tools(mcp, runtime)
+register_monster_ecology_tools(mcp, runtime)
 register_gm_tools(mcp, gm_turn_executor)
 register_floor2_tools(mcp, floor2_taurus_raid, floor2_martial_arts)
 register_floor3_tools(mcp, floor3_spiders)

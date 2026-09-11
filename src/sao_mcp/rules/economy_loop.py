@@ -70,6 +70,7 @@ class RegionalMarketState:
     cumulative_unmet_demand_units: int = 0
     cumulative_production_units: int = 0
     cumulative_system_restock_units: int = 0
+    cumulative_ecology_supply_units: int = 0
     cumulative_player_market_units: int = 0
     cumulative_player_market_col: int = 0
     cumulative_named_trade_col: int = 0
@@ -89,6 +90,7 @@ class RegionalMarketState:
             self.cumulative_unmet_demand_units,
             self.cumulative_production_units,
             self.cumulative_system_restock_units,
+            self.cumulative_ecology_supply_units,
             self.cumulative_player_market_units,
             self.cumulative_player_market_col,
             self.cumulative_named_trade_col,
@@ -129,6 +131,12 @@ class RegionalMarketState:
         self.cumulative_system_restock_units += system_restock_units
         if demand_units or unmet_demand_units or production_units or system_restock_units:
             self.revision += 1
+
+    def record_ecology_supply(self, units: int) -> None:
+        if units <= 0:
+            raise ValueError("ecology market supply must be positive")
+        self.cumulative_ecology_supply_units += units
+        self.revision += 1
 
     def record_player_market(self, *, units: int, gross_col: int) -> None:
         if units <= 0 or gross_col <= 0:
@@ -241,6 +249,7 @@ def market_state_row(region: RegionalMarketState) -> dict[str, Any]:
         "cumulative_unmet_demand_units": region.cumulative_unmet_demand_units,
         "cumulative_production_units": region.cumulative_production_units,
         "cumulative_system_restock_units": region.cumulative_system_restock_units,
+        "cumulative_ecology_supply_units": region.cumulative_ecology_supply_units,
         "cumulative_player_market_units": region.cumulative_player_market_units,
         "cumulative_player_market_col": region.cumulative_player_market_col,
         "cumulative_named_trade_col": region.cumulative_named_trade_col,

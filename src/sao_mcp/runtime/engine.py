@@ -471,6 +471,9 @@ class GameRuntime:
         ]
         return members or [killer]
 
+    def loot_table(self, table_id: str):
+        return CORE_LOOT_TABLES[table_id]
+
     def _grant_defeat_rewards(
         self,
         encounter: EncounterState,
@@ -478,9 +481,13 @@ class GameRuntime:
         killer: CombatantState,
     ) -> dict | None:
         table_id = target.metadata.get("loot_table_id")
-        if not table_id or table_id not in CORE_LOOT_TABLES:
+        if not table_id:
             return None
-        rolled = roll_loot(CORE_LOOT_TABLES[table_id], self.rng)
+        try:
+            table = self.loot_table(str(table_id))
+        except KeyError:
+            return None
+        rolled = roll_loot(table, self.rng)
         recipients = self._reward_recipients(encounter, killer)
         count = max(1, len(recipients))
         details: list[dict] = []

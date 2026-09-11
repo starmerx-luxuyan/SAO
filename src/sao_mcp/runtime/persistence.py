@@ -89,6 +89,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     guild_autonomy_dump = getattr(runtime, "dump_guild_autonomy_state", None)
     housing_dump = getattr(runtime, "dump_housing_state", None)
     population_dump = getattr(runtime, "dump_population_state", None)
+    monster_ecology_dump = getattr(runtime, "dump_monster_ecology_state", None)
     world_event_dump = getattr(runtime, "dump_world_event_state", None)
     canonical_timeline_dump = getattr(runtime, "dump_canonical_timeline_state", None)
     payload = {
@@ -114,6 +115,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "guild_autonomy_state": guild_autonomy_dump() if guild_autonomy_dump is not None else {},
         "housing_state": housing_dump() if housing_dump is not None else {},
         "population_state": population_dump() if population_dump is not None else {},
+        "monster_ecology_state": monster_ecology_dump() if monster_ecology_dump is not None else {},
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -122,10 +124,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     payload = _upgrade_payload(json.loads(payload_json))
 
     if into is None:
-        from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
+        from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
         from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
-        runtime: GameRuntime = EconomyLoopAincradRuntime()
+        runtime: GameRuntime = MonsterEcologyAincradRuntime()
         install_floor22_witch_scenario(runtime)
     else:
         runtime = into
@@ -209,6 +211,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         economy = make_runtime_economy(runtime)
         runtime.economy = economy
     economy.load_state(payload.get("economy_state", {}))
+    monster_ecology_load = getattr(runtime, "load_monster_ecology_state", None)
+    if monster_ecology_load is not None:
+        monster_ecology_load(payload.get("monster_ecology_state", {}))
 
     timeline_load = getattr(runtime, "load_timeline_state", None)
     if timeline_load is not None:

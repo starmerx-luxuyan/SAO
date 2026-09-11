@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sao_mcp.rules.economy_loop import RegionalMarketState, VendorStockState
 from sao_mcp.runtime.economy_loop_runtime import EconomyLoopAincradRuntime
+from sao_mcp.runtime.monster_ecology_runtime import MonsterEcologyAincradRuntime
 from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
 
 
@@ -45,10 +46,12 @@ def test_scenarios_cannot_mutate_living_economy_ledgers_directly():
     assert violations == []
 
 
-def test_server_bootstrap_uses_economy_loop_as_the_authoritative_top_runtime():
+def test_server_bootstrap_preserves_economy_loop_under_the_new_authoritative_top_runtime():
     source = (ROOT / "src/sao_mcp/server_bootstrap.py").read_text(encoding="utf-8")
-    assert "EconomyLoopAincradRuntime" in source
+    assert MonsterEcologyAincradRuntime.__bases__ == (EconomyLoopAincradRuntime,)
+    assert "MonsterEcologyAincradRuntime" in source
     assert "PopulationAincradRuntime(seed=0xA1C0)" not in source
+    assert "EconomyLoopAincradRuntime(seed=0xA1C0)" not in source
     assert "make_runtime_economy(runtime)" not in source
 
 

@@ -26,6 +26,7 @@ class GuardedEconomyRuntime(EconomyRuntime):
         self.runtime = runtime
         self.vendor_stocks: dict[str, VendorStockState] = {}
         self.regional_markets: dict[str, RegionalMarketState] = {}
+        self.background_commodity_stock: dict[str, dict[str, int]] = {}
         self.market_history: list[dict[str, Any]] = []
         self.next_tick_at_ms = runtime.world.now_ms + ECONOMY_TICK_MS
         self._reset_living_market_state()
@@ -33,6 +34,7 @@ class GuardedEconomyRuntime(EconomyRuntime):
     def _reset_living_market_state(self) -> None:
         self.vendor_stocks = {}
         self.regional_markets = {}
+        self.background_commodity_stock = {}
         for vendor_id, vendor in self.vendors.items():
             targets = {
                 listing.template_id: target_stock_for_template(self.runtime.catalog, listing.template_id)
@@ -194,6 +196,35 @@ class GuardedEconomyRuntime(EconomyRuntime):
             now_ms=now_ms,
         )
 
+    def record_external_supply(
+        self,
+        location_id: str,
+        template_id: str,
+        units: int,
+        *,
+        source: str,
+        at_ms: int | None = None,
+    ) -> None:
+        if units <= 0:
+            raise ValueError("external market supply units must be positive")
+        if not source:
+            raise ValueError("external market supply source is required")
+        if location_id not in self.runtime.world_map.locations:
+            raise KeyError(location_id)
+        self.runtime.catalog.item(template_id)
+        stock = self.background_commodity_stock.setdefault(location_id, {})
+        stock[template_id] = stock.get(template_id, 0) + units
+        self._region(location_id).record_ecology_supply(units)
+        self._record_market(
+            "external_background_supply",
+            at_ms=at_ms,
+            location_id=location_id,
+            template_id=template_id,
+            units=units,
+            source=source,
+            stock_after=stock[template_id],
+        )
+
     def vendor_quote(self, vendor_id: str, template_id: str) -> dict[str, Any]:
         vendor = self.vendors[vendor_id]
         listing = next((row for row in vendor.listings if row.template_id == template_id), None)
@@ -293,14 +324,24 @@ class GuardedEconomyRuntime(EconomyRuntime):
             )
         if self.runtime.world.now_ms != tick_ms:
             raise RuntimeError("economy tick must resolve at authoritative current world time")
-        locations = {
-            vendor.location_id for vendor in self.vendors.values()
-        } | {listing.location_id for listing in self.player_listings.values()}
+        locations = (
+            {vendor.location_id for vendor in self.vendors.values()}
+            | {listing.location_id for listing in self.player_listings.values()}
+            | set(self.background_commodity_stock)
+        )
         for location_id in sorted(locations):
             population = self.runtime.population_location_state(location_id)
             segment_totals = dict(population["segment_totals"])
             region = self._region(location_id)
             demand_index, supply_index = regional_pressure(segment_totals, int(population["headcount"]))
+            commodity_stock = self.background_commodity_stock.setdefault(location_id, {})
+            commodity_pressure = sum(commodity_stock.values())
+            if commodity_pressure:
+                supply_index = round(
+                    supply_index
+                    + min(1.0, commodity_pressure / max(50, int(population["headcount"]) or 1)),
+                    6,
+                )
             region.set_pressure(demand_index, supply_index, tick_ms=tick_ms)
 
             vendors = sorted(
@@ -315,7 +356,7 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 listing.item.template_id
                 for listing in self.player_listings.values()
                 if listing.location_id == location_id
-            }
+            } | set(commodity_stock)
             demand_requested = {
                 template_id: background_demand_units(self.runtime.catalog, template_id, segment_totals)
                 for template_id in template_ids
@@ -338,6 +379,20 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 template_id: max(0, units - sold_by_template.get(template_id, 0))
                 for template_id, units in demand_requested.items()
             }
+            commodity_units_by_template: dict[str, int] = {}
+            for template_id in sorted(demand_remaining):
+                available = commodity_stock.get(template_id, 0)
+                consumed = min(available, demand_remaining[template_id])
+                if consumed <= 0:
+                    continue
+                remaining_stock = available - consumed
+                if remaining_stock:
+                    commodity_stock[template_id] = remaining_stock
+                else:
+                    commodity_stock.pop(template_id, None)
+                demand_remaining[template_id] -= consumed
+                commodity_units_by_template[template_id] = consumed
+            commodity_units = sum(commodity_units_by_template.values())
 
             location_vendor_demand = 0
             location_production = 0
@@ -384,7 +439,7 @@ class GuardedEconomyRuntime(EconomyRuntime):
                     )
                 vendor_rows.append({"vendor_id": vendor.vendor_id, "items": item_rows})
 
-            fulfilled_demand = market_units + location_vendor_demand
+            fulfilled_demand = market_units + commodity_units + location_vendor_demand
             unmet_demand = sum(demand_remaining.values())
             unabsorbed_production = sum(production_remaining.values())
             region.record_background(
@@ -414,6 +469,9 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 background_player_market_units=market_units,
                 background_player_market_col=market_col,
                 player_market_units_by_template=sold_by_template,
+                background_commodity_units=commodity_units,
+                background_commodity_units_by_template=commodity_units_by_template,
+                background_commodity_stock_after=dict(sorted(commodity_stock.items())),
                 vendors=vendor_rows,
             )
         self.next_tick_at_ms += ECONOMY_TICK_MS
@@ -471,6 +529,9 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 if vendor.location_id == location_id
             ],
             "player_listings": listings,
+            "background_commodity_stock": dict(
+                sorted(self.background_commodity_stock.get(location_id, {}).items())
+            ),
             "guild_headquarters": guilds,
         }
 
@@ -513,6 +574,13 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 raise RuntimeError(f"regional economy references invalid location: {location_id}")
             if region.last_tick_ms > self.runtime.world.now_ms:
                 raise RuntimeError("regional economy tick is in the future")
+        for location_id, stock in self.background_commodity_stock.items():
+            if location_id not in self.runtime.world_map.locations:
+                raise RuntimeError(f"background commodity stock references unknown location: {location_id}")
+            for template_id, units in stock.items():
+                self.runtime.catalog.item(template_id)
+                if units <= 0:
+                    raise RuntimeError("background commodity stock must remain positive")
         for row in self.market_history:
             if int(row["at_ms"]) > self.runtime.world.now_ms:
                 raise RuntimeError("economy history cannot be in the future")
@@ -536,6 +604,10 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 "regional_markets": {
                     location_id: asdict(region)
                     for location_id, region in self.regional_markets.items()
+                },
+                "background_commodity_stock": {
+                    location_id: dict(stock)
+                    for location_id, stock in self.background_commodity_stock.items()
                 },
                 "market_history": list(self.market_history),
             }
@@ -579,6 +651,7 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 cumulative_unmet_demand_units=int(row.get("cumulative_unmet_demand_units", 0)),
                 cumulative_production_units=int(row.get("cumulative_production_units", 0)),
                 cumulative_system_restock_units=int(row.get("cumulative_system_restock_units", 0)),
+                cumulative_ecology_supply_units=int(row.get("cumulative_ecology_supply_units", 0)),
                 cumulative_player_market_units=int(row.get("cumulative_player_market_units", 0)),
                 cumulative_player_market_col=int(row.get("cumulative_player_market_col", 0)),
                 cumulative_named_trade_col=int(row.get("cumulative_named_trade_col", 0)),
@@ -590,6 +663,10 @@ class GuardedEconomyRuntime(EconomyRuntime):
                 raise ValueError("regional market save key/id mismatch")
         self.vendor_stocks = stocks
         self.regional_markets = markets
+        self.background_commodity_stock = {
+            str(location_id): {str(template_id): int(units) for template_id, units in stock.items()}
+            for location_id, stock in payload.get("background_commodity_stock", {}).items()
+        }
         self.market_history = list(payload.get("market_history", []))
         self.next_tick_at_ms = next_tick_at_ms
         self.assert_living_market_authority()
