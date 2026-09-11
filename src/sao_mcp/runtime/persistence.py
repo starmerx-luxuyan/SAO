@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from enum import Enum
 from typing import Any
 
 from pydantic import TypeAdapter
@@ -88,6 +89,7 @@ def export_runtime(runtime: GameRuntime) -> str:
     housing_dump = getattr(runtime, "dump_housing_state", None)
     population_dump = getattr(runtime, "dump_population_state", None)
     world_event_dump = getattr(runtime, "dump_world_event_state", None)
+    canonical_timeline_dump = getattr(runtime, "dump_canonical_timeline_state", None)
     payload = {
         "schema": SAVE_SCHEMA,
         "world": WORLD_ADAPTER.dump_python(runtime.world, mode="json"),
@@ -98,6 +100,7 @@ def export_runtime(runtime: GameRuntime) -> str:
         "npc_state": runtime.npcs.dump_state(),
         "legal_state": runtime.legal.dump_state(),
         "world_event_state": world_event_dump() if world_event_dump is not None else {},
+        "canonical_timeline_state": canonical_timeline_dump() if canonical_timeline_dump is not None else {},
         "economy_state": economy.dump_state() if economy is not None else {},
         "timeline_state": timeline_dump() if timeline_dump is not None else {},
         "duel_state": duel_dump() if duel_dump is not None else {},
@@ -180,6 +183,9 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
     world_event_load = getattr(runtime, "load_world_event_state", None)
     if world_event_load is not None:
         world_event_load(payload.get("world_event_state", {}))
+    canonical_timeline_load = getattr(runtime, "load_canonical_timeline_state", None)
+    if canonical_timeline_load is not None:
+        canonical_timeline_load(payload.get("canonical_timeline_state", {}))
 
     population_load = getattr(runtime, "load_population_state", None)
     if population_load is not None:
