@@ -40,8 +40,13 @@ def register_gm_tools(mcp, gm_turn_executor) -> None:
 
     @mcp.tool()
     def get_npc_agenda(npc_id: str) -> str:
-        """Inspect one NPC's current goal, concurrent activity and authoritative settled/in-transit location."""
+        """Inspect one NPC's current execution activity plus actor-core goal projection and location."""
         return _json(gm_turn_executor.runtime.npc_agenda_state(npc_id))
+
+    @mcp.tool()
+    def get_npc_actor_core(npc_id: str) -> str:
+        """Inspect one NPC's long-term goals, current business, short-term plan, decision inputs and authoritative resources."""
+        return _json(gm_turn_executor.runtime.npc_actor_core_state(npc_id))
 
     @mcp.tool()
     def get_npc_activity_history(npc_id: str | None = None) -> str:
