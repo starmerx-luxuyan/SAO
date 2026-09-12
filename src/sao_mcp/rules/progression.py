@@ -3,6 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sao_mcp.domain.models import CombatantState
+from sao_mcp.rules.custom_mechanics import (
+    apply_level_growth as apply_custom_level_growth,
+    apply_skill_unlocks,
+    proficiency_gain as custom_proficiency_gain,
+)
+from sao_mcp.rules.progression_effects import apply_level_growth_bonus
 
 
 MAX_SKILL_PROFICIENCY = 1000.0
@@ -42,7 +48,7 @@ def remove_skill(actor: CombatantState, skill_id: str, *, preserve_proficiency: 
         actor.skill_proficiencies.pop(skill_id, None)
 
 
-def gain_skill_proficiency(actor: CombatantState, skill_id: str, base_gain: float) -> float:
+def gain_skill_proficiency(actor: CombatantState, skill_id: str, base_gain: float, *, catalog=None) -> float:
     """Simulation gain curve layered on the canonical 0..1000 scale."""
     if skill_id not in actor.equipped_skills:
         return 0.0
@@ -50,9 +56,12 @@ def gain_skill_proficiency(actor: CombatantState, skill_id: str, base_gain: floa
     if current >= MAX_SKILL_PROFICIENCY:
         return 0.0
     diminishing = max(0.15, 1.0 - current / 1100.0)
-    gain = max(0.0, base_gain) * diminishing
+    adjusted_gain = custom_proficiency_gain(actor, skill_id, base_gain) if catalog is not None else max(0.0, base_gain)
+    gain = adjusted_gain * diminishing
     updated = min(MAX_SKILL_PROFICIENCY, current + gain)
     actor.skill_proficiencies[skill_id] = updated
+    if catalog is not None:
+        apply_skill_unlocks(actor, catalog)
     return updated - current
 
 
@@ -102,6 +111,8 @@ def apply_level(actor: CombatantState, new_level: int) -> LevelGain:
     if gained:
         actor.strength += gained * 2
         actor.agility += gained * 2
+        apply_level_growth_bonus(actor, old, new_level)
+        apply_custom_level_growth(actor, old, new_level)
     actor.level = new_level
     actor.max_hp = max(actor.max_hp, default_max_hp(new_level, actor.strength, actor.agility))
     actor.hp = min(actor.hp, actor.max_hp)

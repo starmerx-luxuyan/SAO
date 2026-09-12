@@ -38,22 +38,17 @@ jobs:
           from sao_mcp.ui.app_security import WIDGET_DOMAIN
 
           expected_public = {
-              "health",
-              "create_character",
-              "get_character_state",
-              "inspect_catalog_entry",
-              "list_catalog",
-              "export_save_json",
-              "import_save_json",
-              "get_gm_observation",
-              "get_gm_decision_contract",
-              "preview_gm_decision",
-              "execute_gm_decision",
-              "character_hud",
-              "system_menu",
-              "boss_raid_hud",
+              "health", "create_character", "get_character_state", "inspect_catalog_entry", "list_catalog",
+              "export_save_json", "import_save_json", "get_gm_observation", "get_gm_decision_contract",
+              "preview_gm_decision", "execute_gm_decision", "character_hud", "system_menu", "boss_raid_hud",
+              "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup",
+              "create_configured_character", "configure_character_setup", "set_character_custom_mechanics",
+              "get_character_setup_state", "grant_character_item", "remove_character_item_setup",
+              "get_custom_catalog_state", "register_custom_weapon_definition", "register_custom_armor_definition",
+              "register_custom_consumable_definition", "register_custom_item_definition", "remove_custom_item_definition",
+              "register_custom_skill_definition", "register_custom_sword_skill_definition",
           }
-          assert sao_mcp.__version__ == "1.0.0"
+          assert sao_mcp.__version__ == "1.1.0"
           assert server_bootstrap.runtime is server_public.runtime
           assert files("sao_mcp.ui").joinpath("hud.html").is_file()
           assert files("sao_mcp.ui").joinpath("system_menu.html").is_file()
@@ -61,8 +56,8 @@ jobs:
           public_names = {tool.name for tool in asyncio.run(server_public.mcp.list_tools())}
           full_names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
           assert public_names == expected_public
-          assert {"mark_floor_boss_defeated", "advance_world_time"}.isdisjoint(public_names)
-          assert {"mark_floor_boss_defeated", "advance_world_time"} <= full_names
+          assert "reopen_campaign_setup" not in public_names
+          assert {"reopen_campaign_setup", "mark_floor_boss_defeated", "advance_world_time"} <= full_names
           resources = {str(binding.resource.uri): binding.resource for binding in server_public.apps.resources()}
           assert len(resources) == 3
           for resource in resources.values():
@@ -72,21 +67,21 @@ jobs:
           PY
       - name: Assemble plugin bundle
         run: |
-          rm -rf release/SAO-Aincrad-v1.0.0
-          mkdir -p release/SAO-Aincrad-v1.0.0/.codex-plugin
-          mkdir -p release/SAO-Aincrad-v1.0.0/skills
-          mkdir -p release/SAO-Aincrad-v1.0.0/docs
-          mkdir -p release/SAO-Aincrad-v1.0.0/dist
-          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.0.0/.codex-plugin/
-          cp .mcp.json release/SAO-Aincrad-v1.0.0/
-          cp -R skills/sao-gm release/SAO-Aincrad-v1.0.0/skills/
-          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.0.0/
-          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md release/SAO-Aincrad-v1.0.0/docs/
-          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.0.0/dist/
+          rm -rf release/SAO-Aincrad-v1.1.0
+          mkdir -p release/SAO-Aincrad-v1.1.0/.codex-plugin
+          mkdir -p release/SAO-Aincrad-v1.1.0/skills
+          mkdir -p release/SAO-Aincrad-v1.1.0/docs
+          mkdir -p release/SAO-Aincrad-v1.1.0/dist
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.1.0/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.1.0/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.1.0/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.1.0/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.1.0.md release/SAO-Aincrad-v1.1.0/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.1.0/dist/
       - name: Upload plugin bundle
         uses: actions/upload-artifact@v4
         with:
-          name: SAO-Aincrad-v1.0.0-plugin
-          path: release/SAO-Aincrad-v1.0.0
+          name: SAO-Aincrad-v1.1.0-plugin
+          path: release/SAO-Aincrad-v1.1.0
           if-no-files-found: error
           include-hidden-files: true

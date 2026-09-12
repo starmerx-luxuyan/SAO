@@ -11,11 +11,14 @@ from sao_mcp.rules.live_state import assert_runtime_live_state
 from sao_mcp.rules.spatial import default_formation
 from sao_mcp.rules.state_authority import assert_runtime_state_authority
 from sao_mcp.runtime.engine import GameRuntime
+from sao_mcp.runtime.custom_catalog import dump_custom_catalog_state, load_custom_catalog_state
+from sao_mcp.runtime.character_setup import dump_campaign_setup_state, load_campaign_setup_state
 
 
 SAVE_SCHEMA_V1 = "sao.aincrad.save.v1"
 SAVE_SCHEMA_V2 = "sao.aincrad.save.v2"
-SAVE_SCHEMA = "sao.aincrad.save.v3"
+SAVE_SCHEMA_V3 = "sao.aincrad.save.v3"
+SAVE_SCHEMA = "sao.aincrad.save.v4"
 ACTORS_ADAPTER = TypeAdapter(dict[str, CombatantState])
 WORLD_ADAPTER = TypeAdapter(WorldState)
 EVENTS_ADAPTER = TypeAdapter(list[CombatEvent])
@@ -36,10 +39,27 @@ def _dump_world(world: WorldState) -> dict[str, Any]:
     return payload
 
 
+def _legacy_finalized_setup_state() -> dict[str, Any]:
+    return {
+        "status": "finalized",
+        "revision": 0,
+        "finalized_at_world_ms": None,
+    }
+
+
 def _upgrade_payload(payload: dict[str, Any]) -> dict[str, Any]:
     schema = payload.get("schema")
     if schema == SAVE_SCHEMA:
-        return payload
+        upgraded = dict(payload)
+        upgraded.setdefault("custom_catalog_state", {})
+        upgraded.setdefault("campaign_setup_state", _legacy_finalized_setup_state())
+        return upgraded
+    if schema == SAVE_SCHEMA_V3:
+        upgraded = dict(payload)
+        upgraded["schema"] = SAVE_SCHEMA
+        upgraded.setdefault("custom_catalog_state", {})
+        upgraded["campaign_setup_state"] = _legacy_finalized_setup_state()
+        return upgraded
     if schema in {SAVE_SCHEMA_V1, SAVE_SCHEMA_V2}:
         if payload.get("encounters"):
             missing = "world-time anchors" if schema == SAVE_SCHEMA_V1 else "explicit encounter lifecycle"
@@ -49,6 +69,8 @@ def _upgrade_payload(payload: dict[str, Any]) -> dict[str, Any]:
         upgraded = dict(payload)
         upgraded["schema"] = SAVE_SCHEMA
         upgraded.setdefault("legal_state", {})
+        upgraded.setdefault("custom_catalog_state", {})
+        upgraded["campaign_setup_state"] = _legacy_finalized_setup_state()
         return upgraded
     raise ValueError(f"unsupported save schema: {schema!r}")
 
@@ -104,6 +126,8 @@ def export_runtime(runtime: GameRuntime) -> str:
     payload = {
         "schema": SAVE_SCHEMA,
         "world": _dump_world(runtime.world),
+        "campaign_setup_state": dump_campaign_setup_state(runtime),
+        "custom_catalog_state": dump_custom_catalog_state(runtime),
         "actors": ACTORS_ADAPTER.dump_python(runtime.actors, mode="json"),
         "encounters": encounters,
         "rng_state": runtime.rng.getstate(),
@@ -142,6 +166,8 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
         install_floor22_witch_scenario(runtime)
     else:
         runtime = into
+    load_campaign_setup_state(runtime, payload.get("campaign_setup_state"))
+    load_custom_catalog_state(runtime, payload.get("custom_catalog_state", {}))
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
 
     from sao_mcp.rules.world import restore_dynamic_world_connections

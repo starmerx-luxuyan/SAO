@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from sao_mcp.domain.models import EntityKind
+from sao_mcp.corpus.monsters import AINCRAD_MONSTERS
+from sao_mcp.domain.models import ConsumableEffect, EntityKind
 from sao_mcp.rules.access import require_location_access
 from sao_mcp.rules.quests import QuestObjectiveKind
 from sao_mcp.rules.state_authority import authoritative_guild_id
@@ -329,7 +330,9 @@ class GMObservationGate:
         crystals = sorted(
             item.instance_id
             for item in actor.inventory.values()
-            if item.template_id == "teleport_crystal" and item.quantity > 0
+            if item.quantity > 0
+            and (template := self.runtime.catalog.consumables.get(item.template_id)) is not None
+            and template.effect is ConsumableEffect.TELEPORT
         )
         if not crystals or not actor.alive or actor.location_id is None:
             return crystals, []
@@ -352,6 +355,44 @@ class GMObservationGate:
                 "floor_number": destination.floor_number,
             })
         return crystals, sorted(rows, key=lambda row: (row["floor_number"], row["destination_id"]))
+
+    def _encounter_options(self, observer_id: str) -> list[dict[str, Any]]:
+        actor = self.runtime.actors[observer_id]
+        if not actor.alive or actor.location_id is None:
+            return []
+        if any(
+            encounter.active and observer_id in encounter.participants
+            for encounter in self.runtime.encounters.values()
+        ):
+            return []
+        ecology = getattr(self.runtime, "monster_ecology", None)
+        if not isinstance(ecology, dict):
+            return []
+        materialized_counts: dict[str, int] = {}
+        for target in self.runtime.actors.values():
+            monster_id = target.metadata.get("ecology_monster_id")
+            if (
+                isinstance(monster_id, str)
+                and target.alive
+                and target.location_id == actor.location_id
+            ):
+                materialized_counts[monster_id] = materialized_counts.get(monster_id, 0) + 1
+        rows = []
+        for monster_id, state in ecology.items():
+            if state.location_id != actor.location_id:
+                continue
+            live_units = int(state.available_units) + materialized_counts.get(monster_id, 0)
+            if live_units <= 0:
+                continue
+            definition = AINCRAD_MONSTERS.get(monster_id)
+            if definition is None:
+                continue
+            rows.append({
+                "monster_id": monster_id,
+                "name": definition.name,
+                "level": definition.level,
+            })
+        return sorted(rows, key=lambda row: (row["level"], row["monster_id"]))
 
     def _available_quest_ids(self, observer_id: str, local_npc_ids: set[str]) -> list[str]:
         active = self.runtime.quests.progress_by_actor.get(observer_id, {})
@@ -411,6 +452,7 @@ class GMObservationGate:
         knowledge = self.runtime.knowledge_state(observer_id)
         return {
             "travel_options": self._travel_options(observer_id),
+            "encounter_options": self._encounter_options(observer_id),
             "teleport_crystal_instance_ids": crystals,
             "teleport_options": teleport_options,
             "interactable_npc_ids": sorted(local_npc_ids),

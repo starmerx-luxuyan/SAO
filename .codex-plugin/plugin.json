@@ -1,6 +1,6 @@
 {
   "name": "sao-aincrad",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Run detailed Sword Art Online Aincrad campaigns with rules, combat, items, progression and native UI.",
   "author": {
     "name": "starmerx-luxuyan",
@@ -9,7 +9,14 @@
   "homepage": "https://github.com/starmerx-luxuyan/SAO",
   "repository": "https://github.com/starmerx-luxuyan/SAO",
   "license": "MIT",
-  "keywords": ["sao", "aincrad", "rpg", "gm", "mcp", "combat"],
+  "keywords": [
+    "sao",
+    "aincrad",
+    "rpg",
+    "gm",
+    "mcp",
+    "combat"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -18,7 +25,11 @@
     "longDescription": "A granular Aincrad game runtime for character progression, Sword Skills, equipment, crafting, combat, parties, raids, crime, quests, floors and stateful GM play.",
     "developerName": "starmerx-luxuyan",
     "category": "Games",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://github.com/starmerx-luxuyan/SAO",
     "privacyPolicyURL": "https://github.com/starmerx-luxuyan/SAO/blob/main/docs/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/starmerx-luxuyan/SAO/blob/main/docs/TERMS.md",

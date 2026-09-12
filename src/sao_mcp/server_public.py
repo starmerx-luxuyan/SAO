@@ -10,9 +10,11 @@ from mcp.server.apps import Apps
 from mcp.server.mcpserver import MCPServer
 
 from sao_mcp import __version__
+from sao_mcp.runtime.character_setup import require_campaign_setup_open
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.server_bootstrap import gm_decision_runtime, gm_turn_executor, runtime
 from sao_mcp.server_gm import register_gm_tools
+from sao_mcp.server_setup import register_setup_tools
 from sao_mcp.ui.app_security import WIDGET_CSP, WIDGET_DOMAIN
 from sao_mcp.ui.boss_views import boss_raid_view
 from sao_mcp.ui.system_views import system_menu_view
@@ -90,8 +92,9 @@ mcp = MCPServer(
     instructions=(
         "This is the hosted player/GM surface for Aincrad. Mechanical state is authoritative in the runtime. "
         "For ordinary in-world actions, observe with get_gm_observation and mutate through execute_gm_decision. "
-        "Direct NPC/guild administration, raw ecology/population controls, floor-boss completion flags and raw "
-        "world mutation tools are intentionally not exposed on this public server."
+        "Explicit campaign setup/admin tools are separate from ordinary in-world actions and may initialize characters, "
+        "grant setup inventory, and register campaign-local custom skills. Direct NPC/guild administration, raw "
+        "ecology/population controls, floor-boss completion flags and raw world mutation tools remain unexposed."
     ),
 )
 
@@ -113,7 +116,8 @@ def health() -> str:
 
 @mcp.tool()
 def create_character(name: str, level: int = 1) -> str:
-    """Create a playable Aincrad character with legal starting state."""
+    """Create a legal starter character during the open campaign setup phase."""
+    require_campaign_setup_open(runtime)
     actor = runtime.create_character(name, level=level)
     return dumps_view(character_view(actor, runtime.catalog))
 
@@ -131,9 +135,15 @@ def inspect_catalog_entry(template_or_skill_id: str) -> str:
     if template_or_skill_id in runtime.catalog.weapons:
         value = runtime.catalog.weapons[template_or_skill_id]
         kind = "weapon"
+    elif template_or_skill_id in runtime.catalog.armors:
+        value = runtime.catalog.armors[template_or_skill_id]
+        kind = "armor"
     elif template_or_skill_id in runtime.catalog.consumables:
         value = runtime.catalog.consumables[template_or_skill_id]
         kind = "consumable"
+    elif template_or_skill_id in runtime.catalog.items:
+        value = runtime.catalog.items[template_or_skill_id]
+        kind = "item"
     elif template_or_skill_id in runtime.catalog.skills:
         value = runtime.catalog.skills[template_or_skill_id]
         kind = "skill"
@@ -150,12 +160,14 @@ def list_catalog(category: str) -> str:
     """List compact IDs and names for a public catalog category."""
     mapping = {
         "weapons": runtime.catalog.weapons,
+        "armors": runtime.catalog.armors,
         "consumables": runtime.catalog.consumables,
+        "items": runtime.catalog.items,
         "skills": runtime.catalog.skills,
         "sword_skills": runtime.catalog.sword_skills,
     }.get(category)
     if mapping is None:
-        raise ValueError("category must be weapons, consumables, skills, or sword_skills")
+        raise ValueError("category must be weapons, armors, consumables, items, skills, or sword_skills")
     return _json(
         {
             "category": category,
@@ -184,6 +196,7 @@ def import_save_json(save_json: str) -> str:
     )
 
 
+register_setup_tools(mcp, runtime)
 register_gm_tools(mcp, gm_turn_executor, gm_decision_runtime)
 
 __all__ = ["mcp", "apps", "runtime"]

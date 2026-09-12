@@ -13,6 +13,7 @@ from sao_mcp.corpus.world import WorldMapCatalog, build_world_map_catalog
 from sao_mcp.domain.models import (
     CombatEvent,
     CombatantState,
+    ConsumableEffect,
     CursorColor,
     DefenseMode,
     EncounterState,
@@ -41,6 +42,10 @@ from sao_mcp.rules.progression import (
     default_max_hp,
     experience_to_reach_level,
     gain_skill_proficiency,
+)
+from sao_mcp.rules.progression_effects import (
+    refresh_weapon_enhancement_caps,
+    weapon_proficiency_key,
 )
 from sao_mcp.rules.quests import QuestClaimResolution, QuestObjectiveKind, QuestProgress, QuestRuntime
 from sao_mcp.rules.social import add_party_member, add_raid_party, apply_unlawful_hostile_action
@@ -661,7 +666,9 @@ class GameRuntime:
                 target_threat[attacker_id] = target_threat.get(attacker_id, 0.0) + result.threat_generated
             encounter.last_attacker_by_target[target_id] = attacker_id
             encounter.last_attack_time_by_target[target_id] = encounter.time_ms
-            gain_skill_proficiency(attacker, weapon.weapon_class.value, 2.4 if sword_skill_id else 1.0)
+            proficiency_key = weapon_proficiency_key(attacker, weapon.weapon_class, sword_skill=skill)
+            gain_skill_proficiency(attacker, proficiency_key, 2.4 if sword_skill_id else 1.0, catalog=self.catalog)
+            refresh_weapon_enhancement_caps(attacker, self.catalog)
 
         self._append(
             encounter,
@@ -819,8 +826,9 @@ class GameRuntime:
             self.world_map,
         )
         template_id = actor.inventory[crystal_instance_id].template_id
-        if template_id != "teleport_crystal":
-            raise ValueError("item is not a teleport crystal")
+        template = self.catalog.consumables.get(template_id)
+        if template is None or template.effect is not ConsumableEffect.TELEPORT:
+            raise ValueError("item is not a teleport consumable")
         used = self.use_inventory_item(actor_id, crystal_instance_id, encounter_id=encounter_id)
         if not used.consumed:
             raise ValueError(used.reason or "teleport crystal could not be used")
