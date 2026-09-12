@@ -237,6 +237,26 @@ def iter_effects(actor: CombatantState, effect_type: str):
                 yield mechanic["mechanic_id"], index, effect
 
 
+def _level_growth_effects(actor: CombatantState):
+    for mechanic in custom_mechanics(actor):
+        for index, effect in enumerate(mechanic.get("effects", ())):
+            if effect.get("type") != "level_attribute_growth":
+                continue
+            conditions = dict(effect.get("conditions") or {})
+            conditions.pop("min_level", None)
+            conditions.pop("max_level", None)
+            if _conditions_met(actor, conditions):
+                yield mechanic["mechanic_id"], index, effect
+
+
+def _eligible_level_growth_count(effect: dict[str, Any], level: int) -> int:
+    from_level = int(effect.get("from_level", 1))
+    conditions = effect.get("conditions") or {}
+    first_target_level = max(from_level + 1, int(conditions.get("min_level", 1)))
+    last_target_level = min(level, int(conditions.get("max_level", level)))
+    return max(0, last_target_level - first_target_level + 1)
+
+
 def clear_custom_mechanics(actor: CombatantState) -> None:
     state = _state(actor)
     growth = state.get("level_growth", {})
@@ -260,9 +280,8 @@ def configure_custom_mechanics(
     state = _state(actor)
     growth_state: dict[str, dict[str, int]] = {}
     if apply_retroactive:
-        for mechanic_id, index, effect in iter_effects(actor, "level_attribute_growth"):
-            from_level = int(effect.get("from_level", 1))
-            eligible = max(0, actor.level - from_level)
+        for mechanic_id, index, effect in _level_growth_effects(actor):
+            eligible = _eligible_level_growth_count(effect, actor.level)
             strength = eligible * int(effect.get("strength_per_level", 0))
             agility = eligible * int(effect.get("agility_per_level", 0))
             actor.strength += strength
@@ -277,10 +296,9 @@ def apply_level_growth(actor: CombatantState, old_level: int, new_level: int) ->
     if new_level <= old_level:
         return
     growth_state = _state(actor).setdefault("level_growth", {})
-    for mechanic_id, index, effect in iter_effects(actor, "level_attribute_growth"):
-        from_level = int(effect.get("from_level", 1))
-        before = max(0, old_level - from_level)
-        after = max(0, new_level - from_level)
+    for mechanic_id, index, effect in _level_growth_effects(actor):
+        before = _eligible_level_growth_count(effect, old_level)
+        after = _eligible_level_growth_count(effect, new_level)
         gained = max(0, after - before)
         strength = gained * int(effect.get("strength_per_level", 0))
         agility = gained * int(effect.get("agility_per_level", 0))
