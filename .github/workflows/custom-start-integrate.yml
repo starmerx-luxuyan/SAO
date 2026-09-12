@@ -26,8 +26,9 @@ jobs:
           git apply /tmp/v11.patch
 
           cat .integration/r23.* | base64 -d | gzip -d > /tmp/r23.patch
-          git apply --check /tmp/r23.patch
-          git apply /tmp/r23.patch
+          git apply --check --exclude=tests/test_release_contract.py /tmp/r23.patch
+          git apply --exclude=tests/test_release_contract.py /tmp/r23.patch
+          cp .integration/test_release_contract.py tests/test_release_contract.py
 
           cp .integration/ci.yml .github/workflows/ci.yml
           rm -rf .integration .github/workflows/custom-start-integrate.yml APPLY_NOTES.md
