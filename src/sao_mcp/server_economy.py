@@ -237,7 +237,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
             material_quality=material_quality,
             rng=local_rng,
         )
-        gain_skill_proficiency(actor, "blacksmithing", 6.0 + recipe.difficulty * 3.0)
+        gain_skill_proficiency(actor, "blacksmithing", 6.0 + recipe.difficulty * 3.0, catalog=runtime.catalog)
         runtime.quests.record_event(
             actor_id,
             kind=QuestObjectiveKind.CRAFT,
@@ -252,7 +252,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
         _require_forge(actor)
         _require_blacksmith(actor)
         result = reclaim_weapon_to_ingot(actor, instance_id, runtime.catalog)
-        gain_skill_proficiency(actor, "blacksmithing", 1.5)
+        gain_skill_proficiency(actor, "blacksmithing", 1.5, catalog=runtime.catalog)
         return _json(asdict(result))
 
     @mcp.tool()
@@ -305,7 +305,7 @@ def register_economy_tools(mcp, runtime, economy: EconomyRuntime) -> None:
             force_end_product=force_end_product,
         )
         if result.attempted:
-            gain_skill_proficiency(actor, "blacksmithing", 2.0 if result.success else 1.0)
+            gain_skill_proficiency(actor, "blacksmithing", 2.0 if result.success else 1.0, catalog=runtime.catalog)
         if result.success:
             runtime.quests.record_event(
                 actor_id,

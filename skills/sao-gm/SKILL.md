@@ -16,6 +16,14 @@ Use this skill when the user wants to play, simulate, inspect, build, or adjudic
 
 Never invent a mechanical outcome because it sounds dramatic. If HP, durability, inventory, proficiency, Col, cooldown, status, crime state, encounter timing, quest/world flags or loot can change, call the relevant runtime tool first.
 
+## Campaign setup authority
+
+Character initialization is a separate authority from ordinary in-world actions. Check `get_campaign_setup_status`; for a new campaign call `begin_campaign_setup`, perform all requested setup mutations, then call `finalize_campaign_setup` before ordinary play. The hosted surface cannot reopen a finalized setup. Use the setup surface only while setup is open. It can define campaign-local weapons, armor/shields, consumables, ordinary items, Skills and Sword Skills; grant real item instances; configure character state; and attach declarative `custom_mechanics`. Prefer custom mechanics over prose-only exceptions so later combat, progression, UI and saves use the same authority.
+
+Setup mutations are authoritative runtime state, not narration. Register campaign-local Unique/Extra Skills before equipping them. Custom Sword Skills may bind `proficiency_skill_id` to that custom Skill, so a style can genuinely own proficiency instead of aliasing a weapon skill. Progression rules may route a weapon class to a custom Skill, add tracked per-level STR/AGI growth, increase weapon reinforcement-attempt caps at proficiency thresholds, and modify normal attacks after a proficiency threshold. These rules persist in save v4.
+
+Once `finalize_campaign_setup` succeeds, the hosted setup mutation tools are mechanically locked. Ordinary play cannot retroactively manufacture outcomes, heal away consequences, grant loot, or rewrite combat state through setup. Explicit maintenance reopening exists only on the full internal surface.
+
 ## Turn loop
 
 For an in-world player action:
@@ -34,7 +42,7 @@ Do not turn gameplay into a menu unless the user asks for options. NPCs and mons
 
 For ordinary in-world play, start from `get_gm_observation` for the explicit player viewpoint. The observation packet is the narration/decision boundary: it contains that player's current UI state, beliefs, visible entities, encounters, messages and currently usable capability references, but not NPC actor-core plans, guild strategy internals, world-event occurrences, canonical expectation overlays or another entity's private knowledge.
 
-Translate the user's prose into one ordinary player action, then use `execute_gm_decision`. The GM Decision Runtime receives only the fresh observation packet and rejects action references that are not grounded in that packet. Use `preview_gm_decision` when you need to validate the plan without mutation and `get_gm_decision_contract` for the exact allowed action shapes.
+Translate the user's prose into one ordinary player action, then use `execute_gm_decision`. Field observations may expose `encounter_options`; use the grounded `engage_monster` action to turn a local living-ecology monster into an actual Encounter before attacking. The GM Decision Runtime receives only the fresh observation packet and rejects action references that are not grounded in that packet. Use `preview_gm_decision` when you need to validate the plan without mutation and `get_gm_decision_contract` for the exact allowed action shapes.
 
 Do not call the internal `GMTurnExecutor` as a narration shortcut. It remains a mechanical dispatcher under the decision gate. NPC/guild administrative goal controls, direct knowledge injection and raw world advancement are deliberately absent from the player-observable decision surface; NPCs, guilds, events, population, economy and ecology continue through their own autonomous runtimes.
 

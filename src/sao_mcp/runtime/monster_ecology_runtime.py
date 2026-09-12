@@ -127,6 +127,37 @@ class MonsterEcologyAincradRuntime(EconomyLoopAincradRuntime):
         )
         return actor
 
+    def engage_ecological_monster(self, actor_id: str, monster_id: str):
+        """Start a real encounter against a local living-ecology monster.
+
+        Reuse an already materialized wild actor when possible so travelling into a
+        field and then choosing to engage does not consume a second ecology unit.
+        """
+        if monster_id not in AINCRAD_MONSTERS:
+            raise KeyError(monster_id)
+        actor = self.actors[actor_id]
+        if actor.kind is not EntityKind.PLAYER or not actor.alive:
+            raise ValueError("only a living player can engage a wild monster")
+        definition = AINCRAD_MONSTERS[monster_id]
+        if actor.location_id != definition.location_id:
+            raise ValueError(f"{definition.name} is not available at the player's current location")
+        if any(encounter.active and actor_id in encounter.participants for encounter in self.encounters.values()):
+            raise ValueError("player is already in an active encounter")
+
+        active_monster_ids = {
+            participant_id
+            for encounter in self.encounters.values()
+            if encounter.active
+            for participant_id in encounter.participants
+        }
+        candidates = [
+            candidate_id
+            for candidate_id in self._ecology_actor_ids(monster_id=monster_id, location_id=definition.location_id)
+            if candidate_id not in active_monster_ids
+        ]
+        monster = self.actors[candidates[0]] if candidates else self.materialize_ecological_monster(monster_id)
+        return self.start_encounter([actor_id, monster.actor_id], zone_id=definition.location_id)
+
     def release_ecological_monster(self, actor_id: str) -> None:
         actor = self.actors[actor_id]
         monster_id = actor.metadata.get("ecology_monster_id")

@@ -29,7 +29,7 @@ Adding or removing public tools is allowed when gameplay requires it, but an acc
 
 ## Persistence
 
-The current save schema is `sao.aincrad.save.v3`.
+The current save schema is `sao.aincrad.save.v4`. The v4 boundary persists campaign-local custom Skill/Sword Skill definitions and the campaign setup lifecycle state. v3 migrates exactly with an empty custom-catalog registry and a finalized setup state, so legacy campaigns never reopen setup accidentally.
 
 A save migration is valid only when it reconstructs the authoritative state exactly. Older payloads that lack required encounter timing/lifecycle information are rejected rather than filled with guessed defaults. Save/load equivalence and checkpoint churn are covered by regression tests.
 

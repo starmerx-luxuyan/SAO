@@ -8,6 +8,12 @@ from sao_mcp.domain.models import DefenseMode, EntityKind
 from sao_mcp.rules.combat import DEFAULT_TUNING, AttackResolution, effective_attack_speed_ms, resolve_physical_attack
 from sao_mcp.rules.inventory import recompute_equipment_stats
 from sao_mcp.rules.progression import gain_skill_proficiency
+from sao_mcp.rules.progression_effects import (
+    normal_attack_modifiers,
+    refresh_weapon_enhancement_caps,
+    weapon_proficiency_key,
+    weapon_proficiency_value,
+)
 from sao_mcp.rules.social import apply_unlawful_hostile_action
 from sao_mcp.rules.spatial import earliest_pending_execution_ms
 from sao_mcp.rules.timeline import QueuedPlayerAttack
@@ -31,7 +37,11 @@ class TimelineRaidAincradRuntime(RaidSpatialAincradRuntime):
         if sword_skill_id:
             skill = self.catalog.sword_skills[sword_skill_id]
             return max(1, skill.windup_ms + skill.active_ms), max(0, skill.post_motion_ms)
-        return effective_attack_speed_ms(weapon, weapon_item), DEFAULT_TUNING.base_normal_post_motion_ms
+        _, recovery_multiplier = normal_attack_modifiers(attacker, weapon.weapon_class)
+        return (
+            effective_attack_speed_ms(weapon, weapon_item),
+            int(round(DEFAULT_TUNING.base_normal_post_motion_ms * recovery_multiplier)),
+        )
 
     def _validate_queue_attack(
         self,
@@ -67,7 +77,7 @@ class TimelineRaidAincradRuntime(RaidSpatialAincradRuntime):
         if skill is not None:
             if skill.weapon_class is not weapon.weapon_class:
                 raise ValueError("Sword Skill is incompatible with the equipped weapon")
-            proficiency = attacker.skill_proficiencies.get(weapon.weapon_class.value, 0.0)
+            proficiency = weapon_proficiency_value(attacker, weapon.weapon_class, sword_skill=skill)
             if proficiency < skill.prerequisite_proficiency:
                 raise ValueError("Sword Skill proficiency prerequisite is not met")
         distance = self.encounter_distance(encounter_id, attacker_id, target_id)
@@ -263,7 +273,9 @@ class TimelineRaidAincradRuntime(RaidSpatialAincradRuntime):
                 table[attacker.actor_id] = table.get(attacker.actor_id, 0.0) + resolution.threat_generated
             encounter.last_attacker_by_target[target.actor_id] = attacker.actor_id
             encounter.last_attack_time_by_target[target.actor_id] = encounter.time_ms
-            gain_skill_proficiency(attacker, weapon.weapon_class.value, 2.4 if action.sword_skill_id else 1.0)
+            proficiency_key = weapon_proficiency_key(attacker, weapon.weapon_class, sword_skill=skill)
+            gain_skill_proficiency(attacker, proficiency_key, 2.4 if action.sword_skill_id else 1.0, catalog=self.catalog)
+            refresh_weapon_enhancement_caps(attacker, self.catalog)
 
         self._append(
             encounter,

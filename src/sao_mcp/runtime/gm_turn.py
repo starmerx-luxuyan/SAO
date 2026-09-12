@@ -16,6 +16,7 @@ _ACTION_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"encounter_id", "actor_id", "x", "y"}),
         frozenset(),
     ),
+    "engage_monster": (frozenset({"actor_id", "monster_id"}), frozenset()),
     "timeline_attack": (
         frozenset({"encounter_id", "attacker_id", "target_id"}),
         frozenset({"sword_skill_id", "defense", "seed"}),
@@ -193,6 +194,8 @@ class GMTurnExecutor:
                 float(action["x"]),
                 float(action["y"]),
             )
+        if op == "engage_monster":
+            return runtime.engage_ecological_monster(action["actor_id"], action["monster_id"])
         if op == "timeline_attack":
             return runtime.attack_or_queue_authoritative(
                 action["encounter_id"],

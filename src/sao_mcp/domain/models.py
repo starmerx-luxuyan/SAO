@@ -157,6 +157,11 @@ class SwordSkillDefinition:
     lunge_m: float = 0.0
     stagger: float = 0.0
     provenance: Provenance = SIMULATION
+    # Optional owning proficiency. Built-in Sword Skills leave this unset and
+    # continue to use their weapon-class proficiency; custom styles can bind
+    # their Sword Skills to a Unique/Extra Skill without masquerading as the
+    # underlying weapon skill.
+    proficiency_skill_id: str | None = None
 
     @property
     def total_multiplier(self) -> float:

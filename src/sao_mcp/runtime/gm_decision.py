@@ -12,6 +12,7 @@ PLAYER_DECISION_OPS = frozenset({
     "travel",
     "teleport",
     "move_encounter",
+    "engage_monster",
     "timeline_attack",
     "process_timeline",
     "switch",
@@ -166,6 +167,18 @@ class GMDecisionRuntime:
             if action["destination_id"] not in allowed:
                 raise ValueError("travel destination is not present in the player's current observable travel options")
             return f"viewpoints.{actor_id}.capabilities.travel_options"
+
+        if op == "engage_monster":
+            actor_id = action["actor_id"]
+            view = self._view_for_actor(observation, actor_id)
+            allowed = {
+                row["monster_id"]
+                for row in view["capabilities"].get("encounter_options", [])
+                if isinstance(row, dict) and isinstance(row.get("monster_id"), str)
+            }
+            if action["monster_id"] not in allowed:
+                raise ValueError("monster is not present in the player's current encounter options")
+            return f"viewpoints.{actor_id}.capabilities.encounter_options"
 
         if op == "teleport":
             actor_id = action["actor_id"]

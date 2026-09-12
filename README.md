@@ -6,7 +6,7 @@ A production-oriented Sword Art Online / Aincrad game runtime, MCP server, GM sk
 
 ## Release status
 
-**v1.0.0** is the first release-ready Aincrad runtime baseline.
+**v1.1.0** extends the release-ready Aincrad runtime with authoritative campaign setup, persistent custom Skills/Sword Skills, and a player-grounded field-encounter entry path.
 
 The runtime provides one authoritative campaign state shared by mechanics, GM observation/decision flow and UI. It supports persistent Aincrad play across combat, exploration, floor progression, inventory, economy, crafting/reinforcement, parties and raids, PvP/legal state, quests, NPC schedules and autonomy, relationships/family/housing, guild activity, population/ecology, communications, world events and save/load.
 
@@ -18,8 +18,8 @@ The world model contains all 100 floors. Canon-backed and authored scenario cove
 - **Deterministic campaign state.** Seeded mechanics, world time, scheduler boundaries and save/load are regression-tested for replay equivalence.
 - **Observation purity.** Player/GM observation queries do not lazily repair or mutate authoritative campaign state.
 - **Canon/simulation provenance.** Data records distinguish canon, inferred canon and simulation material.
-- **Versioned persistence.** The current save schema is `sao.aincrad.save.v3`; legacy v1/v2 payloads are migrated only where exact migration is possible.
-- **Separated MCP surfaces.** The hosted ChatGPT endpoint exposes a narrow player/GM API; the full administrative surface remains available for local development and maintenance.
+- **Versioned persistence.** The current save schema is `sao.aincrad.save.v4`; v3 saves migrate exactly with an empty custom-catalog registry, while v1/v2 payloads are migrated only where exact migration is possible.
+- **Separated MCP surfaces.** Ordinary play still passes through the observation/decision gate. Explicit setup tools are a separate authority for character initialization, setup inventory, campaign-local custom Skills and Sword Skills.
 
 ## Architecture
 
@@ -59,14 +59,19 @@ The hosted runtime is currently a **single private campaign process**, not a pub
 
 ## Hosted public MCP surface
 
-The hosted server intentionally exposes exactly these capability groups:
+The hosted server intentionally exposes a bounded player/GM surface. v1.1 setup is the foundation for arbitrary custom starts: definitions become normal catalog/runtime state rather than narration-only exceptions. Campaign setup is a one-time `begin -> configure -> finalize` phase; after finalization, public setup mutations are locked and only the full internal surface can explicitly reopen them.
+
+The hosted server exposes these capability groups:
 
 - health and character creation/state
-- catalog listing and provenance-aware entry inspection
+- explicit campaign setup lifecycle plus configured character creation, character patching, setup inventory, and authoritative setup-state inspection
+- persistent campaign-local custom weapons, armor/shields, consumables, ordinary items, Skills and Sword Skills
+- declarative custom mechanics for level growth, proficiency routing/gain, reinforcement caps, normal-attack curves and threshold unlocks
+- catalog listing and provenance-aware entry inspection, including armor and generic item categories
 - `get_gm_observation`
 - `get_gm_decision_contract`
 - `preview_gm_decision`
-- `execute_gm_decision`
+- `execute_gm_decision`, including grounded `engage_monster` actions from current field encounter options
 - explicit save export/import
 - Aincrad HUD, System Menu and Boss Raid UI tools
 

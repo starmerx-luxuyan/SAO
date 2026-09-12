@@ -13,6 +13,7 @@ from sao_mcp.domain.models import (
     WeaponTemplate,
 )
 from sao_mcp.rules.nightfolk import night_combat_bonus
+from sao_mcp.rules.progression_effects import normal_attack_modifiers, weapon_proficiency_value
 
 
 @dataclass(slots=True, frozen=True)
@@ -69,11 +70,12 @@ def _enhancement(item: ItemInstance, track: EnhancementTrack) -> int:
     return max(0, item.enhancements.get(track, 0))
 
 
-def _weapon_proficiency(actor: CombatantState, weapon: WeaponTemplate) -> float:
-    explicit = actor.skill_proficiencies.get(f"weapon:{weapon.weapon_class.value}")
-    if explicit is not None:
-        return explicit
-    return actor.skill_proficiencies.get(weapon.weapon_class.value, 0.0)
+def _weapon_proficiency(
+    actor: CombatantState,
+    weapon: WeaponTemplate,
+    sword_skill: SwordSkillDefinition | None = None,
+) -> float:
+    return weapon_proficiency_value(actor, weapon.weapon_class, sword_skill=sword_skill)
 
 
 def _guild_party_bonus(actor: CombatantState) -> float:
@@ -155,7 +157,10 @@ def resolve_physical_attack(
     if now_ms < attacker.committed_until_ms or now_ms < attacker.recovery_until_ms:
         return AttackResolution(False, reason="attacker is still committed or recovering")
 
-    proficiency = _weapon_proficiency(attacker, weapon)
+    proficiency = _weapon_proficiency(attacker, weapon, sword_skill)
+    normal_damage_multiplier, normal_recovery_multiplier = (
+        normal_attack_modifiers(attacker, weapon.weapon_class) if sword_skill is None else (1.0, 1.0)
+    )
     if sword_skill is not None:
         if sword_skill.weapon_class is not weapon.weapon_class:
             return AttackResolution(False, reason="Sword Skill is incompatible with the equipped weapon")
@@ -207,7 +212,7 @@ def resolve_physical_attack(
         post_motion = sword_skill.post_motion_ms
     else:
         action_duration = base_speed
-        post_motion = tuning.base_normal_post_motion_ms
+        post_motion = int(round(tuning.base_normal_post_motion_ms * normal_recovery_multiplier))
     action_end = now_ms + max(1, action_duration)
     recovery_end = action_end + max(0, post_motion)
 
@@ -244,7 +249,7 @@ def resolve_physical_attack(
     power *= 1.0 + _guild_party_bonus(attacker)
     power *= 1.0 + attacker_night_bonus
     skill_multiplier = sword_skill.total_multiplier if sword_skill else 1.0
-    raw = rolled * power * skill_multiplier * weapon_item.quality
+    raw = rolled * power * skill_multiplier * weapon_item.quality * normal_damage_multiplier
 
     guaranteed_critical = "guaranteed_critical" in weapon.tags
     if guaranteed_critical:

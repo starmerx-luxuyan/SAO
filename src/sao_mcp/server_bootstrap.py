@@ -57,6 +57,7 @@ from sao_mcp.server_quest_ecology import register_quest_ecology_tools
 from sao_mcp.server_relationships import register_relationship_tools
 from sao_mcp.server_spatial import register_spatial_tools
 from sao_mcp.server_social_autonomy import register_social_autonomy_tools
+from sao_mcp.server_setup import register_setup_tools
 from sao_mcp.server_timeline import register_timeline_tools
 
 # One authoritative game runtime. Floor-specific content is installed as scenario services,
@@ -96,6 +97,7 @@ gm_turn_executor = GMTurnExecutor(runtime)
 gm_decision_runtime = GMDecisionRuntime(GMTurnExecutor.supported_actions())
 
 register_adventure_tools(mcp, runtime)
+register_setup_tools(mcp, runtime, include_admin=True)
 register_inventory_tools(mcp, runtime)
 register_progression_tools(mcp, runtime)
 register_economy_tools(mcp, runtime, runtime.economy)
