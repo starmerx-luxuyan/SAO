@@ -22,6 +22,7 @@ PUBLIC_TOOL_NAMES = {
     "get_custom_catalog_state", "register_custom_weapon_definition", "register_custom_armor_definition",
     "register_custom_consumable_definition", "register_custom_item_definition", "remove_custom_item_definition",
     "register_custom_skill_definition", "register_custom_sword_skill_definition",
+    "validate_campaign_blueprint", "preview_campaign_blueprint", "apply_campaign_blueprint",
 }
 PUBLIC_UI_URIS = {"ui://sao/aincrad-hud.html", "ui://sao/system-menu.html", "ui://sao/boss-raid.html"}
 
@@ -29,7 +30,7 @@ PUBLIC_UI_URIS = {"ui://sao/aincrad-hud.html", "ui://sao/system-menu.html", "ui:
 def test_release_version_metadata_is_consistent():
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert __version__ == "1.1.0"
+    assert __version__ == "1.2.0"
     assert manifest["version"] == __version__
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "src/sao_mcp/__init__.py"
