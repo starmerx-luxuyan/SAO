@@ -1,0 +1,10 @@
+--- a/src/sao_mcp/runtime/character_setup.py
++++ b/src/sao_mcp/runtime/character_setup.py
+@@ -208,7 +208,6 @@
+             raise ValueError("setup location floor is not unlocked")
+         if any(encounter.active and actor.actor_id in encounter.participants for encounter in runtime.encounters.values()):
+             raise ValueError("cannot relocate a character in an active encounter")
+-        actor.location_id = location_id
+         discover_location(runtime.world, actor, location)
+ 
+     if unlocked_special_skills is not None:
