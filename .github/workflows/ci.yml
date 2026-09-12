@@ -47,8 +47,9 @@ jobs:
               "get_custom_catalog_state", "register_custom_weapon_definition", "register_custom_armor_definition",
               "register_custom_consumable_definition", "register_custom_item_definition", "remove_custom_item_definition",
               "register_custom_skill_definition", "register_custom_sword_skill_definition",
+              "validate_campaign_blueprint", "preview_campaign_blueprint", "apply_campaign_blueprint",
           }
-          assert sao_mcp.__version__ == "1.1.0"
+          assert sao_mcp.__version__ == "1.2.0"
           assert server_bootstrap.runtime is server_public.runtime
           assert files("sao_mcp.ui").joinpath("hud.html").is_file()
           assert files("sao_mcp.ui").joinpath("system_menu.html").is_file()
@@ -67,21 +68,21 @@ jobs:
           PY
       - name: Assemble plugin bundle
         run: |
-          rm -rf release/SAO-Aincrad-v1.1.0
-          mkdir -p release/SAO-Aincrad-v1.1.0/.codex-plugin
-          mkdir -p release/SAO-Aincrad-v1.1.0/skills
-          mkdir -p release/SAO-Aincrad-v1.1.0/docs
-          mkdir -p release/SAO-Aincrad-v1.1.0/dist
-          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.1.0/.codex-plugin/
-          cp .mcp.json release/SAO-Aincrad-v1.1.0/
-          cp -R skills/sao-gm release/SAO-Aincrad-v1.1.0/skills/
-          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.1.0/
-          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.1.0.md release/SAO-Aincrad-v1.1.0/docs/
-          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.1.0/dist/
+          rm -rf release/SAO-Aincrad-v1.2.0
+          mkdir -p release/SAO-Aincrad-v1.2.0/.codex-plugin
+          mkdir -p release/SAO-Aincrad-v1.2.0/skills
+          mkdir -p release/SAO-Aincrad-v1.2.0/docs
+          mkdir -p release/SAO-Aincrad-v1.2.0/dist
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.2.0/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.2.0/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.2.0/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.2.0/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.2.0.md release/SAO-Aincrad-v1.2.0/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.2.0/dist/
       - name: Upload plugin bundle
         uses: actions/upload-artifact@v4
         with:
-          name: SAO-Aincrad-v1.1.0-plugin
-          path: release/SAO-Aincrad-v1.1.0
+          name: SAO-Aincrad-v1.2.0-plugin
+          path: release/SAO-Aincrad-v1.2.0
           if-no-files-found: error
           include-hidden-files: true

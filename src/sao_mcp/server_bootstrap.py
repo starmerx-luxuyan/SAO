@@ -31,6 +31,7 @@ from sao_mcp.scenarios.floor8_sluva import install_floor8_sluva_justice_scenario
 from sao_mcp.scenarios.floor8_standoff import install_floor8_cave_standoff_scenario
 from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 from sao_mcp.server_adventure import register_adventure_tools
+from sao_mcp.server_campaign_blueprint import register_campaign_blueprint_tools
 from sao_mcp.server_communications import register_communication_tools
 from sao_mcp.server_duels import register_duel_tools
 from sao_mcp.server_economy import register_economy_tools
@@ -98,6 +99,7 @@ gm_decision_runtime = GMDecisionRuntime(GMTurnExecutor.supported_actions())
 
 register_adventure_tools(mcp, runtime)
 register_setup_tools(mcp, runtime, include_admin=True)
+register_campaign_blueprint_tools(mcp, runtime)
 register_inventory_tools(mcp, runtime)
 register_progression_tools(mcp, runtime)
 register_economy_tools(mcp, runtime, runtime.economy)

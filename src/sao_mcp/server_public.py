@@ -13,6 +13,7 @@ from sao_mcp import __version__
 from sao_mcp.runtime.character_setup import require_campaign_setup_open
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 from sao_mcp.server_bootstrap import gm_decision_runtime, gm_turn_executor, runtime
+from sao_mcp.server_campaign_blueprint import register_campaign_blueprint_tools
 from sao_mcp.server_gm import register_gm_tools
 from sao_mcp.server_setup import register_setup_tools
 from sao_mcp.ui.app_security import WIDGET_CSP, WIDGET_DOMAIN
@@ -93,8 +94,9 @@ mcp = MCPServer(
         "This is the hosted player/GM surface for Aincrad. Mechanical state is authoritative in the runtime. "
         "For ordinary in-world actions, observe with get_gm_observation and mutate through execute_gm_decision. "
         "Explicit campaign setup/admin tools are separate from ordinary in-world actions and may initialize characters, "
-        "grant setup inventory, and register campaign-local custom skills. Direct NPC/guild administration, raw "
-        "ecology/population controls, floor-boss completion flags and raw world mutation tools remain unexposed."
+        "grant setup inventory, register campaign-local custom definitions, and apply complete campaign blueprints. Direct "
+        "NPC/guild administration, raw ecology/population controls, floor-boss completion flags and raw world mutation "
+        "tools remain unexposed."
     ),
 )
 
@@ -197,6 +199,7 @@ def import_save_json(save_json: str) -> str:
 
 
 register_setup_tools(mcp, runtime)
+register_campaign_blueprint_tools(mcp, runtime)
 register_gm_tools(mcp, gm_turn_executor, gm_decision_runtime)
 
 __all__ = ["mcp", "apps", "runtime"]
