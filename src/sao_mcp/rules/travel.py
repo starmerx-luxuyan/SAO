@@ -97,10 +97,16 @@ def travel(
     if advance_time is None:
         world.now_ms += edge.travel_ms
     else:
-        actor.location_id = None
-        advance_time(edge.travel_ms)
-        if actor.location_id is not None:
-            raise RuntimeError("travelling actor acquired a settled location before travel commit")
+        # Ordinary player travel is one atomic state transition. Keep the actor at the
+        # authoritative origin while scheduler hooks advance, and block autonomous movement
+        # with the existing movement-authority key. Only commit the destination afterwards.
+        actor.metadata[AUTONOMOUS_TRAVEL_RESTRICTION_KEY] = "ordinary_world_travel"
+        try:
+            advance_time(edge.travel_ms)
+        finally:
+            actor.metadata.pop(AUTONOMOUS_TRAVEL_RESTRICTION_KEY, None)
+        if actor.location_id != origin:
+            raise RuntimeError("travelling actor changed settled location before travel commit")
     newly_discovered = discover_location(world, actor, destination)
     return TravelResolution(
         origin,

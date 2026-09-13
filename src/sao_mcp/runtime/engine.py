@@ -600,9 +600,17 @@ class GameRuntime:
                 actor.kind is EntityKind.PLAYER and actor.metadata.get("death_state") == "end_phase"
                 for actor in encounter.participants.values()
             )
-            and sum(1 for actor in encounter.participants.values() if actor.alive) <= 1
         ):
-            self.end_encounter(encounter.encounter_id, reason="combat_resolved")
+            living_players = any(
+                actor.alive and actor.kind is EntityKind.PLAYER
+                for actor in encounter.participants.values()
+            )
+            living_hostiles = any(
+                actor.alive and actor.kind in (EntityKind.MONSTER, EntityKind.BOSS)
+                for actor in encounter.participants.values()
+            )
+            if not living_players or not living_hostiles:
+                self.end_encounter(encounter.encounter_id, reason="combat_resolved")
 
     def _advance_encounter_to(self, encounter: EncounterState, new_time_ms: int) -> None:
         if new_time_ms <= encounter.time_ms:

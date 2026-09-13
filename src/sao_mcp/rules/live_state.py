@@ -60,6 +60,22 @@ def actor_route_state(runtime, actor_id: str) -> dict | None:
                 }
             )
 
+    autonomy = actor.metadata.get("named_player_autonomy")
+    if isinstance(autonomy, dict) and isinstance(autonomy.get("transit"), dict):
+        transit = autonomy["transit"]
+        matches.append(
+            {
+                "kind": "named_player_travel",
+                "owner_id": actor_id,
+                "actor_ids": [actor_id],
+                "from_location_id": transit["from_location_id"],
+                "to_location_id": transit["to_location_id"],
+                "started_at_ms": transit["started_at_ms"],
+                "due_at_ms": transit["due_at_ms"],
+                "traversal_tags": [],
+            }
+        )
+
     if len(matches) > 1:
         raise RuntimeError(f"actor {actor_id} has multiple active route authorities")
     return matches[0] if matches else None
@@ -176,6 +192,20 @@ def assert_runtime_live_state(runtime) -> None:
             previous = route_actor.setdefault(actor_id, f"guild:{operation_id}")
             if previous != f"guild:{operation_id}":
                 raise RuntimeError(f"actor {actor_id} has multiple active route authorities")
+
+    for actor_id, actor in runtime.actors.items():
+        route = actor_route_state(runtime, actor_id)
+        if (
+            actor.alive
+            and actor.location_id is None
+            and route is None
+            and actor.metadata.get("world_location_unresolved") is not True
+        ):
+            raise RuntimeError(f"actor {actor_id} has no settled location and no active route authority")
+        if route is not None and route["kind"] == "named_player_travel":
+            if actor.location_id is not None:
+                raise RuntimeError(f"travelling named player {actor_id} has a settled location")
+            route_actor[actor_id] = f"named:{actor_id}"
 
     for actor_id, route_owner in route_actor.items():
         if actor_id in active_actor_encounter:

@@ -92,7 +92,10 @@ def test_dynamic_quest_board_is_observed_locally_but_not_globally():
     remote = runtime.create_character("Remote")
     remote.location_id = "floor_1_horunka"
     runtime.advance_world(60 * 60 * 1000)
-    contract = next(iter(runtime.quest_contracts.values()))
+    contract = next(
+        row for row in runtime.quest_contracts.values()
+        if row.posting_location_id == TOWN
+    )
     fact_id = f"quest_contract:{contract.contract_id}"
     assert contract.posting_location_id == TOWN
     local_belief = runtime.belief(local.actor_id, fact_id)

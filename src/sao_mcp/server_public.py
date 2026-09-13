@@ -179,6 +179,48 @@ def list_catalog(category: str) -> str:
 
 
 @mcp.tool()
+def create_party(leader_id: str) -> str:
+    """Create a live party for a player leader."""
+    return _json(asdict(runtime.create_party(leader_id)))
+
+
+@mcp.tool()
+def join_party(party_id: str, actor_id: str) -> str:
+    """Join a player to an existing live party."""
+    return _json(asdict(runtime.join_party(party_id, actor_id)))
+
+
+@mcp.tool()
+def list_vendors(location_id: str | None = None) -> str:
+    """List living NPC vendor nodes, optionally at one location."""
+    rows = []
+    for vendor in runtime.economy.vendors.values():
+        if location_id is not None and vendor.location_id != location_id:
+            continue
+        state = getattr(runtime.economy, "vendor_state", None)
+        rows.append(state(vendor.vendor_id) if state is not None else asdict(vendor))
+    return _json({"vendors": rows})
+
+
+@mcp.tool()
+def sell_to_vendor(actor_id: str, vendor_id: str, instance_id: str, quantity: int | None = None) -> str:
+    """Sell an unequipped carried item to a colocated NPC vendor."""
+    actor = runtime.actors[actor_id]
+    return _json(asdict(runtime.economy.sell_to_vendor(
+        actor, vendor_id, instance_id, runtime.catalog, quantity=quantity, actor_location_id=actor.location_id
+    )))
+
+
+@mcp.tool()
+def buy_from_vendor(actor_id: str, vendor_id: str, template_id: str, quantity: int = 1) -> str:
+    """Buy a stocked item from a colocated NPC vendor."""
+    actor = runtime.actors[actor_id]
+    return _json(asdict(runtime.economy.buy_from_vendor(
+        actor, vendor_id, template_id, quantity, runtime.catalog, actor_location_id=actor.location_id
+    )))
+
+
+@mcp.tool()
 def export_save_json() -> str:
     """Export the complete deterministic campaign save as JSON."""
     return export_runtime(runtime)

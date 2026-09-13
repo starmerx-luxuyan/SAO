@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HOSTED_MCP_URL = "https://sao-aincrad-mcp-production.up.railway.app/mcp"
 PUBLIC_TOOL_NAMES = {
     "health", "create_character", "get_character_state", "inspect_catalog_entry", "list_catalog",
+    "create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor",
     "export_save_json", "import_save_json", "get_gm_observation", "get_gm_decision_contract",
     "preview_gm_decision", "execute_gm_decision", "character_hud", "system_menu", "boss_raid_hud",
     "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup", "get_custom_mechanics_schema",
@@ -30,7 +31,7 @@ PUBLIC_UI_URIS = {"ui://sao/v1.3.1/aincrad-hud.html", "ui://sao/v1.3.1/system-me
 def test_release_version_metadata_is_consistent():
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert __version__ == "1.3.1"
+    assert __version__ == "1.3.2"
     assert manifest["version"] == __version__
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "src/sao_mcp/__init__.py"

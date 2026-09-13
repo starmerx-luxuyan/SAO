@@ -78,6 +78,13 @@ _MONSTER_ROWS = (
         exact_level=True,
     ),
     _monster("large_nepenthes", "Large Nepenthes", 1, level=4, hp_factor=1.15, tags=("plant",)),
+    _monster(
+        "ruin_kobold_trooper", "Ruin Kobold Trooper", 1, level=6, location="labyrinth", hp_factor=1.18,
+        tags=("humanoid", "kobold", "weapon_user", "respawning_labyrinth"),
+        sources=("Sword Art Online Progressive Volume 1: Aria of a Starless Night",),
+        notes="Found in the 1st Floor Labyrinth and capable of weapon Sword Skills; it respawns at a set rate.",
+        exact_level=True,
+    ),
 
     # Floor 2
     _monster("jagged_worm", "Jagged Worm", 2, level=4, hp_factor=0.82, tags=("insectoid",)),
@@ -219,6 +226,15 @@ def _sim_loot(row: MonsterDefinition) -> LootTable:
 AINCRAD_MONSTER_LOOT_TABLES: dict[str, LootTable] = {
     row.loot_table_id: _sim_loot(row) for row in _MONSTER_ROWS
 }
+AINCRAD_MONSTER_LOOT_TABLES[AINCRAD_MONSTERS["ruin_kobold_trooper"].loot_table_id] = LootTable(
+    table_id=AINCRAD_MONSTERS["ruin_kobold_trooper"].loot_table_id,
+    col_min=18,
+    col_max=30,
+    xp_min=120,
+    xp_max=180,
+    entries=(LootEntry("ruin_kobold_axe_fragment", 1.0, 1, 2),),
+    provenance="canon_identity_level_location_plus_simulation_rewards",
+)
 
 # Canon-locked rewards/drops where source material is explicit.
 AINCRAD_MONSTER_LOOT_TABLES[AINCRAD_MONSTERS["windwasp"].loot_table_id] = LootTable(
@@ -282,6 +298,15 @@ AINCRAD_MONSTER_LOOT_TABLES[AINCRAD_MONSTERS["lizardman_lord"].loot_table_id] = 
 def apply_aincrad_monster_drop_items(catalog: Catalog) -> Catalog:
     """Seed only named monster drops required by the playable monster corpus."""
     rows = {
+        "ruin_kobold_axe_fragment": ItemTemplate(
+            "ruin_kobold_axe_fragment", "Ruin Kobold Axe Fragment", ItemKind.MATERIAL,
+            weight=0.18, stack_limit=50, base_value_col=22, tags=("floor_1", "kobold_material"),
+            provenance=Provenance(
+                ProvenanceKind.SIMULATION,
+                sources=("Sword Art Online Progressive Volume 1: Aria of a Starless Night",),
+                notes="Trooper identity and axe usage are canon; this sellable fragment drop and its economy values are simulation calibration.",
+            ),
+        ),
         "needle_of_windwasp": ItemTemplate(
             "needle_of_windwasp", "Needle of Windwasp", ItemKind.MATERIAL,
             weight=0.1, stack_limit=50, tags=("floor_2", "windwasp_drop"),
