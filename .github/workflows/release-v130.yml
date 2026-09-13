@@ -1,0 +1,52 @@
+name: release-v1.3.0
+
+on:
+  push:
+    branches:
+      - release-v1.3.0
+    paths:
+      - ".github/workflows/release-v130.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bdb6e6342e374942ed7af016326bc8e3cf265302
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install and verify
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src
+          pytest -q
+      - name: Build native Day 3 save and wheel
+        run: |
+          python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.0.save.json
+          rm -rf dist /tmp/SAO-Aincrad-v1.3.0 /tmp/SAO-Aincrad-v1.3.0-plugin.zip
+          python -m pip wheel . --no-deps --wheel-dir dist
+          mkdir -p /tmp/SAO-Aincrad-v1.3.0/.codex-plugin /tmp/SAO-Aincrad-v1.3.0/skills /tmp/SAO-Aincrad-v1.3.0/docs /tmp/SAO-Aincrad-v1.3.0/dist /tmp/SAO-Aincrad-v1.3.0/presets
+          cp .codex-plugin/plugin.json /tmp/SAO-Aincrad-v1.3.0/.codex-plugin/
+          cp .mcp.json README.md LICENSE SOURCE_POLICY.md /tmp/SAO-Aincrad-v1.3.0/
+          cp -R skills/sao-gm /tmp/SAO-Aincrad-v1.3.0/skills/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.0.md /tmp/SAO-Aincrad-v1.3.0/docs/
+          cp dist/starmerx_sao_mcp-*.whl /tmp/SAO-Aincrad-v1.3.0/dist/
+          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json /tmp/SAO-Aincrad-v1.3.0/presets/
+          cp /tmp/SAO_Kageaki_Day3_v1.3.0.save.json /tmp/SAO-Aincrad-v1.3.0/
+          cd /tmp && zip -qr SAO-Aincrad-v1.3.0-plugin.zip SAO-Aincrad-v1.3.0
+          sha256sum /tmp/SAO-Aincrad-v1.3.0-plugin.zip
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.3.0 /tmp/SAO-Aincrad-v1.3.0-plugin.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target bdb6e6342e374942ed7af016326bc8e3cf265302 \
+            --title "SAO Aincrad v1.3.0" \
+            --notes-file docs/V1.3.0.md
