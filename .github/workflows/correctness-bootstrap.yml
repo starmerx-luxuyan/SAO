@@ -1,0 +1,56 @@
+name: correctness-bootstrap
+
+on:
+  push:
+    branches:
+      - correctness-pass-v130-run
+    paths:
+      - ".correctness/payload-01.b64"
+      - ".github/workflows/correctness-bootstrap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify and expand payload
+        run: |
+          base64 -d .correctness/payload-01.b64 > /tmp/correctness.tar.xz
+          echo "c8d6cdf3f1672249a27c4b15288bbc5e97bd371ddfc26aa87a86cce50cbe6137  /tmp/correctness.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/correctness.tar.xz -C .
+          python .correctness/apply_existing_edits.py
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Compile
+        run: python -m compileall -q src
+
+      - name: Full regression
+        run: pytest -q
+
+      - name: Build corrected native Day 3 save
+        run: python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.0.save.json
+
+      - name: Clean one-shot transport and commit
+        run: |
+          rm -rf .correctness
+          rm -f .github/workflows/correctness-bootstrap.yml
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f -name '*.pyc' -delete
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: complete v1.3 correctness pass"
+          git push origin HEAD:correctness-pass-v130-run
