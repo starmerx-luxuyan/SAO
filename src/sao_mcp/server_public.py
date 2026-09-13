@@ -44,7 +44,7 @@ apps = Apps()
 
 
 @apps.tool(
-    resource_uri="ui://sao/aincrad-hud.html",
+    resource_uri="ui://sao/v1.3.1/aincrad-hud.html",
     title="Aincrad HUD",
     description="Render the player-visible character and encounter HUD.",
 )
@@ -55,7 +55,7 @@ def character_hud(actor_id: str, encounter_id: str | None = None) -> dict[str, A
 
 
 @apps.tool(
-    resource_uri="ui://sao/system-menu.html",
+    resource_uri="ui://sao/v1.3.1/system-menu.html",
     title="Aincrad System Menu",
     description="Render the player-visible Aincrad character, equipment, skills, map, quest and market panels.",
 )
@@ -64,7 +64,7 @@ def system_menu(actor_id: str, encounter_id: str | None = None) -> dict[str, Any
 
 
 @apps.tool(
-    resource_uri="ui://sao/boss-raid.html",
+    resource_uri="ui://sao/v1.3.1/boss-raid.html",
     title="Aincrad Boss Raid HUD",
     description="Render the current boss-raid HUD for an encounter visible to the connected campaign.",
 )
@@ -73,9 +73,9 @@ def boss_raid_hud(encounter_id: str, boss_id: str | None = None) -> dict[str, An
 
 
 for uri, html, title in (
-    ("ui://sao/aincrad-hud.html", HUD_HTML, "Aincrad System HUD"),
-    ("ui://sao/system-menu.html", SYSTEM_MENU_HTML, "Aincrad System Menu"),
-    ("ui://sao/boss-raid.html", BOSS_RAID_HTML, "Aincrad Boss Raid HUD"),
+    ("ui://sao/v1.3.1/aincrad-hud.html", HUD_HTML, "Aincrad System HUD"),
+    ("ui://sao/v1.3.1/system-menu.html", SYSTEM_MENU_HTML, "Aincrad System Menu"),
+    ("ui://sao/v1.3.1/boss-raid.html", BOSS_RAID_HTML, "Aincrad Boss Raid HUD"),
 ):
     apps.add_html_resource(
         uri,

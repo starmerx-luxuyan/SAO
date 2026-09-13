@@ -35,7 +35,7 @@ def _json(value: Any) -> str:
 
 
 @apps.tool(
-    resource_uri="ui://sao/aincrad-hud.html",
+    resource_uri="ui://sao/v1.3.1/aincrad-hud.html",
     title="Aincrad HUD",
     description="Render the authoritative SAO character and encounter HUD.",
 )
@@ -46,7 +46,7 @@ def character_hud(actor_id: str, encounter_id: str | None = None) -> dict[str, A
 
 
 apps.add_html_resource(
-    "ui://sao/aincrad-hud.html",
+    "ui://sao/v1.3.1/aincrad-hud.html",
     HUD_HTML,
     title="Aincrad System HUD",
     prefers_border=True,

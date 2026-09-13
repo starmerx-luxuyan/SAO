@@ -11,7 +11,7 @@ BOSS_RAID_HTML = (Path(__file__).parent / "ui" / "boss_raid.html").read_text(enc
 
 
 @apps.tool(
-    resource_uri="ui://sao/boss-raid.html",
+    resource_uri="ui://sao/v1.3.1/boss-raid.html",
     title="Aincrad Boss Raid HUD",
     description="Render segmented boss HP bars, telegraph state, raid roster, minions, threat and boss events.",
 )
@@ -20,7 +20,7 @@ def boss_raid_hud(encounter_id: str, boss_id: str | None = None) -> dict[str, An
 
 
 apps.add_html_resource(
-    "ui://sao/boss-raid.html",
+    "ui://sao/v1.3.1/boss-raid.html",
     BOSS_RAID_HTML,
     title="Aincrad Boss Raid HUD",
     prefers_border=True,

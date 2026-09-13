@@ -68,3 +68,19 @@ def test_embedded_views_consume_structured_payloads_not_text_content():
         assert "structuredContent" in html
         assert "result?.content?.[0]?.text" not in html
         assert "JSON.parse(text)" not in html
+
+
+def test_v131_ui_resource_uris_force_host_cache_refresh():
+    import asyncio
+    from sao_mcp import server_public
+    expected = {
+        "ui://sao/v1.3.1/aincrad-hud.html",
+        "ui://sao/v1.3.1/system-menu.html",
+        "ui://sao/v1.3.1/boss-raid.html",
+    }
+    resources = {str(binding.resource.uri) for binding in server_public.apps.resources()}
+    assert resources == expected
+    tools = {tool.name: tool for tool in asyncio.run(server_public.mcp.list_tools())}
+    assert tools["character_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/aincrad-hud.html"
+    assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/system-menu.html"
+    assert tools["boss_raid_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/boss-raid.html"

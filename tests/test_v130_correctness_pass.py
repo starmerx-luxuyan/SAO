@@ -170,7 +170,7 @@ def test_system_menu_has_real_data_and_public_apps_resource_is_bound():
     from sao_mcp import server_public
 
     resources = {str(binding.resource.uri): binding.resource for binding in server_public.apps.resources()}
-    assert "ui://sao/system-menu.html" in resources
-    resource = resources["ui://sao/system-menu.html"]
+    assert "ui://sao/v1.3.1/system-menu.html" in resources
+    resource = resources["ui://sao/v1.3.1/system-menu.html"]
     assert "text/html" in str(resource.mime_type)
     assert resource.meta["ui"]["resourceUri"] if "resourceUri" in resource.meta.get("ui", {}) else True

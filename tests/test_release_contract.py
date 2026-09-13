@@ -24,7 +24,7 @@ PUBLIC_TOOL_NAMES = {
     "register_custom_skill_definition", "register_custom_sword_skill_definition",
     "validate_campaign_blueprint", "preview_campaign_blueprint", "apply_campaign_blueprint",
 }
-PUBLIC_UI_URIS = {"ui://sao/aincrad-hud.html", "ui://sao/system-menu.html", "ui://sao/boss-raid.html"}
+PUBLIC_UI_URIS = {"ui://sao/v1.3.1/aincrad-hud.html", "ui://sao/v1.3.1/system-menu.html", "ui://sao/v1.3.1/boss-raid.html"}
 
 
 def test_release_version_metadata_is_consistent():

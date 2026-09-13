@@ -11,7 +11,7 @@ SYSTEM_MENU_HTML = (Path(__file__).parent / "ui" / "system_menu.html").read_text
 
 
 @apps.tool(
-    resource_uri="ui://sao/system-menu.html",
+    resource_uri="ui://sao/v1.3.1/system-menu.html",
     title="Aincrad System Menu",
     description=(
         "Render the authoritative multi-panel SAO system menu: character, equipment, skills, map, quests, "
@@ -23,7 +23,7 @@ def system_menu(actor_id: str, encounter_id: str | None = None) -> dict[str, Any
 
 
 apps.add_html_resource(
-    "ui://sao/system-menu.html",
+    "ui://sao/v1.3.1/system-menu.html",
     SYSTEM_MENU_HTML,
     title="Aincrad System Menu",
     prefers_border=True,
