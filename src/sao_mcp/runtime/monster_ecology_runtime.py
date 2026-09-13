@@ -156,7 +156,18 @@ class MonsterEcologyAincradRuntime(EconomyLoopAincradRuntime):
             if candidate_id not in active_monster_ids
         ]
         monster = self.actors[candidates[0]] if candidates else self.materialize_ecological_monster(monster_id)
-        return self.start_encounter([actor_id, monster.actor_id], zone_id=definition.location_id)
+        player_ids = [actor_id]
+        if actor.party_id and actor.party_id in self.world.parties:
+            party = self.world.parties[actor.party_id]
+            for member_id in party.member_ids:
+                if member_id == actor_id or member_id not in self.actors:
+                    continue
+                member = self.actors[member_id]
+                if member.alive and member.location_id == actor.location_id and not any(
+                    encounter.active and member_id in encounter.participants for encounter in self.encounters.values()
+                ):
+                    player_ids.append(member_id)
+        return self.start_encounter([*player_ids, monster.actor_id], zone_id=definition.location_id)
 
     def release_ecological_monster(self, actor_id: str) -> None:
         actor = self.actors[actor_id]
@@ -549,8 +560,9 @@ class MonsterEcologyAincradRuntime(EconomyLoopAincradRuntime):
         if payload.get("schema") != MONSTER_ECOLOGY_SCHEMA:
             raise ValueError("unsupported non-empty monster ecology schema")
         species_payload = payload.get("species", {})
-        if set(species_payload) != set(AINCRAD_MONSTERS):
-            raise ValueError("monster ecology save species registry disagrees with current corpus")
+        unknown_species = set(species_payload) - set(AINCRAD_MONSTERS)
+        if unknown_species:
+            raise ValueError(f"monster ecology save references unknown species: {sorted(unknown_species)}")
         restored = {}
         for monster_id, row in species_payload.items():
             restored[monster_id] = MonsterSpeciesEcologyState(
@@ -566,6 +578,18 @@ class MonsterEcologyAincradRuntime(EconomyLoopAincradRuntime):
                 cumulative_recoveries=int(row.get("cumulative_recoveries", 0)),
                 recent_kill_pressure=int(row.get("recent_kill_pressure", 0)),
                 revision=int(row.get("revision", 0)),
+            )
+        for monster_id in sorted(set(AINCRAD_MONSTERS) - set(restored)):
+            definition = AINCRAD_MONSTERS[monster_id]
+            profile = spawn_profile(definition.tags)
+            restored[monster_id] = MonsterSpeciesEcologyState(
+                monster_id=monster_id,
+                location_id=definition.location_id,
+                carrying_capacity=profile.carrying_capacity,
+                available_units=profile.carrying_capacity,
+                recovery_interval_ms=profile.recovery_interval_ms,
+                recovery_batch=profile.recovery_batch,
+                next_recovery_at_ms=self.world.now_ms + profile.recovery_interval_ms,
             )
         next_tick = int(payload["next_ecology_tick_at_ms"])
         if next_tick <= self.world.now_ms:

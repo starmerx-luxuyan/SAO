@@ -10,6 +10,7 @@ from sao_mcp.ui.view_models import character_view
 
 FORGE_LOCATION_IDS = {
     "floor_1_town_of_beginnings",
+    "floor_1_tolbana",
     "floor_48_lisbeth_smith_shop",
     "floor_55_granzam",
 }

@@ -19,8 +19,10 @@ jobs:
         run: python -m compileall -q src
       - name: Test
         run: pytest -q
-      - name: Build and re-import corrected Kageaki Day 3 save
-        run: python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.1.save.json
+      - name: Build corrected Day 3 baseline
+        run: python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.2.save.json
+      - name: Build interrupted-session frontline recovery
+        run: python scripts/build_kageaki_frontline_recovery_v132.py /tmp/SAO_Kageaki_Frontline_Recovery_v1.3.2.save.json
       - name: Build release wheel
         run: |
           rm -rf dist
@@ -37,10 +39,12 @@ jobs:
 
           import sao_mcp
           from sao_mcp import server_bootstrap, server_public
+          from sao_mcp.corpus.monsters import AINCRAD_MONSTERS
           from sao_mcp.ui.app_security import WIDGET_DOMAIN
 
           expected_public = {
               "health", "create_character", "get_character_state", "inspect_catalog_entry", "list_catalog",
+              "create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor",
               "export_save_json", "import_save_json", "get_gm_observation", "get_gm_decision_contract",
               "preview_gm_decision", "execute_gm_decision", "character_hud", "system_menu", "boss_raid_hud",
               "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup", "get_custom_mechanics_schema",
@@ -56,8 +60,11 @@ jobs:
               "ui://sao/v1.3.1/system-menu.html",
               "ui://sao/v1.3.1/boss-raid.html",
           }
-          assert sao_mcp.__version__ == "1.3.1"
+          assert sao_mcp.__version__ == "1.3.2"
           assert server_bootstrap.runtime is server_public.runtime
+          assert AINCRAD_MONSTERS["ruin_kobold_trooper"].level == 6
+          assert AINCRAD_MONSTERS["ruin_kobold_trooper"].location_id == "floor_1_labyrinth"
+          assert "npc_smith_tolbana_frontline" in server_public.runtime.economy.vendors
           for filename in ("hud.html", "system_menu.html", "boss_raid.html"):
               resource = files("sao_mcp.ui").joinpath(filename)
               assert resource.is_file()
@@ -88,24 +95,25 @@ jobs:
           PY
       - name: Assemble plugin bundle
         run: |
-          rm -rf release/SAO-Aincrad-v1.3.1
-          mkdir -p release/SAO-Aincrad-v1.3.1/.codex-plugin
-          mkdir -p release/SAO-Aincrad-v1.3.1/skills
-          mkdir -p release/SAO-Aincrad-v1.3.1/docs
-          mkdir -p release/SAO-Aincrad-v1.3.1/dist
-          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.3.1/.codex-plugin/
-          cp .mcp.json release/SAO-Aincrad-v1.3.1/
-          cp -R skills/sao-gm release/SAO-Aincrad-v1.3.1/skills/
-          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.3.1/
-          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.1.md release/SAO-Aincrad-v1.3.1/docs/
-          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.3.1/dist/
-          mkdir -p release/SAO-Aincrad-v1.3.1/presets
-          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json release/SAO-Aincrad-v1.3.1/presets/
-          cp /tmp/SAO_Kageaki_Day3_v1.3.1.save.json release/SAO-Aincrad-v1.3.1/
+          rm -rf release/SAO-Aincrad-v1.3.2
+          mkdir -p release/SAO-Aincrad-v1.3.2/.codex-plugin
+          mkdir -p release/SAO-Aincrad-v1.3.2/skills
+          mkdir -p release/SAO-Aincrad-v1.3.2/docs
+          mkdir -p release/SAO-Aincrad-v1.3.2/dist
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.3.2/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.3.2/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.3.2/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.3.2/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.2.md release/SAO-Aincrad-v1.3.2/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.3.2/dist/
+          mkdir -p release/SAO-Aincrad-v1.3.2/presets
+          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json release/SAO-Aincrad-v1.3.2/presets/
+          cp /tmp/SAO_Kageaki_Day3_v1.3.2.save.json release/SAO-Aincrad-v1.3.2/
+          cp /tmp/SAO_Kageaki_Frontline_Recovery_v1.3.2.save.json release/SAO-Aincrad-v1.3.2/
       - name: Upload plugin bundle
         uses: actions/upload-artifact@v4
         with:
-          name: SAO-Aincrad-v1.3.1-plugin
-          path: release/SAO-Aincrad-v1.3.1
+          name: SAO-Aincrad-v1.3.2-plugin
+          path: release/SAO-Aincrad-v1.3.2
           if-no-files-found: error
           include-hidden-files: true

@@ -1,3 +1,3 @@
 """Sword Art Online Aincrad rules runtime and MCP plugin."""
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"

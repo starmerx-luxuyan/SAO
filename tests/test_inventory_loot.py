@@ -71,6 +71,7 @@ def test_monster_defeat_rewards_once_and_party_shares_xp_col():
     loot_events = [event for event in enc.events if event.event_type == "loot_awarded"]
     assert len(loot_events) == 1
 
-    again = rt.attack(enc.encounter_id, a.actor_id, monster.actor_id, defense="none", seed=5)
-    assert not again.legal
+    assert not enc.active
+    with pytest.raises(ValueError, match="has ended"):
+        rt.attack(enc.encounter_id, a.actor_id, monster.actor_id, defense="none", seed=5)
     assert len([event for event in enc.events if event.event_type == "loot_awarded"]) == 1

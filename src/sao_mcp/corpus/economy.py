@@ -76,7 +76,30 @@ BEGINNER_REINFORCEMENT_VENDOR = VendorDefinition(
 )
 
 
+TOLBANA_FRONTLINE_SMITH = VendorDefinition(
+    vendor_id="npc_smith_tolbana_frontline",
+    name="Tolbana Frontline Smith",
+    location_id="floor_1_tolbana",
+    listings=(
+        VendorListingDefinition("reinforcement_base_material", 17),
+        VendorListingDefinition("reinforcement_sharpness_material", 29),
+        VendorListingDefinition("reinforcement_quickness_material", 29),
+        VendorListingDefinition("reinforcement_accuracy_material", 29),
+        VendorListingDefinition("reinforcement_heaviness_material", 29),
+        VendorListingDefinition("reinforcement_durability_material", 29),
+        VendorListingDefinition("iron_ingot", 31),
+    ),
+    buyback_rate=0.58,
+    infinite_stock=False,
+    provenance=Provenance(
+        ProvenanceKind.SIMULATION,
+        notes="A simulation-calibrated frontline smith node in Tolbana; Tolbana's frontline role is canon-backed, exact shop identity/prices are not asserted canon.",
+    ),
+)
+
+
 CORE_VENDORS: dict[str, VendorDefinition] = {
     BEGINNER_VENDOR.vendor_id: BEGINNER_VENDOR,
     BEGINNER_REINFORCEMENT_VENDOR.vendor_id: BEGINNER_REINFORCEMENT_VENDOR,
+    TOLBANA_FRONTLINE_SMITH.vendor_id: TOLBANA_FRONTLINE_SMITH,
 }

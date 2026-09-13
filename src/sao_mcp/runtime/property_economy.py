@@ -689,6 +689,22 @@ class GuardedEconomyRuntime(EconomyRuntime):
             )
             if markets[location_id].location_id != location_id:
                 raise ValueError("regional market save key/id mismatch")
+        for vendor_id, vendor in self.vendors.items():
+            if vendor_id in stocks:
+                continue
+            targets = {
+                listing.template_id: target_stock_for_template(self.runtime.catalog, listing.template_id)
+                for listing in vendor.listings
+            }
+            stocks[vendor_id] = VendorStockState(
+                vendor_id=vendor_id,
+                stock_by_template=dict(targets),
+                target_by_template=targets,
+            )
+            markets.setdefault(
+                vendor.location_id,
+                RegionalMarketState(vendor.location_id, last_tick_ms=self.runtime.world.now_ms),
+            )
         self.vendor_stocks = stocks
         self.regional_markets = markets
         self.background_commodity_stock = {

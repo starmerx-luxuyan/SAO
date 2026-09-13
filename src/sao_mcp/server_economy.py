@@ -17,6 +17,7 @@ from sao_mcp.rules.reinforcement import preview_reinforcement, reinforce_item
 
 FORGE_LOCATIONS = {
     "floor_1_town_of_beginnings",  # simulation starter workshop
+    "floor_1_tolbana",  # simulation frontline smith/workshop
     "floor_48_lisbeth_smith_shop",  # canon player smith shop
     "floor_55_granzam",  # canon city with many blacksmiths
 }
