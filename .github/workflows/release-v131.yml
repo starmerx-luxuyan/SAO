@@ -1,0 +1,53 @@
+name: release-v1.3.1
+
+on:
+  push:
+    branches:
+      - release-v1.3.1
+    paths:
+      - ".github/workflows/release-v131.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Verify source
+        run: |
+          python -m pip install -e ".[dev]"
+          pytest -q
+      - name: Build release payload
+        run: |
+          python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.1.save.json
+          rm -rf dist release/SAO-Aincrad-v1.3.1 SAO-Aincrad-v1.3.1-plugin.zip
+          python -m pip wheel . --no-deps --wheel-dir dist
+          mkdir -p release/SAO-Aincrad-v1.3.1/.codex-plugin release/SAO-Aincrad-v1.3.1/skills release/SAO-Aincrad-v1.3.1/docs release/SAO-Aincrad-v1.3.1/dist release/SAO-Aincrad-v1.3.1/presets
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.3.1/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.3.1/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.3.1/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.3.1/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.1.md release/SAO-Aincrad-v1.3.1/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.3.1/dist/
+          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json release/SAO-Aincrad-v1.3.1/presets/
+          cp /tmp/SAO_Kageaki_Day3_v1.3.1.save.json release/SAO-Aincrad-v1.3.1/
+          cd release/SAO-Aincrad-v1.3.1
+          zip -qr ../../SAO-Aincrad-v1.3.1-plugin.zip .
+          cd ../..
+          sha256sum SAO-Aincrad-v1.3.1-plugin.zip
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.3.1 \
+            --repo "${{ github.repository }}" \
+            --target 3cda7e75de830096d80637683dc0784a371c424d \
+            --title "SAO Aincrad v1.3.1" \
+            --notes-file docs/V1.3.1.md \
+            SAO-Aincrad-v1.3.1-plugin.zip
