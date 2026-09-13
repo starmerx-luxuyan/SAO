@@ -30,7 +30,7 @@ PUBLIC_UI_URIS = {"ui://sao/aincrad-hud.html", "ui://sao/system-menu.html", "ui:
 def test_release_version_metadata_is_consistent():
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert __version__ == "1.3.0"
+    assert __version__ == "1.3.1"
     assert manifest["version"] == __version__
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "src/sao_mcp/__init__.py"

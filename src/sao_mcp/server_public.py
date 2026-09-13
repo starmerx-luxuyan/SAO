@@ -48,10 +48,10 @@ apps = Apps()
     title="Aincrad HUD",
     description="Render the player-visible character and encounter HUD.",
 )
-def character_hud(actor_id: str, encounter_id: str | None = None) -> str:
+def character_hud(actor_id: str, encounter_id: str | None = None) -> dict[str, Any]:
     actor = runtime.actors[actor_id]
     encounter = runtime.encounters.get(encounter_id) if encounter_id else None
-    return dumps_view(character_view(actor, runtime.catalog, encounter))
+    return character_view(actor, runtime.catalog, encounter)
 
 
 @apps.tool(
@@ -59,8 +59,8 @@ def character_hud(actor_id: str, encounter_id: str | None = None) -> str:
     title="Aincrad System Menu",
     description="Render the player-visible Aincrad character, equipment, skills, map, quest and market panels.",
 )
-def system_menu(actor_id: str, encounter_id: str | None = None) -> str:
-    return dumps_view(system_menu_view(runtime, actor_id, encounter_id))
+def system_menu(actor_id: str, encounter_id: str | None = None) -> dict[str, Any]:
+    return system_menu_view(runtime, actor_id, encounter_id)
 
 
 @apps.tool(
@@ -68,8 +68,8 @@ def system_menu(actor_id: str, encounter_id: str | None = None) -> str:
     title="Aincrad Boss Raid HUD",
     description="Render the current boss-raid HUD for an encounter visible to the connected campaign.",
 )
-def boss_raid_hud(encounter_id: str, boss_id: str | None = None) -> str:
-    return dumps_view(boss_raid_view(runtime, encounter_id, boss_id))
+def boss_raid_hud(encounter_id: str, boss_id: str | None = None) -> dict[str, Any]:
+    return boss_raid_view(runtime, encounter_id, boss_id)
 
 
 for uri, html, title in (
