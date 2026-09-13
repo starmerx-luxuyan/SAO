@@ -1,5 +1,6 @@
 name: floor22-lazy-v132
 
+# Hosted-runtime roundtrip gate for the final v1.3.2 correctness pass.
 on:
   push:
     branches:
