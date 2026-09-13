@@ -1,0 +1,93 @@
+name: restore-live-v132
+
+on:
+  push:
+    branches:
+      - ops/restore-live-v132
+    paths:
+      - .github/workflows/restore-live-v132.yml
+
+jobs:
+  restore-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e .
+      - name: Restore screenshot-trusted recovery and verify production
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          from mcp import Client
+          from scripts.build_kageaki_frontline_recovery_v132 import build_recovery
+
+          ENDPOINT = "https://sao-aincrad-mcp-production.up.railway.app/mcp"
+          save_json = build_recovery()
+          local_save = json.loads(save_json)
+          actor_id = "pc_419ba4144d33"
+          reina_id = "pc_friend_reina"
+
+          def text_json(result):
+              return json.loads(result.content[0].text)
+
+          async def main():
+              async with Client(ENDPOINT, raise_exceptions=True) as client:
+                  before = text_json(await client.call_tool("health", {}))
+                  imported = text_json(await client.call_tool("import_save_json", {"save_json": save_json}))
+                  after = text_json(await client.call_tool("health", {}))
+                  k_state = text_json(await client.call_tool("get_character_state", {"actor_id": actor_id}))
+                  r_state = text_json(await client.call_tool("get_character_state", {"actor_id": reina_id}))
+                  obs = text_json(await client.call_tool("get_gm_observation", {"observer_actor_ids": [actor_id, reina_id]}))
+                  vendors = text_json(await client.call_tool("list_vendors", {"location_id": "floor_1_tolbana"}))
+                  exported_result = await client.call_tool("export_save_json", {})
+                  exported_text = exported_result.content[0].text
+                  tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+
+              assert before["version"] == "1.3.2", before
+              assert imported["ok"] is True and imported["actors"] == 9, imported
+              assert after["version"] == "1.3.2" and after["actors"] == 9, after
+              assert k_state["actor"]["name"] == "凑斗景明"
+              assert k_state["actor"]["level"] == 7
+              assert [k_state["actor"]["hp"], k_state["actor"]["maxHp"]] == [1561, 1561]
+              assert k_state["actor"]["col"] == 88918
+              assert k_state["actor"]["locationId"] == "floor_1_labyrinth"
+              star = next(row for row in k_state["skills"]["equipped"] if row["id"] == "star_sword")
+              assert star["proficiency"] == 248.6
+              weapon = k_state["equipment"]["weapon"]
+              assert weapon["durability"] == 298
+              assert sum(weapon["enhancements"].values()) == 3
+              assert r_state["actor"]["name"] == "玲奈"
+              assert r_state["actor"]["level"] == 6
+              assert r_state["actor"]["col"] == 2760
+              assert r_state["actor"]["locationId"] == "floor_1_labyrinth"
+              assert r_state["actor"]["partyId"] == k_state["actor"]["partyId"]
+              for observer in (actor_id, reina_id):
+                  vp = obs["viewpoints"][observer]
+                  options = vp["capabilities"]["encounter_options"]
+                  assert any(row["monster_id"] == "ruin_kobold_trooper" and row["level"] == 6 for row in options)
+                  routes = vp["capabilities"]["travel_options"]
+                  assert any(row["destination_id"] == "floor_1_tolbana" for row in routes)
+              assert any(row["vendor_id"] == "npc_smith_tolbana_frontline" for row in vendors["vendors"])
+              assert {"create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor"} <= set(tools)
+              # Production must contain exactly the recovery state after verification; no fake fight or rewards are applied.
+              assert json.loads(exported_text) == local_save
+              print(json.dumps({
+                  "before": before,
+                  "after": after,
+                  "kageaki": {
+                      "level": 7, "hp": [1561, 1561], "col": 88918,
+                      "location": "floor_1_labyrinth", "starSword": 248.6,
+                      "weaponDurability": 298, "partyId": k_state["actor"]["partyId"]
+                  },
+                  "reina": {"level": 6, "col": 2760, "location": "floor_1_labyrinth", "partyId": r_state["actor"]["partyId"]},
+                  "encounter": "ruin_kobold_trooper Lv.6",
+                  "returnRoute": "floor_1_tolbana",
+                  "vendor": "npc_smith_tolbana_frontline",
+                  "productionSaveMatchesRecovery": True
+              }, ensure_ascii=False))
+          asyncio.run(main())
+          PY
