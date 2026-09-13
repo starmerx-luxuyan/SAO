@@ -8,26 +8,80 @@ on:
       - .github/workflows/floor22-lazy-v132.yml
 
 jobs:
-  diagnose:
+  prove-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Locate Floor 22 eager materialization
+          cache: pip
+      - name: Apply lazy Floor 22 patch
         run: |
-          grep -RInE 'npc_floor22_toto|TOTO_ID|floor22_toto_definition|install_floor22_npc|install_floor22_witch_scenario' src tests | head -n 300 || true
+          python scripts/apply_floor22_lazy_v132.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tests/test_floor22_lazy_materialization.py')
+          text = p.read_text(encoding='utf-8')
+          old = 'from __future__ import annotations\n\n'
+          new = 'from __future__ import annotations\n\nimport sys\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n\n'
+          if text.count(old) != 1:
+              raise RuntimeError('unexpected test preamble')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Prove lifecycle before full suite
+        run: |
           python -m pip install -e . >/dev/null
           python - <<'PY'
           from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
-          from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
-          from sao_mcp.corpus.floor22 import TOTO_ID
-          for cls in (HousingAincradRuntime, SocialCommunicationAincradRuntime):
-              runtime = cls(seed=101)
-              print('CLASS', cls.__name__)
-              print('MRO', [c.__name__ for c in cls.__mro__])
-              print('TOTO_DEF', TOTO_ID in runtime.npcs.definitions)
-              print('TOTO_STATE', TOTO_ID in runtime.npcs.states)
-              print('TOTO_CORE', TOTO_ID in getattr(runtime, 'npc_actor_cores', {}))
+          from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
+          from sao_mcp.corpus.floor22 import FOREST_SITE, TOTO_ID
+
+          runtime = HousingAincradRuntime(seed=111)
+          print('BEFORE_INSTALL', TOTO_ID in runtime.npcs.states, TOTO_ID in runtime.npc_actor_cores)
+          scenario = install_floor22_witch_scenario(runtime)
+          print('AFTER_INSTALL', TOTO_ID in runtime.npcs.states, TOTO_ID in runtime.npc_actor_cores)
+          assert TOTO_ID not in runtime.npcs.states
+          assert TOTO_ID not in runtime.npc_actor_cores
+          player = runtime.create_character('Floor22Proof', level=30)
+          runtime.world.floors[22].unlocked = True
+          player.location_id = FOREST_SITE
+          scenario.start([player.actor_id])
+          print('AFTER_START', TOTO_ID in runtime.npcs.states, TOTO_ID in runtime.npc_actor_cores)
+          assert TOTO_ID in runtime.npcs.states
+          assert TOTO_ID in runtime.npc_actor_cores
           PY
+      - name: Compile and full regression
+        run: |
+          python -m compileall -q src
+          pytest -q
+      - name: Exact recovery roundtrip with hosted scenario registry
+        run: |
+          python - <<'PY'
+          import json
+          from scripts.build_kageaki_frontline_recovery_v132 import build_recovery
+          from sao_mcp.runtime.persistence import export_runtime, import_runtime
+          from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
+          from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
+          from sao_mcp.corpus.floor22 import TOTO_ID
+
+          save = build_recovery()
+          runtime = SocialCommunicationAincradRuntime(seed=41)
+          install_floor22_witch_scenario(runtime)
+          assert TOTO_ID not in runtime.npcs.states
+          import_runtime(save, into=runtime)
+          assert export_runtime(runtime) == save
+          assert TOTO_ID not in runtime.npcs.states
+          assert TOTO_ID not in runtime.npc_actor_cores
+          print(json.dumps({'exactRoundTrip': True, 'futureTotoMaterialized': False}))
+          PY
+      - name: Commit tested patch
+        run: |
+          rm scripts/apply_floor22_lazy_v132.py .github/workflows/floor22-lazy-v132.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: materialize Floor 22 NPC only when scenario starts"
+          git push origin HEAD:fix/floor22-lazy-v132
