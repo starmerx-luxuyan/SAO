@@ -26,6 +26,16 @@ jobs:
       - name: Apply UI hydration patch
         run: |
           python scripts/apply_ui_hydration_v131.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tests/test_ui_structured_hydration.py')
+          text = p.read_text(encoding='utf-8')
+          old = 'import asyncio\nimport json\nfrom importlib.resources import files\n'
+          new = 'import asyncio\nimport json\nimport sys\nfrom importlib.resources import files\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n'
+          if text.count(old) != 1:
+              raise RuntimeError('hydration test import preamble changed unexpectedly')
+          p.write_text(text.replace(old, new), encoding='utf-8')
+          PY
           # Permanent CI is updated through the repository connector after this
           # tested source commit, so the Actions token never needs workflow-write.
           git checkout origin/main -- .github/workflows/ci.yml
@@ -57,7 +67,7 @@ jobs:
               assert "result" not in hp and "result" not in sp
               star = next(s for s in hp["skills"]["equipped"] if s["id"] == "star_sword")
               weapon = hp["equipment"]["weapon"]
-              print({
+              accepted = {
                   "name": hp["actor"]["name"],
                   "level": hp["actor"]["level"],
                   "hp": [hp["actor"]["hp"], hp["actor"]["maxHp"]],
@@ -66,7 +76,13 @@ jobs:
                   "enhancement_total": sum(weapon["enhancements"].values()),
                   "star_sword": star["proficiency"],
                   "system_schema": sp["schema"],
-              })
+              }
+              assert accepted["level"] == 7
+              assert accepted["hp"] == [1561, 1561]
+              assert accepted["col"] == 88888
+              assert accepted["enhancement_total"] == 3
+              assert accepted["star_sword"] == 238
+              print(accepted)
           asyncio.run(main())
           PY
       - name: Commit tested source patch
