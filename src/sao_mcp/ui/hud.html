@@ -38,6 +38,9 @@ const w=v.equipment?.weapon;if(w){const dr=w.maxDurability?bar(w.durability/w.ma
 $('slots').textContent=`${v.skills.slotsUsed} / ${v.skills.slotsTotal}`;$('skills').innerHTML=v.skills.equipped.map(s=>`<div class="skill"><div class="skillHead"><span>${esc(s.name)}</span><span>${Math.round(s.proficiency)} / 1000</span></div><div class="track"><div class="fill" style="width:${bar(s.proficiency/1000)}%"></div></div></div>`).join('')||'<div class="empty">No skills equipped</div>';
 $('inventory').innerHTML=v.inventory.map(i=>`<div class="item"><span>${i.equipped?'◆':'◇'}</span><span><b>${esc(i.name)}</b><span class="sub"> · ${esc(i.kind)}</span></span><span class="qty">×${i.quantity}</span></div>`).join('')||'<div class="empty">Inventory empty</div>';
 const cd=v.cooldownsMs?.potion;$('cooldown').textContent=cd?`Potion CD ${(cd/1000).toFixed(1)}s`:'';const e=v.encounter;$('combatCard').hidden=!e;if(e){$('zone').textContent=(e.safeZone?'SAFE · ':'')+(e.antiCrystal?'ANTI-CRYSTAL · ':'')+e.zoneId;$('enemies').innerHTML=e.participants.map(x=>`<div class="enemy"><b>${esc(x.name)}</b><span>${x.hp.toLocaleString()} / ${x.maxHp.toLocaleString()}</span><div class="track"><div class="fill" style="width:${bar(x.hpRatio)}%"></div></div></div>`).join('');$('events').innerHTML=e.recentEvents.slice(-5).map(x=>`<div class="event">${esc(x.event_type)}${x.payload?.damage?` · ${x.payload.damage} dmg`:''}${x.payload?.sword_skill?` · ${esc(x.payload.sword_skill)}`:''}</div>`).join('')}}
-window.addEventListener('message',ev=>{const text=ev.data?.result?.content?.[0]?.text;if(!text)return;try{render(JSON.parse(text))}catch{}});
+function hydrate(v){if(v)render(v)}
+if(window.openai?.toolOutput)hydrate(window.openai.toolOutput);
+window.addEventListener('openai:set_globals',()=>hydrate(window.openai?.toolOutput));
+window.addEventListener('message',ev=>{if(ev.data?.method==='ui/notifications/tool-result')hydrate(ev.data.params?.structuredContent)});
 </script>
 </body></html>

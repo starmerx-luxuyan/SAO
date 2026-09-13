@@ -51,7 +51,7 @@ def build_save() -> str:
 
 
 def main() -> None:
-    output = Path(sys.argv[1] if len(sys.argv) > 1 else "SAO_Kageaki_Day3_v1.3.0.save.json")
+    output = Path(sys.argv[1] if len(sys.argv) > 1 else "SAO_Kageaki_Day3_v1.3.1.save.json")
     save_json = build_save()
     output.write_text(save_json + "\n", encoding="utf-8")
     print(output)
