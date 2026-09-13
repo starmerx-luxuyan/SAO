@@ -25,7 +25,8 @@ jobs:
         run: |
           python scripts/apply_floor1_frontline_v132.py
           python scripts/apply_floor1_frontline_v132_part2.py
-          rm scripts/apply_floor1_frontline_v132.py scripts/apply_floor1_frontline_v132_part2.py
+          python scripts/apply_floor1_frontline_v132_part3.py
+          rm scripts/apply_floor1_frontline_v132.py scripts/apply_floor1_frontline_v132_part2.py scripts/apply_floor1_frontline_v132_part3.py
           # The repository connector will update permanent CI after source validation.
           git checkout origin/main -- .github/workflows/ci.yml
       - name: Install patched tree
