@@ -26,7 +26,7 @@ jobs:
       - name: Verify and expand payload
         run: |
           cat .correctness/payload-00.b64 .correctness/payload-01.b64 .correctness/safe-03.b64 | base64 -d > /tmp/correctness.tar.xz
-          echo "c8d6cdf3f1672249a27c4b15288bbc5e97bd371ddfc26aa87a86cce50cbe6137  /tmp/correctness.tar.xz" | sha256sum -c -
+          echo "f71d9132d44cdc66352f3a1a18289556634eb5ef4059a7b8185c8a577ce90eac  /tmp/correctness.tar.xz" | sha256sum -c -
           tar -xJf /tmp/correctness.tar.xz -C .
           python .correctness/apply_existing_edits.py
 
@@ -42,7 +42,7 @@ jobs:
       - name: Build corrected native Day 3 save
         run: python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.0.save.json
 
-      - name: Clean one-shot transport and commit
+      - name: Clean one-shot transport and squash candidate
         run: |
           rm -rf .correctness
           rm -f .github/workflows/correctness-bootstrap.yml
@@ -51,5 +51,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: complete v1.3 correctness pass"
-          git push origin HEAD:correctness-pass-v130-run
+          TREE=$(git write-tree)
+          BASE=$(git rev-parse origin/main)
+          COMMIT=$(printf '%s\n' 'fix: complete v1.3 correctness pass' | git commit-tree "$TREE" -p "$BASE")
+          git reset --hard "$COMMIT"
+          git push --force origin "$COMMIT":correctness-pass-v130-run
