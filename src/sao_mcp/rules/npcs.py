@@ -105,7 +105,7 @@ CORE_NPCS: dict[str, NPCDefinition] = {
 
 class NPCRuntime:
     def __init__(self, definitions: dict[str, NPCDefinition] | None = None) -> None:
-        self.definitions = definitions or CORE_NPCS
+        self.definitions = dict(CORE_NPCS if definitions is None else definitions)
         self.states = {
             npc_id: NPCState(npc_id, definition.home_location_id)
             for npc_id, definition in self.definitions.items()
