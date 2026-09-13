@@ -1,0 +1,78 @@
+name: ui-hydration-fix
+
+on:
+  push:
+    branches:
+      - fix/ui-hydration-v1.3.1
+    paths:
+      - ".github/workflows/ui-hydration-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install current tree
+        run: python -m pip install -e ".[dev]"
+      - name: Apply UI hydration patch
+        run: |
+          python scripts/apply_ui_hydration_v131.py
+          # Permanent CI is updated through the repository connector after this
+          # tested source commit, so the Actions token never needs workflow-write.
+          git checkout origin/main -- .github/workflows/ci.yml
+      - name: Reinstall patched tree
+        run: python -m pip install -e ".[dev]"
+      - name: Compile
+        run: python -m compileall -q src
+      - name: Full regression
+        run: pytest -q
+      - name: Kageaki structured UI acceptance
+        run: |
+          python - <<'PY'
+          import asyncio
+          from mcp import Client
+          from scripts.build_kageaki_day3_save import build_save
+          from sao_mcp import server_public
+          from sao_mcp.runtime.persistence import import_runtime
+
+          import_runtime(build_save(), into=server_public.runtime)
+          actor = next(a for a in server_public.runtime.actors.values() if a.name == "凑斗景明")
+
+          async def main():
+              async with Client(server_public.mcp, raise_exceptions=True) as client:
+                  hud = await client.call_tool("character_hud", {"actor_id": actor.actor_id})
+                  menu = await client.call_tool("system_menu", {"actor_id": actor.actor_id})
+              hp = hud.structured_content
+              sp = menu.structured_content
+              assert hp and sp
+              assert "result" not in hp and "result" not in sp
+              star = next(s for s in hp["skills"]["equipped"] if s["id"] == "star_sword")
+              weapon = hp["equipment"]["weapon"]
+              print({
+                  "name": hp["actor"]["name"],
+                  "level": hp["actor"]["level"],
+                  "hp": [hp["actor"]["hp"], hp["actor"]["maxHp"]],
+                  "col": hp["actor"]["col"],
+                  "weapon": weapon["name"],
+                  "enhancement_total": sum(weapon["enhancements"].values()),
+                  "star_sword": star["proficiency"],
+                  "system_schema": sp["schema"],
+              })
+          asyncio.run(main())
+          PY
+      - name: Commit tested source patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: hydrate embedded UI from structured MCP output"
+          git push origin HEAD:fix/ui-hydration-v1.3.1
