@@ -60,7 +60,7 @@ jobs:
               weapon = k_state["equipment"]["weapon"]
               assert weapon["durability"] == 298
               assert sum(weapon["enhancements"].values()) == 3
-              assert r_state["actor"]["name"] == "玲奈"
+              assert r_state["actor"]["name"] == "御影玲奈"
               assert r_state["actor"]["level"] == 6
               assert r_state["actor"]["col"] == 2760
               assert r_state["actor"]["locationId"] == "floor_1_labyrinth"
@@ -73,7 +73,6 @@ jobs:
                   assert any(row["destination_id"] == "floor_1_tolbana" for row in routes)
               assert any(row["vendor_id"] == "npc_smith_tolbana_frontline" for row in vendors["vendors"])
               assert {"create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor"} <= set(tools)
-              # Production must contain exactly the recovery state after verification; no fake fight or rewards are applied.
               assert json.loads(exported_text) == local_save
               print(json.dumps({
                   "before": before,
@@ -83,7 +82,7 @@ jobs:
                       "location": "floor_1_labyrinth", "starSword": 248.6,
                       "weaponDurability": 298, "partyId": k_state["actor"]["partyId"]
                   },
-                  "reina": {"level": 6, "col": 2760, "location": "floor_1_labyrinth", "partyId": r_state["actor"]["partyId"]},
+                  "reina": {"name": "御影玲奈", "level": 6, "col": 2760, "location": "floor_1_labyrinth", "partyId": r_state["actor"]["partyId"]},
                   "encounter": "ruin_kobold_trooper Lv.6",
                   "returnRoute": "floor_1_tolbana",
                   "vendor": "npc_smith_tolbana_frontline",
