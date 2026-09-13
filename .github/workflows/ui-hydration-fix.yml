@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  apply-and-test:
+  version-and-test-ui-resources:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,31 +21,51 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install current tree
-        run: python -m pip install -e ".[dev]"
-      - name: Apply UI hydration patch
+      - name: Version UI resource URIs
         run: |
-          python scripts/apply_ui_hydration_v131.py
           python - <<'PY'
           from pathlib import Path
-          p = Path('tests/test_ui_structured_hydration.py')
-          text = p.read_text(encoding='utf-8')
-          old = 'import asyncio\nimport json\nfrom importlib.resources import files\n'
-          new = 'import asyncio\nimport json\nimport sys\nfrom importlib.resources import files\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n'
-          if text.count(old) != 1:
-              raise RuntimeError('hydration test import preamble changed unexpectedly')
-          p.write_text(text.replace(old, new), encoding='utf-8')
+
+          replacements = {
+              "ui://sao/aincrad-hud.html": "ui://sao/v1.3.1/aincrad-hud.html",
+              "ui://sao/system-menu.html": "ui://sao/v1.3.1/system-menu.html",
+              "ui://sao/boss-raid.html": "ui://sao/v1.3.1/boss-raid.html",
+          }
+          paths = [
+              Path("src/sao_mcp/server.py"),
+              Path("src/sao_mcp/server_public.py"),
+              Path("src/sao_mcp/server_ui.py"),
+              Path("src/sao_mcp/server_boss_ui.py"),
+              Path("tests/test_release_contract.py"),
+          ]
+          counts = {old: 0 for old in replacements}
+          for path in paths:
+              text = path.read_text(encoding="utf-8")
+              for old, new in replacements.items():
+                  n = text.count(old)
+                  counts[old] += n
+                  text = text.replace(old, new)
+              path.write_text(text, encoding="utf-8")
+          if not all(counts.values()):
+              raise RuntimeError(f"one or more UI URIs were not present: {counts}")
+
+          test = Path("tests/test_ui_structured_hydration.py")
+          text = test.read_text(encoding="utf-8")
+          marker = "def test_embedded_views_consume_structured_payloads_not_text_content():"
+          extra = '''\n\ndef test_v131_ui_resource_uris_force_host_cache_refresh():\n    import asyncio\n    from sao_mcp import server_public\n\n    expected = {\n        "ui://sao/v1.3.1/aincrad-hud.html",\n        "ui://sao/v1.3.1/system-menu.html",\n        "ui://sao/v1.3.1/boss-raid.html",\n    }\n    resources = {str(binding.resource.uri) for binding in server_public.apps.resources()}\n    assert resources == expected\n    tools = {tool.name: tool for tool in asyncio.run(server_public.mcp.list_tools())}\n    assert tools["character_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/aincrad-hud.html"\n    assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/system-menu.html"\n    assert tools["boss_raid_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/boss-raid.html"\n'''
+          if "test_v131_ui_resource_uris_force_host_cache_refresh" not in text:
+              if marker not in text:
+                  raise RuntimeError("hydration test marker missing")
+              text += extra
+              test.write_text(text, encoding="utf-8")
           PY
-          # Permanent CI is updated through the repository connector after this
-          # tested source commit, so the Actions token never needs workflow-write.
-          git checkout origin/main -- .github/workflows/ci.yml
-      - name: Reinstall patched tree
+      - name: Install patched tree
         run: python -m pip install -e ".[dev]"
       - name: Compile
         run: python -m compileall -q src
       - name: Full regression
         run: pytest -q
-      - name: Kageaki structured UI acceptance
+      - name: Structured UI acceptance and resource URI check
         run: |
           python - <<'PY'
           import asyncio
@@ -59,12 +79,15 @@ jobs:
 
           async def main():
               async with Client(server_public.mcp, raise_exceptions=True) as client:
+                  tools = {tool.name: tool for tool in (await client.list_tools()).tools}
                   hud = await client.call_tool("character_hud", {"actor_id": actor.actor_id})
                   menu = await client.call_tool("system_menu", {"actor_id": actor.actor_id})
               hp = hud.structured_content
               sp = menu.structured_content
-              assert hp and sp
-              assert "result" not in hp and "result" not in sp
+              assert hp and sp and "result" not in hp and "result" not in sp
+              assert tools["character_hud"].meta["ui"]["resourceUri"].startswith("ui://sao/v1.3.1/")
+              assert tools["system_menu"].meta["ui"]["resourceUri"].startswith("ui://sao/v1.3.1/")
+              assert tools["boss_raid_hud"].meta["ui"]["resourceUri"].startswith("ui://sao/v1.3.1/")
               star = next(s for s in hp["skills"]["equipped"] if s["id"] == "star_sword")
               weapon = hp["equipment"]["weapon"]
               accepted = {
@@ -75,7 +98,7 @@ jobs:
                   "weapon": weapon["name"],
                   "enhancement_total": sum(weapon["enhancements"].values()),
                   "star_sword": star["proficiency"],
-                  "system_schema": sp["schema"],
+                  "hud_uri": tools["character_hud"].meta["ui"]["resourceUri"],
               }
               assert accepted["level"] == 7
               assert accepted["hp"] == [1561, 1561]
@@ -85,10 +108,10 @@ jobs:
               print(accepted)
           asyncio.run(main())
           PY
-      - name: Commit tested source patch
+      - name: Commit cache-busting UI resource URIs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: hydrate embedded UI from structured MCP output"
+          git commit -m "fix: version UI resources to bust stale host cache"
           git push origin HEAD:fix/ui-hydration-v1.3.1
