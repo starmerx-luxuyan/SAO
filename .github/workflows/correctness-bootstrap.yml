@@ -5,8 +5,7 @@ on:
     branches:
       - correctness-pass-v130-run
     paths:
-      - ".correctness/payload-01.b64"
-      - ".github/workflows/correctness-bootstrap.yml"
+      - ".correctness/READY"
 
 permissions:
   contents: write
@@ -26,7 +25,7 @@ jobs:
 
       - name: Verify and expand payload
         run: |
-          base64 -d .correctness/payload-01.b64 > /tmp/correctness.tar.xz
+          cat .correctness/payload-00.b64 .correctness/payload-01.b64 .correctness/safe-03.b64 | base64 -d > /tmp/correctness.tar.xz
           echo "c8d6cdf3f1672249a27c4b15288bbc5e97bd371ddfc26aa87a86cce50cbe6137  /tmp/correctness.tar.xz" | sha256sum -c -
           tar -xJf /tmp/correctness.tar.xz -C .
           python .correctness/apply_existing_edits.py
