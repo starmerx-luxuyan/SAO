@@ -31,9 +31,10 @@ jobs:
               raise RuntimeError('unexpected test preamble')
           p.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
+      - name: Install patched tree
+        run: python -m pip install -e ".[dev]"
       - name: Prove lifecycle before full suite
         run: |
-          python -m pip install -e . >/dev/null
           python - <<'PY'
           from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
           from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
