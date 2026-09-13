@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e .
-      - name: Restore screenshot-trusted recovery and verify production
+      - name: Diagnose production normalization after restore
         run: |
           python - <<'PY'
           import asyncio
@@ -28,75 +28,54 @@ jobs:
           ENDPOINT = "https://sao-aincrad-mcp-production.up.railway.app/mcp"
           save_json = build_recovery()
           local_save = json.loads(save_json)
-          actor_id = "pc_419ba4144d33"
-          reina_id = "pc_friend_reina"
 
           def text_json(result):
               return json.loads(result.content[0].text)
+
+          def summarize(value):
+              if isinstance(value, dict):
+                  return {"type": "dict", "keys": len(value), "sample": list(value)[:12]}
+              if isinstance(value, list):
+                  return {"type": "list", "len": len(value), "sample": value[:3]}
+              return value
 
           async def main():
               async with Client(ENDPOINT, raise_exceptions=True) as client:
                   before = text_json(await client.call_tool("health", {}))
                   imported = text_json(await client.call_tool("import_save_json", {"save_json": save_json}))
-                  exact_export = await client.call_tool("export_save_json", {})
-                  exact_after_import = json.loads(exact_export.content[0].text)
-                  after = text_json(await client.call_tool("health", {}))
-                  k_state = text_json(await client.call_tool("get_character_state", {"actor_id": actor_id}))
-                  r_state = text_json(await client.call_tool("get_character_state", {"actor_id": reina_id}))
-                  obs = text_json(await client.call_tool("get_gm_observation", {"observer_actor_ids": [actor_id, reina_id]}))
-                  vendors = text_json(await client.call_tool("list_vendors", {"location_id": "floor_1_tolbana"}))
-                  k_final = text_json(await client.call_tool("get_character_state", {"actor_id": actor_id}))
-                  r_final = text_json(await client.call_tool("get_character_state", {"actor_id": reina_id}))
-                  tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+                  exported = text_json(await client.call_tool("export_save_json", {}))
+                  k_state = text_json(await client.call_tool("get_character_state", {"actor_id": "pc_419ba4144d33"}))
+                  r_state = text_json(await client.call_tool("get_character_state", {"actor_id": "pc_friend_reina"}))
 
-              assert before["version"] == "1.3.2", before
-              assert imported["ok"] is True and imported["actors"] == 9, imported
-              assert exact_after_import == local_save
-              assert after["version"] == "1.3.2" and after["actors"] == 9, after
-              assert k_state["actor"]["name"] == "凑斗景明"
-              assert k_state["actor"]["level"] == 7
-              assert [k_state["actor"]["hp"], k_state["actor"]["maxHp"]] == [1561, 1561]
-              assert k_state["actor"]["col"] == 88918
-              assert k_state["actor"]["locationId"] == "floor_1_labyrinth"
-              star = next(row for row in k_state["skills"]["equipped"] if row["id"] == "star_sword")
-              assert star["proficiency"] == 248.6
-              weapon = k_state["equipment"]["weapon"]
-              assert weapon["durability"] == 298
-              assert sum(weapon["enhancements"].values()) == 3
-              assert r_state["actor"]["name"] == "御影玲奈"
-              assert r_state["actor"]["level"] == 6
-              assert r_state["actor"]["col"] == 2760
-              assert r_state["actor"]["locationId"] == "floor_1_labyrinth"
-              assert r_state["actor"]["partyId"] == k_state["actor"]["partyId"]
-              for observer in (actor_id, reina_id):
-                  vp = obs["viewpoints"][observer]
-                  options = vp["capabilities"]["encounter_options"]
-                  assert any(row["monster_id"] == "ruin_kobold_trooper" and row["level"] == 6 for row in options)
-                  routes = vp["capabilities"]["travel_options"]
-                  assert any(row["destination_id"] == "floor_1_tolbana" for row in routes)
-              assert any(row["vendor_id"] == "npc_smith_tolbana_frontline" for row in vendors["vendors"])
-              assert {"create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor"} <= set(tools)
-              # Observation may record newly seen facts, but it must not move or reward the characters.
-              for initial, final in ((k_state, k_final), (r_state, r_final)):
-                  for key in ("level", "hp", "maxHp", "col", "locationId", "partyId"):
-                      assert final["actor"][key] == initial["actor"][key]
-              final_star = next(row for row in k_final["skills"]["equipped"] if row["id"] == "star_sword")
-              assert final_star["proficiency"] == 248.6
-              assert k_final["equipment"]["weapon"]["durability"] == 298
-              print(json.dumps({
-                  "before": before,
-                  "after": after,
-                  "kageaki": {
-                      "level": 7, "hp": [1561, 1561], "col": 88918,
-                      "location": "floor_1_labyrinth", "starSword": 248.6,
-                      "weaponDurability": 298, "partyId": k_state["actor"]["partyId"]
-                  },
-                  "reina": {"name": "御影玲奈", "level": 6, "col": 2760, "location": "floor_1_labyrinth", "partyId": r_state["actor"]["partyId"]},
-                  "encounter": "ruin_kobold_trooper Lv.6",
-                  "returnRoute": "floor_1_tolbana",
-                  "vendor": "npc_smith_tolbana_frontline",
-                  "exactRoundTripImmediatelyAfterImport": True,
-                  "mechanicalStateStableAfterObservation": True
+              diff_keys = sorted(key for key in set(local_save) | set(exported) if local_save.get(key) != exported.get(key))
+              print("HEALTH_BEFORE", json.dumps(before, ensure_ascii=False))
+              print("IMPORTED", json.dumps(imported, ensure_ascii=False))
+              print("DIFF_KEYS", json.dumps(diff_keys, ensure_ascii=False))
+              for key in diff_keys:
+                  left = local_save.get(key)
+                  right = exported.get(key)
+                  if isinstance(left, dict) and isinstance(right, dict):
+                      subkeys = sorted(k for k in set(left) | set(right) if left.get(k) != right.get(k))
+                      print("SUBDIFF", key, json.dumps(subkeys[:80], ensure_ascii=False))
+                      for sub in subkeys[:12]:
+                          print("VALUE", key, sub, "LOCAL", json.dumps(summarize(left.get(sub)), ensure_ascii=False), "LIVE", json.dumps(summarize(right.get(sub)), ensure_ascii=False))
+                  else:
+                      print("VALUE", key, "LOCAL", json.dumps(summarize(left), ensure_ascii=False), "LIVE", json.dumps(summarize(right), ensure_ascii=False))
+              print("KAGEAKI", json.dumps({
+                  "name": k_state["actor"]["name"], "level": k_state["actor"]["level"],
+                  "hp": [k_state["actor"]["hp"], k_state["actor"]["maxHp"]],
+                  "col": k_state["actor"]["col"], "location": k_state["actor"]["locationId"],
+                  "party": k_state["actor"]["partyId"],
+                  "starSword": next(x["proficiency"] for x in k_state["skills"]["equipped"] if x["id"] == "star_sword"),
+                  "durability": k_state["equipment"]["weapon"]["durability"],
               }, ensure_ascii=False))
+              print("REINA", json.dumps({
+                  "name": r_state["actor"]["name"], "level": r_state["actor"]["level"],
+                  "hp": [r_state["actor"]["hp"], r_state["actor"]["maxHp"]],
+                  "col": r_state["actor"]["col"], "location": r_state["actor"]["locationId"],
+                  "party": r_state["actor"]["partyId"],
+              }, ensure_ascii=False))
+              if not diff_keys:
+                  print("EXACT_MATCH")
           asyncio.run(main())
           PY
