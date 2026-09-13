@@ -1,0 +1,102 @@
+name: ui-resource-cache-bust
+
+on:
+  push:
+    branches:
+      - fix/ui-hydration-v1.3.1
+    paths:
+      - ".github/workflows/ui-resource-cache-bust.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Version resource URIs and update contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "ui://sao/aincrad-hud.html": "ui://sao/v1.3.1/aincrad-hud.html",
+              "ui://sao/system-menu.html": "ui://sao/v1.3.1/system-menu.html",
+              "ui://sao/boss-raid.html": "ui://sao/v1.3.1/boss-raid.html",
+          }
+          paths = [
+              Path("src/sao_mcp/server.py"),
+              Path("src/sao_mcp/server_public.py"),
+              Path("src/sao_mcp/server_ui.py"),
+              Path("src/sao_mcp/server_boss_ui.py"),
+              Path("tests/test_release_contract.py"),
+              Path("tests/test_v130_correctness_pass.py"),
+          ]
+          counts = {old: 0 for old in replacements}
+          for path in paths:
+              text = path.read_text(encoding="utf-8")
+              for old, new in replacements.items():
+                  n = text.count(old)
+                  counts[old] += n
+                  text = text.replace(old, new)
+              path.write_text(text, encoding="utf-8")
+          if not all(counts.values()):
+              raise RuntimeError(f"UI URI migration missed a resource: {counts}")
+
+          test = Path("tests/test_ui_structured_hydration.py")
+          text = test.read_text(encoding="utf-8")
+          if "test_v131_ui_resource_uris_force_host_cache_refresh" not in text:
+              text += '''\n\ndef test_v131_ui_resource_uris_force_host_cache_refresh():\n    import asyncio\n    from sao_mcp import server_public\n    expected = {\n        "ui://sao/v1.3.1/aincrad-hud.html",\n        "ui://sao/v1.3.1/system-menu.html",\n        "ui://sao/v1.3.1/boss-raid.html",\n    }\n    resources = {str(binding.resource.uri) for binding in server_public.apps.resources()}\n    assert resources == expected\n    tools = {tool.name: tool for tool in asyncio.run(server_public.mcp.list_tools())}\n    assert tools["character_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/aincrad-hud.html"\n    assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/system-menu.html"\n    assert tools["boss_raid_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/boss-raid.html"\n'''
+              test.write_text(text, encoding="utf-8")
+          PY
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Compile and full regression
+        run: |
+          python -m compileall -q src
+          pytest -q
+      - name: Kageaki UI protocol acceptance
+        run: |
+          python - <<'PY'
+          import asyncio
+          from mcp import Client
+          from scripts.build_kageaki_day3_save import build_save
+          from sao_mcp import server_public
+          from sao_mcp.runtime.persistence import import_runtime
+
+          import_runtime(build_save(), into=server_public.runtime)
+          actor = next(a for a in server_public.runtime.actors.values() if a.name == "凑斗景明")
+          async def run():
+              async with Client(server_public.mcp, raise_exceptions=True) as client:
+                  tools = {t.name: t for t in (await client.list_tools()).tools}
+                  hud = await client.call_tool("character_hud", {"actor_id": actor.actor_id})
+                  menu = await client.call_tool("system_menu", {"actor_id": actor.actor_id})
+              hp, sp = hud.structured_content, menu.structured_content
+              assert hp and sp and "result" not in hp and "result" not in sp
+              assert hp["actor"]["level"] == 7
+              assert [hp["actor"]["hp"], hp["actor"]["maxHp"]] == [1561, 1561]
+              assert hp["actor"]["col"] == 88888
+              star = next(s for s in hp["skills"]["equipped"] if s["id"] == "star_sword")
+              assert star["proficiency"] == 238
+              weapon = hp["equipment"]["weapon"]
+              assert "Anneal Blade" in weapon["name"] and sum(weapon["enhancements"].values()) == 3
+              assert tools["character_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/aincrad-hud.html"
+              assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/system-menu.html"
+              assert tools["boss_raid_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/boss-raid.html"
+              print({"level": 7, "hp": [1561,1561], "col": 88888, "star_sword": 238, "weapon": weapon["name"], "hud_uri": tools["character_hud"].meta["ui"]["resourceUri"]})
+          asyncio.run(run())
+          PY
+      - name: Commit tested cache-busting resources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: version UI resources to refresh embedded apps"
+          git push origin HEAD:fix/ui-hydration-v1.3.1
