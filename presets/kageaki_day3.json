@@ -1,0 +1,892 @@
+{
+  "schema": "sao.aincrad.campaign-blueprint.v1",
+  "blueprint_id": "kageaki_day3_corrected_v130",
+  "title": "凑斗景明 Day 3 — corrected living Aincrad start",
+  "catalog": {
+    "skills": [
+      {
+        "skill_id": "star_sword",
+        "name": "星辰剑",
+        "kind": "unique",
+        "description": "凑斗景明专有的单手直剑 Unique Skill。提供十二套高连击剑技，以自身熟练度取代 One-Handed Sword 作为单手剑的实际熟练度来源；熟练度成长同时驱动武器强化尝试上限、升级额外 STR/AGI 成长以及高熟练度后的手动攻击强化。",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Unique Skill for Minato Kageaki."
+        }
+      }
+    ],
+    "sword_skills": [
+      {
+        "skill_id": "star_sword_01_meteor",
+        "name": "一式·流星",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 0.0,
+        "hits": [
+          0.58,
+          0.6,
+          0.64,
+          0.78
+        ],
+        "windup_ms": 280,
+        "active_ms": 650,
+        "post_motion_ms": 420,
+        "accuracy_modifier": 0.03,
+        "lunge_m": 2.2,
+        "stagger": 0.08,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_02_twin_orbit",
+        "name": "二式·双星交轨",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 40.0,
+        "hits": [
+          0.5,
+          0.52,
+          0.54,
+          0.6,
+          0.82
+        ],
+        "windup_ms": 300,
+        "active_ms": 740,
+        "post_motion_ms": 450,
+        "accuracy_modifier": 0.04,
+        "lunge_m": 2.0,
+        "stagger": 0.1,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_03_comet_tail",
+        "name": "三式·彗尾",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 80.0,
+        "hits": [
+          0.46,
+          0.48,
+          0.5,
+          0.52,
+          0.58,
+          0.86
+        ],
+        "windup_ms": 300,
+        "active_ms": 820,
+        "post_motion_ms": 500,
+        "accuracy_modifier": 0.02,
+        "lunge_m": 5.0,
+        "stagger": 0.1,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_04_sirius",
+        "name": "四式·天狼",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 120.0,
+        "hits": [
+          0.45,
+          0.48,
+          0.52,
+          0.58,
+          0.66,
+          0.98
+        ],
+        "windup_ms": 330,
+        "active_ms": 780,
+        "post_motion_ms": 560,
+        "accuracy_modifier": 0.01,
+        "lunge_m": 1.0,
+        "stagger": 0.16,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_05_orion",
+        "name": "五式·猎户",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 170.0,
+        "hits": [
+          0.42,
+          0.44,
+          0.48,
+          0.5,
+          0.56,
+          0.64,
+          0.9
+        ],
+        "windup_ms": 360,
+        "active_ms": 900,
+        "post_motion_ms": 600,
+        "accuracy_modifier": 0.03,
+        "lunge_m": 1.6,
+        "stagger": 0.14,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_06_vega_spin",
+        "name": "六式·织女旋",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 220.0,
+        "hits": [
+          0.4,
+          0.42,
+          0.44,
+          0.46,
+          0.5,
+          0.56,
+          0.82
+        ],
+        "windup_ms": 400,
+        "active_ms": 980,
+        "post_motion_ms": 680,
+        "accuracy_modifier": 0.0,
+        "lunge_m": 0.8,
+        "stagger": 0.12,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_07_altair_break",
+        "name": "七式·河鼓裂",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 280.0,
+        "hits": [
+          0.4,
+          0.42,
+          0.44,
+          0.46,
+          0.48,
+          0.52,
+          0.6,
+          0.94
+        ],
+        "windup_ms": 420,
+        "active_ms": 980,
+        "post_motion_ms": 700,
+        "accuracy_modifier": 0.0,
+        "lunge_m": 1.2,
+        "stagger": 0.24,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_08_azure_dragon",
+        "name": "八式·苍龙巡天",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 340.0,
+        "hits": [
+          0.38,
+          0.4,
+          0.42,
+          0.44,
+          0.48,
+          0.52,
+          0.6,
+          0.92
+        ],
+        "windup_ms": 390,
+        "active_ms": 960,
+        "post_motion_ms": 640,
+        "accuracy_modifier": 0.03,
+        "lunge_m": 6.0,
+        "stagger": 0.16,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_09_nebula",
+        "name": "九式·星云",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 400.0,
+        "hits": [
+          0.36,
+          0.38,
+          0.4,
+          0.42,
+          0.44,
+          0.48,
+          0.52,
+          0.6,
+          0.9
+        ],
+        "windup_ms": 450,
+        "active_ms": 1100,
+        "post_motion_ms": 740,
+        "accuracy_modifier": 0.02,
+        "lunge_m": 1.4,
+        "stagger": 0.18,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_10_galactic_wheel",
+        "name": "十式·银河轮",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 440.0,
+        "hits": [
+          0.34,
+          0.36,
+          0.38,
+          0.4,
+          0.42,
+          0.44,
+          0.46,
+          0.5,
+          0.56,
+          0.82
+        ],
+        "windup_ms": 480,
+        "active_ms": 1240,
+        "post_motion_ms": 820,
+        "accuracy_modifier": 0.0,
+        "lunge_m": 1.0,
+        "stagger": 0.2,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_11_riverfall",
+        "name": "十一式·天河坠",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 470.0,
+        "hits": [
+          0.32,
+          0.34,
+          0.36,
+          0.38,
+          0.4,
+          0.42,
+          0.44,
+          0.46,
+          0.5,
+          0.56,
+          0.94
+        ],
+        "windup_ms": 520,
+        "active_ms": 1350,
+        "post_motion_ms": 900,
+        "accuracy_modifier": 0.0,
+        "lunge_m": 2.5,
+        "stagger": 0.24,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      },
+      {
+        "skill_id": "star_sword_12_firmament",
+        "name": "十二式·星穹",
+        "weapon_class": "one_hand_sword",
+        "prerequisite_proficiency": 495.0,
+        "hits": [
+          0.32,
+          0.34,
+          0.36,
+          0.38,
+          0.4,
+          0.42,
+          0.44,
+          0.46,
+          0.48,
+          0.52,
+          0.6,
+          1.0
+        ],
+        "windup_ms": 560,
+        "active_ms": 1480,
+        "post_motion_ms": 980,
+        "accuracy_modifier": 0.01,
+        "lunge_m": 3.0,
+        "stagger": 0.3,
+        "proficiency_skill_id": "star_sword",
+        "provenance": {
+          "kind": "optional_variant",
+          "notes": "Campaign-local Star Sword technique."
+        }
+      }
+    ]
+  },
+  "characters": [
+    {
+      "key": "kageaki",
+      "name": "凑斗景明",
+      "level": 7,
+      "starter_weapon_id": "starter_one_hand_sword",
+      "keep_starter_loadout": false,
+      "experience": 2808,
+      "location_id": "floor_1_town_of_beginnings",
+      "col": 3860,
+      "profile": {
+        "real_name": "凑斗景明",
+        "romanized_name": "Minato Kageaki",
+        "age": 19,
+        "sex": "male",
+        "nationality": "Japanese",
+        "appearance": "黑发深色眼睛，五官端正，略显帅气；现实身体数据生成的Avatar外貌",
+        "physique": "身体素质很好，协调性、爆发力与耐力均明显高于同龄平均",
+        "height_cm": 182,
+        "dominant_hand": "right",
+        "vrmmo_experience": "无封测资格；正式开服后迅速适应SAO实战",
+        "campaign_start_note": "艾恩葛朗特第一层，游戏开始后的第三日；等级与战斗熟练度处于早期玩家前列"
+      },
+      "skill_proficiencies": {
+        "star_sword": 238.0,
+        "searching": 64.0,
+        "parry": 82.0
+      },
+      "replace_skill_proficiencies": true,
+      "equipped_skills": [
+        "star_sword",
+        "searching",
+        "parry"
+      ],
+      "unlocked_special_skills": [
+        "star_sword"
+      ],
+      "progression_rules": {
+        "level_growth_bonus": {
+          "strength_per_level": 1,
+          "agility_per_level": 1,
+          "from_level": 1,
+          "applied_strength": 6,
+          "applied_agility": 6
+        },
+        "weapon_proficiency_skill_by_class": {
+          "one_hand_sword": "star_sword"
+        },
+        "weapon_enhancement_cap_by_class": {
+          "one_hand_sword": {
+            "skill_id": "star_sword",
+            "thresholds": [
+              [
+                50.0,
+                1
+              ],
+              [
+                150.0,
+                2
+              ],
+              [
+                250.0,
+                3
+              ],
+              [
+                350.0,
+                4
+              ],
+              [
+                450.0,
+                5
+              ],
+              [
+                550.0,
+                6
+              ],
+              [
+                650.0,
+                7
+              ],
+              [
+                750.0,
+                8
+              ],
+              [
+                850.0,
+                9
+              ],
+              [
+                950.0,
+                10
+              ]
+            ]
+          }
+        },
+        "normal_attack_by_class": {
+          "one_hand_sword": {
+            "skill_id": "star_sword",
+            "min_proficiency": 501.0,
+            "reference_proficiency": 500.0,
+            "damage_multiplier_start": 1.15,
+            "damage_multiplier_per_proficiency": 0.0003,
+            "damage_multiplier_max": 1.3,
+            "recovery_multiplier_start": 0.9,
+            "recovery_multiplier_end": 0.8,
+            "recovery_end_proficiency": 1000.0
+          }
+        }
+      },
+      "inventory": [
+        {
+          "template_id": "starter_leather_coat",
+          "quantity": 1,
+          "durability": 180,
+          "max_durability": 180,
+          "equip_now": true
+        },
+        {
+          "template_id": "anneal_blade",
+          "quantity": 1,
+          "durability": 310,
+          "max_durability": 310,
+          "max_enhancement_attempts": 10,
+          "enhancement_attempts_used": 3,
+          "enhancements": {
+            "sharpness": 2,
+            "quickness": 1
+          },
+          "equip_now": true,
+          "metadata": {
+            "acquisition": "pre_campaign_floor1_frontline_progress",
+            "note": "第三日前已取得并完成三次成功强化",
+            "progression_base_max_enhancement_attempts": 8
+          }
+        },
+        {
+          "template_id": "starter_leather_gloves",
+          "quantity": 1,
+          "durability": 120,
+          "max_durability": 120,
+          "equip_now": true
+        },
+        {
+          "template_id": "starter_leather_boots",
+          "quantity": 1,
+          "durability": 130,
+          "max_durability": 130,
+          "equip_now": true
+        },
+        {
+          "template_id": "healing_potion_basic",
+          "quantity": 3
+        },
+        {
+          "template_id": "healing_potion_basic",
+          "quantity": 4
+        },
+        {
+          "template_id": "field_bread",
+          "quantity": 6
+        },
+        {
+          "template_id": "reinforcement_sharpness_material",
+          "quantity": 2
+        },
+        {
+          "template_id": "reinforcement_quickness_material",
+          "quantity": 2
+        },
+        {
+          "template_id": "iron_ingot",
+          "quantity": 2
+        }
+      ],
+      "actor_id": "pc_419ba4144d33"
+    },
+    {
+      "key": "mio",
+      "name": "水无濑澪",
+      "level": 6,
+      "starter_weapon_id": "starter_rapier",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_tolbana",
+      "col": 2760,
+      "profile": {
+        "age": 18,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "rapier": 205.0,
+        "searching": 88.0,
+        "parry": 76.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "rapier",
+        "searching",
+        "parry"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_tolbana",
+          "floor_1_west_field"
+        ],
+        "activities": [
+          "frontline scouting",
+          "mapping",
+          "party practice"
+        ],
+        "interval_ms": 5100000,
+        "initial_delay_ms": 660000
+      },
+      "actor_id": "pc_friend_mio"
+    },
+    {
+      "key": "sumika",
+      "name": "九条澄香",
+      "level": 5,
+      "starter_weapon_id": "starter_one_hand_sword",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_west_field",
+      "col": 2450,
+      "profile": {
+        "age": 20,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "one_hand_sword": 176.0,
+        "searching": 92.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "one_hand_sword",
+        "searching"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_west_field",
+          "floor_1_town_of_beginnings"
+        ],
+        "activities": [
+          "field hunting",
+          "material gathering",
+          "restocking"
+        ],
+        "interval_ms": 5700000,
+        "initial_delay_ms": 1020000
+      },
+      "actor_id": "pc_friend_sumika"
+    },
+    {
+      "key": "sayo",
+      "name": "天城小夜",
+      "level": 5,
+      "starter_weapon_id": "starter_dagger",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_horunka",
+      "col": 2450,
+      "profile": {
+        "age": 20,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "dagger": 181.0,
+        "hiding": 118.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "dagger",
+        "hiding"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_horunka",
+          "floor_1_west_field"
+        ],
+        "activities": [
+          "quiet hunting",
+          "route scouting",
+          "village errands"
+        ],
+        "interval_ms": 6300000,
+        "initial_delay_ms": 1380000
+      },
+      "actor_id": "pc_friend_sayo"
+    },
+    {
+      "key": "kotone",
+      "name": "立花琴音",
+      "level": 4,
+      "starter_weapon_id": "starter_spear",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_town_of_beginnings",
+      "col": 2140,
+      "profile": {
+        "age": 19,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "spear": 142.0,
+        "searching": 67.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "spear",
+        "searching"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_town_of_beginnings",
+          "floor_1_west_field"
+        ],
+        "activities": [
+          "practice",
+          "shopping",
+          "field patrol"
+        ],
+        "interval_ms": 6600000,
+        "initial_delay_ms": 1740000
+      },
+      "actor_id": "pc_friend_kotone"
+    },
+    {
+      "key": "rin",
+      "name": "白石凛",
+      "level": 5,
+      "starter_weapon_id": "starter_mace",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_west_field",
+      "col": 2450,
+      "profile": {
+        "age": 20,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "mace": 169.0,
+        "parry": 111.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "mace",
+        "parry"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_west_field",
+          "floor_1_town_of_beginnings"
+        ],
+        "activities": [
+          "field hunting",
+          "defense practice",
+          "repair errands"
+        ],
+        "interval_ms": 6000000,
+        "initial_delay_ms": 1860000
+      },
+      "actor_id": "pc_friend_rin"
+    },
+    {
+      "key": "reina",
+      "name": "御影玲奈",
+      "level": 6,
+      "starter_weapon_id": "starter_rapier",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_tolbana",
+      "col": 2760,
+      "profile": {
+        "age": 18,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "rapier": 214.0,
+        "sprint": 122.0,
+        "searching": 74.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "rapier",
+        "sprint",
+        "searching"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_tolbana",
+          "floor_1_west_field"
+        ],
+        "activities": [
+          "frontline reconnaissance",
+          "speed practice",
+          "information exchange"
+        ],
+        "interval_ms": 5400000,
+        "initial_delay_ms": 2220000
+      },
+      "actor_id": "pc_friend_reina"
+    },
+    {
+      "key": "chikage",
+      "name": "神代千景",
+      "level": 4,
+      "starter_weapon_id": "starter_one_hand_sword",
+      "keep_starter_loadout": true,
+      "location_id": "floor_1_horunka",
+      "col": 2140,
+      "profile": {
+        "age": 19,
+        "sex": "female",
+        "nationality": "Japanese",
+        "appearance": "端正漂亮、现实身体数据生成的Avatar外貌",
+        "campaign_role": "景明的既有好友；有独立目标、行程与社交，不作为玩家附属NPC",
+        "provenance": "simulation_custom_start"
+      },
+      "skill_proficiencies": {
+        "one_hand_sword": 151.0,
+        "searching": 105.0
+      },
+      "replace_skill_proficiencies": false,
+      "equipped_skills": [
+        "one_hand_sword",
+        "searching"
+      ],
+      "autonomy": {
+        "enabled": true,
+        "route_location_ids": [
+          "floor_1_horunka",
+          "floor_1_west_field"
+        ],
+        "activities": [
+          "questing",
+          "herb gathering",
+          "village rest"
+        ],
+        "interval_ms": 6900000,
+        "initial_delay_ms": 2460000
+      },
+      "actor_id": "pc_friend_chikage"
+    }
+  ],
+  "friendships": [
+    {
+      "a_key": "kageaki",
+      "b_key": "mio"
+    },
+    {
+      "a_key": "kageaki",
+      "b_key": "sumika"
+    },
+    {
+      "a_key": "kageaki",
+      "b_key": "sayo"
+    },
+    {
+      "a_key": "kageaki",
+      "b_key": "kotone"
+    },
+    {
+      "a_key": "kageaki",
+      "b_key": "rin"
+    },
+    {
+      "a_key": "kageaki",
+      "b_key": "reina"
+    },
+    {
+      "a_key": "kageaki",
+      "b_key": "chikage"
+    }
+  ],
+  "population_cohorts": [
+    {
+      "cohort_id": "day3_town_casual",
+      "segment": "casual",
+      "headcount": 6200,
+      "location_id": "floor_1_town_of_beginnings",
+      "average_level": 1.4,
+      "activity": "survival, social regrouping and cautious local play",
+      "provenance": "simulation"
+    },
+    {
+      "cohort_id": "day3_town_production",
+      "segment": "production",
+      "headcount": 900,
+      "location_id": "floor_1_town_of_beginnings",
+      "average_level": 2.1,
+      "activity": "crafting, trading and supply work",
+      "provenance": "simulation"
+    },
+    {
+      "cohort_id": "day3_west_mid",
+      "segment": "mid_tier",
+      "headcount": 1400,
+      "location_id": "floor_1_west_field",
+      "average_level": 3.5,
+      "activity": "field grinding and resource gathering",
+      "provenance": "simulation"
+    },
+    {
+      "cohort_id": "day3_horunka_mid",
+      "segment": "mid_tier",
+      "headcount": 700,
+      "location_id": "floor_1_horunka",
+      "average_level": 4.2,
+      "activity": "questing and safe-zone staging",
+      "provenance": "simulation"
+    },
+    {
+      "cohort_id": "day3_tolbana_front",
+      "segment": "frontline",
+      "headcount": 592,
+      "location_id": "floor_1_tolbana",
+      "average_level": 6.1,
+      "activity": "frontline preparation and labyrinth reconnaissance",
+      "provenance": "simulation"
+    }
+  ],
+  "world_now_ms": 172800000,
+  "notes": {
+    "population": "9792 anonymous + 8 materialized named players = 9800 represented starting players before any simulated Day1-Day3 consequences. Cohort counts are simulation, not claimed canon exact deaths.",
+    "timeline": "No future Floor 8 guild state is materialized in this Day 3 baseline."
+  }
+}

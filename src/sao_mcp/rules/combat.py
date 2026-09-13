@@ -12,6 +12,7 @@ from sao_mcp.domain.models import (
     SwordSkillDefinition,
     WeaponTemplate,
 )
+from sao_mcp.rules.custom_mechanics import critical_chance_modifiers
 from sao_mcp.rules.nightfolk import night_combat_bonus
 from sao_mcp.rules.progression_effects import normal_attack_modifiers, weapon_proficiency_value
 
@@ -259,7 +260,9 @@ def resolve_physical_attack(
         crit_chance = tuning.base_crit + proficiency * tuning.proficiency_crit_scale
         crit_chance += accuracy_plus * tuning.accuracy_enhancement_crit
         crit_chance += attacker_night_bonus * 0.10
-        crit_chance = _clamp(crit_chance, 0.0, 0.25)
+        custom_crit_bonus, custom_crit_cap = critical_chance_modifiers(attacker)
+        crit_chance += custom_crit_bonus
+        crit_chance = _clamp(crit_chance, 0.0, custom_crit_cap)
         critical = rng.random() < crit_chance
     if critical:
         raw *= 1.55

@@ -38,6 +38,7 @@ from sao_mcp.runtime.custom_catalog import (
     register_custom_sword_skill,
     register_custom_weapon,
 )
+from sao_mcp.runtime.named_player_autonomy import configure_named_player_autonomy
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
 
 
@@ -353,6 +354,19 @@ def _create_blueprint_character(runtime, row: dict[str, Any]):
         level=level,
         starter_weapon_id=starter_weapon_id,
     )
+    desired_actor_id = row.get("actor_id")
+    if desired_actor_id is not None:
+        desired_actor_id = str(desired_actor_id).strip()
+        if not desired_actor_id:
+            raise ValueError("blueprint actor_id must be non-empty when supplied")
+        if desired_actor_id in runtime.actors and desired_actor_id != actor.actor_id:
+            raise ValueError(f"blueprint actor_id already exists: {desired_actor_id}")
+        if desired_actor_id != actor.actor_id:
+            runtime.actors.pop(actor.actor_id)
+            actor.actor_id = desired_actor_id
+            for item in actor.inventory.values():
+                item.owner_id = desired_actor_id
+            runtime.actors[desired_actor_id] = actor
     if not bool(row.get("keep_starter_loadout", False)):
         for instance_id in tuple(actor.inventory):
             remove_character_item(runtime, actor.actor_id, instance_id)
@@ -381,6 +395,9 @@ def _create_blueprint_character(runtime, row: dict[str, Any]):
         apply_custom_mechanics_retroactive=bool(row.get("apply_custom_mechanics_retroactive", True)),
     )
     _grant_inventory(runtime, actor.actor_id, row.get("inventory"))
+    if row.get("autonomy") is not None:
+        configure_named_player_autonomy(runtime, actor.actor_id, dict(row["autonomy"]))
+    actor.metadata["campaign_blueprint_key"] = str(row["key"])
     return actor
 
 
@@ -441,6 +458,48 @@ def _apply_blueprint_in_place(runtime, blueprint: dict[str, Any], *, committed: 
         actor = _create_blueprint_character(runtime, row)
         actor_ids[str(row["key"])] = actor.actor_id
 
+    friendship_rows = blueprint.get("friendships", [])
+    if not isinstance(friendship_rows, list):
+        raise ValueError("campaign blueprint friendships must be a list")
+    friendships: list[dict[str, str]] = []
+    for index, row in enumerate(friendship_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"blueprint friendships[{index}] must be an object")
+        a_key = _require_text(row, "a_key", context=f"blueprint friendships[{index}]")
+        b_key = _require_text(row, "b_key", context=f"blueprint friendships[{index}]")
+        if a_key not in actor_ids or b_key not in actor_ids:
+            raise ValueError("blueprint friendship references an unknown character key")
+        a_id, b_id = actor_ids[a_key], actor_ids[b_key]
+        if not runtime.relationships.are_friends(a_id, b_id):
+            request = runtime.request_friend(a_id, b_id)
+            runtime.accept_friend(request.request_id, b_id)
+        friendships.append({"a_key": a_key, "b_key": b_key, "a_id": a_id, "b_id": b_id})
+
+    population_rows = blueprint.get("population_cohorts", [])
+    if not isinstance(population_rows, list):
+        raise ValueError("campaign blueprint population_cohorts must be a list")
+    population_ids: list[str] = []
+    for index, row in enumerate(population_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"blueprint population_cohorts[{index}] must be an object")
+        cohort = runtime.add_population_cohort(
+            _require_text(row, "cohort_id", context=f"blueprint population_cohorts[{index}]"),
+            str(row["segment"]),
+            int(row["headcount"]),
+            str(row["location_id"]),
+            float(row["average_level"]),
+            str(row["activity"]),
+            provenance=str(row.get("provenance", "simulation")),
+        )
+        population_ids.append(cohort.cohort_id)
+
+    if blueprint.get("world_now_ms") is not None:
+        target_world_ms = int(blueprint["world_now_ms"])
+        if target_world_ms < runtime.world.now_ms:
+            raise ValueError("campaign blueprint world_now_ms cannot move time backward")
+        if target_world_ms > runtime.world.now_ms:
+            runtime.advance_world(target_world_ms - runtime.world.now_ms)
+
     return {
         "schema": BLUEPRINT_SCHEMA,
         "blueprint_id": blueprint_id,
@@ -452,6 +511,9 @@ def _apply_blueprint_in_place(runtime, blueprint: dict[str, Any], *, committed: 
             _preview_character(runtime, key, actor_id, committed=committed)
             for key, actor_id in actor_ids.items()
         ],
+        "friendships": friendships,
+        "population_cohort_ids": population_ids,
+        "world_now_ms": int(runtime.world.now_ms),
     }
 
 

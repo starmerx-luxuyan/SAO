@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from sao_mcp.runtime.community_hooks import attach_community_economy
+from sao_mcp.runtime.named_player_autonomy import install_named_player_autonomy
 from sao_mcp.runtime.population_runtime import PopulationAincradRuntime
 from sao_mcp.runtime.property_economy import GuardedEconomyRuntime, make_runtime_economy
 
@@ -12,6 +13,7 @@ class EconomyLoopAincradRuntime(PopulationAincradRuntime):
 
     def __init__(self, *, seed: int | None = None, catalog=None) -> None:
         super().__init__(seed=seed, catalog=catalog)
+        self.named_player_autonomy = install_named_player_autonomy(self)
         economy = make_runtime_economy(self)
         if not isinstance(economy, GuardedEconomyRuntime):
             raise RuntimeError("Aincrad economy loop requires the runtime-bound economy authority")
@@ -28,6 +30,7 @@ class EconomyLoopAincradRuntime(PopulationAincradRuntime):
 
     def _next_scheduler_boundary(self, target_ms: int) -> int:
         boundary = super()._next_scheduler_boundary(target_ms)
+        boundary = self.named_player_autonomy.next_scheduler_boundary(target_ms, boundary)
         now = self.world.now_ms
         tick = self.economy.next_tick_at_ms
         if now < tick <= target_ms:

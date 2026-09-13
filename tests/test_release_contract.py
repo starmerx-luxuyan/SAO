@@ -16,7 +16,7 @@ PUBLIC_TOOL_NAMES = {
     "health", "create_character", "get_character_state", "inspect_catalog_entry", "list_catalog",
     "export_save_json", "import_save_json", "get_gm_observation", "get_gm_decision_contract",
     "preview_gm_decision", "execute_gm_decision", "character_hud", "system_menu", "boss_raid_hud",
-    "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup",
+    "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup", "get_custom_mechanics_schema",
     "create_configured_character", "configure_character_setup", "set_character_custom_mechanics",
     "get_character_setup_state", "grant_character_item", "remove_character_item_setup",
     "get_custom_catalog_state", "register_custom_weapon_definition", "register_custom_armor_definition",
@@ -30,7 +30,7 @@ PUBLIC_UI_URIS = {"ui://sao/aincrad-hud.html", "ui://sao/system-menu.html", "ui:
 def test_release_version_metadata_is_consistent():
     manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert __version__ == "1.2.0"
+    assert __version__ == "1.3.0"
     assert manifest["version"] == __version__
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "src/sao_mcp/__init__.py"
@@ -64,7 +64,7 @@ def test_hosted_public_mcp_surface_is_exact_and_gated():
 def test_full_internal_surface_keeps_admin_setup_and_world_tools():
     from sao_mcp.server_bootstrap import mcp
     names = {tool.name for tool in asyncio.run(mcp.list_tools())}
-    assert {"reopen_campaign_setup", "mark_floor_boss_defeated", "advance_world_time"} <= names
+    assert {"reopen_campaign_setup", "validate_campaign_amendment", "preview_campaign_amendment", "apply_campaign_amendment", "mark_floor_boss_defeated", "advance_world_time"} <= names
     assert PUBLIC_TOOL_NAMES - {"system_menu", "boss_raid_hud"} <= names
 
 

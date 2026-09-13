@@ -19,6 +19,8 @@ jobs:
         run: python -m compileall -q src
       - name: Test
         run: pytest -q
+      - name: Build and re-import corrected Kageaki Day 3 save
+        run: python scripts/build_kageaki_day3_save.py /tmp/SAO_Kageaki_Day3_v1.3.0.save.json
       - name: Build release wheel
         run: |
           rm -rf dist
@@ -41,7 +43,7 @@ jobs:
               "health", "create_character", "get_character_state", "inspect_catalog_entry", "list_catalog",
               "export_save_json", "import_save_json", "get_gm_observation", "get_gm_decision_contract",
               "preview_gm_decision", "execute_gm_decision", "character_hud", "system_menu", "boss_raid_hud",
-              "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup",
+              "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup", "get_custom_mechanics_schema",
               "create_configured_character", "configure_character_setup", "set_character_custom_mechanics",
               "get_character_setup_state", "grant_character_item", "remove_character_item_setup",
               "get_custom_catalog_state", "register_custom_weapon_definition", "register_custom_armor_definition",
@@ -49,7 +51,7 @@ jobs:
               "register_custom_skill_definition", "register_custom_sword_skill_definition",
               "validate_campaign_blueprint", "preview_campaign_blueprint", "apply_campaign_blueprint",
           }
-          assert sao_mcp.__version__ == "1.2.0"
+          assert sao_mcp.__version__ == "1.3.0"
           assert server_bootstrap.runtime is server_public.runtime
           assert files("sao_mcp.ui").joinpath("hud.html").is_file()
           assert files("sao_mcp.ui").joinpath("system_menu.html").is_file()
@@ -58,7 +60,7 @@ jobs:
           full_names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
           assert public_names == expected_public
           assert "reopen_campaign_setup" not in public_names
-          assert {"reopen_campaign_setup", "mark_floor_boss_defeated", "advance_world_time"} <= full_names
+          assert {"reopen_campaign_setup", "validate_campaign_amendment", "preview_campaign_amendment", "apply_campaign_amendment", "mark_floor_boss_defeated", "advance_world_time"} <= full_names
           resources = {str(binding.resource.uri): binding.resource for binding in server_public.apps.resources()}
           assert len(resources) == 3
           for resource in resources.values():
@@ -68,21 +70,24 @@ jobs:
           PY
       - name: Assemble plugin bundle
         run: |
-          rm -rf release/SAO-Aincrad-v1.2.0
-          mkdir -p release/SAO-Aincrad-v1.2.0/.codex-plugin
-          mkdir -p release/SAO-Aincrad-v1.2.0/skills
-          mkdir -p release/SAO-Aincrad-v1.2.0/docs
-          mkdir -p release/SAO-Aincrad-v1.2.0/dist
-          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.2.0/.codex-plugin/
-          cp .mcp.json release/SAO-Aincrad-v1.2.0/
-          cp -R skills/sao-gm release/SAO-Aincrad-v1.2.0/skills/
-          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.2.0/
-          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.2.0.md release/SAO-Aincrad-v1.2.0/docs/
-          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.2.0/dist/
+          rm -rf release/SAO-Aincrad-v1.3.0
+          mkdir -p release/SAO-Aincrad-v1.3.0/.codex-plugin
+          mkdir -p release/SAO-Aincrad-v1.3.0/skills
+          mkdir -p release/SAO-Aincrad-v1.3.0/docs
+          mkdir -p release/SAO-Aincrad-v1.3.0/dist
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.3.0/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.3.0/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.3.0/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.3.0/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.0.md release/SAO-Aincrad-v1.3.0/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.3.0/dist/
+          mkdir -p release/SAO-Aincrad-v1.3.0/presets
+          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json release/SAO-Aincrad-v1.3.0/presets/
+          cp /tmp/SAO_Kageaki_Day3_v1.3.0.save.json release/SAO-Aincrad-v1.3.0/
       - name: Upload plugin bundle
         uses: actions/upload-artifact@v4
         with:
-          name: SAO-Aincrad-v1.2.0-plugin
-          path: release/SAO-Aincrad-v1.2.0
+          name: SAO-Aincrad-v1.3.0-plugin
+          path: release/SAO-Aincrad-v1.3.0
           if-no-files-found: error
           include-hidden-files: true

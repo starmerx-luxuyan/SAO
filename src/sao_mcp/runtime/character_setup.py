@@ -42,6 +42,8 @@ def _new_setup_state() -> dict[str, Any]:
         "status": SETUP_NOT_STARTED,
         "revision": 0,
         "finalized_at_world_ms": None,
+        "last_amended_at_world_ms": None,
+        "last_amendment_id": None,
     }
 
 
@@ -100,6 +102,8 @@ def load_campaign_setup_state(runtime, payload: dict[str, Any] | None) -> None:
             "status": SETUP_FINALIZED,
             "revision": 0,
             "finalized_at_world_ms": None,
+            "last_amended_at_world_ms": None,
+            "last_amendment_id": None,
         }
     else:
         status = str(payload.get("status", SETUP_FINALIZED))
@@ -109,6 +113,8 @@ def load_campaign_setup_state(runtime, payload: dict[str, Any] | None) -> None:
             "status": status,
             "revision": int(payload.get("revision", 0)),
             "finalized_at_world_ms": payload.get("finalized_at_world_ms"),
+            "last_amended_at_world_ms": payload.get("last_amended_at_world_ms"),
+            "last_amendment_id": payload.get("last_amendment_id"),
         }
     setattr(runtime, CAMPAIGN_SETUP_STATE_ATTR, state)
 

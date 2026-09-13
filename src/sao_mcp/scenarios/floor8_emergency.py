@@ -34,7 +34,10 @@ class Floor8ForestEmergencyScenario:
             raise RuntimeError("Floor 8 emergency and Nocturne services must share one runtime")
         self.runtime = runtime
         self.nocturne = nocturne
-        self.clearing_guilds = install_progressive_clearing_guilds(runtime)
+        existing = {guild_id: runtime.relationships.guilds[guild_id] for guild_id in (ALS_GUILD_ID, DKB_GUILD_ID) if guild_id in runtime.relationships.guilds}
+        if existing and len(existing) != 2:
+            raise RuntimeError("Floor 8 clearing guild state is partially materialized")
+        self.clearing_guilds = existing or None
 
     def _states(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor8_forest_emergency_instances", {})
@@ -137,6 +140,8 @@ class Floor8ForestEmergencyScenario:
             raise RuntimeError("Argo friend contact did not become authoritative")
 
     def _make_incident_player(self, name: str, guild_id: str, level: int) -> CombatantState:
+        if self.clearing_guilds is None:
+            raise RuntimeError("Floor 8 clearing guilds were not materialized by a valid emergency trigger")
         guild = self.clearing_guilds[guild_id]
         actor = create_character_at(
             self.runtime,
@@ -282,6 +287,9 @@ class Floor8ForestEmergencyScenario:
             raise ValueError("the Floor 8 emergency is linked after the Nocturne group resumes the five-key route on Lake Yofel")
         if recipient_actor_id not in nocturne_state["player_ids"]:
             raise ValueError("Argo's recipient must be a player in the linked Nocturne pursuit")
+
+        if self.clearing_guilds is None:
+            self.clearing_guilds = install_progressive_clearing_guilds(self.runtime)
 
         argo = self._argo_actor()
         klein = self._klein_actor()

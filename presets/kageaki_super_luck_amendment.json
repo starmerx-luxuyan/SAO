@@ -1,0 +1,88 @@
+{
+  "schema": "sao.aincrad.campaign-amendment.v1",
+  "set_col": 88888,
+  "custom_mechanics": [
+    {
+      "mechanic_id": "super_luck",
+      "name": "超幸运",
+      "description": "极端偏向凑斗景明的合法随机结果：显著提高会心、战利品Col与素材收益。不会复制任务关键物或唯一物。",
+      "effects": [
+        {
+          "type": "critical_chance_bonus",
+          "bonus": 0.4,
+          "cap": 0.85
+        },
+        {
+          "type": "loot_reward_multiplier",
+          "col_multiplier": 6.0,
+          "material_drop_chance_multiplier": 8.0,
+          "material_quantity_multiplier": 4.0
+        }
+      ]
+    }
+  ],
+  "grant_items": [
+    {
+      "template_id": "healing_potion_basic",
+      "quantity": 5
+    },
+    {
+      "template_id": "field_bread",
+      "quantity": 4
+    },
+    {
+      "template_id": "healing_crystal",
+      "quantity": 3
+    },
+    {
+      "template_id": "curing_crystal",
+      "quantity": 3
+    },
+    {
+      "template_id": "teleport_crystal",
+      "quantity": 3
+    },
+    {
+      "template_id": "reinforcement_base_material",
+      "quantity": 12
+    },
+    {
+      "template_id": "reinforcement_sharpness_material",
+      "quantity": 10
+    },
+    {
+      "template_id": "reinforcement_quickness_material",
+      "quantity": 10
+    },
+    {
+      "template_id": "reinforcement_accuracy_material",
+      "quantity": 8
+    },
+    {
+      "template_id": "reinforcement_durability_material",
+      "quantity": 8
+    },
+    {
+      "template_id": "reinforcement_heaviness_material",
+      "quantity": 8
+    },
+    {
+      "template_id": "red_jewel_fragment",
+      "quantity": 8
+    }
+  ],
+  "expected_totals_after_apply": {
+    "col": 88888,
+    "basic_healing_potions": 12,
+    "field_bread": 10,
+    "healing_crystals": 3,
+    "curing_crystals": 3,
+    "teleport_crystals": 3,
+    "reinforcement_sharpness_material": 12,
+    "reinforcement_quickness_material": 12,
+    "iron_ingot": 2
+  },
+  "amendment_id": "kageaki_super_luck_v130",
+  "actor_id": "pc_419ba4144d33",
+  "actor_name": "凑斗景明"
+}

@@ -35,6 +35,17 @@ def require_autonomous_travel(actor: CombatantState) -> None:
         raise ValueError(f"autonomous travel is restricted by {restriction}")
 
 
+def begin_autonomous_world_transit(actor: CombatantState) -> str:
+    """Commit the departure edge of an autonomous world trip through movement authority."""
+    require_living_world_traveller(actor)
+    require_autonomous_travel(actor)
+    origin = actor.location_id
+    if origin is None:
+        raise RuntimeError("autonomous transit lost its settled origin")
+    actor.location_id = None
+    return origin
+
+
 def has_surviving_colocated_outsider(
     encounter: EncounterState,
     member_ids: set[str] | frozenset[str],

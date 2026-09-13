@@ -32,7 +32,12 @@ from sao_mcp.runtime.character_setup import (
     reopen_campaign_setup as _reopen_campaign_setup,
     require_campaign_setup_open,
 )
-from sao_mcp.rules.custom_mechanics import configure_custom_mechanics
+from sao_mcp.rules.custom_mechanics import configure_custom_mechanics, custom_mechanics_json_schema
+from sao_mcp.runtime.campaign_amendment import (
+    apply_campaign_amendment as _apply_campaign_amendment,
+    preview_campaign_amendment as _preview_campaign_amendment,
+    validate_campaign_amendment as _validate_campaign_amendment,
+)
 from sao_mcp.runtime.custom_catalog import (
     dump_custom_catalog_state,
     register_custom_armor,
@@ -81,11 +86,31 @@ def register_setup_tools(mcp, runtime, *, include_admin: bool = False) -> None:
         """Lock public setup mutations and begin ordinary campaign play."""
         return _json(_finalize_campaign_setup(runtime))
 
+    @mcp.tool()
+    def get_custom_mechanics_schema() -> str:
+        """Return the real Draft 2020-12 JSON Schema accepted by custom mechanics."""
+        return _json(custom_mechanics_json_schema())
+
     if include_admin:
         @mcp.tool()
         def reopen_campaign_setup() -> str:
-            """Internal maintenance tool: reopen a finalized campaign setup phase."""
+            """Internal maintenance tool. Ordinary finalized campaigns should use atomic amendments instead."""
             return _json(_reopen_campaign_setup(runtime))
+
+        @mcp.tool()
+        def validate_campaign_amendment(amendment: dict[str, Any]) -> str:
+            """Validate a finalized-campaign amendment on an isolated clone without mutating live state."""
+            return _json(_validate_campaign_amendment(runtime, amendment))
+
+        @mcp.tool()
+        def preview_campaign_amendment(amendment: dict[str, Any]) -> str:
+            """Preview the complete post-amendment character state without mutating live state."""
+            return _json(_preview_campaign_amendment(runtime, amendment))
+
+        @mcp.tool()
+        def apply_campaign_amendment(amendment: dict[str, Any]) -> str:
+            """Atomically validate and commit a finalized-campaign amendment as one revision."""
+            return _json(_apply_campaign_amendment(runtime, amendment))
 
     @mcp.tool()
     def create_configured_character(

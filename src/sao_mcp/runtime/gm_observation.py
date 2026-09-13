@@ -120,6 +120,16 @@ class GMObservationGate:
     def _player_name_known(self, observer_id: str, target_id: str) -> bool:
         if observer_id == target_id:
             return True
+        relationships = self.runtime.relationships
+        if relationships.are_friends(observer_id, target_id):
+            return True
+        marriage = relationships.marriage_for(observer_id)
+        if marriage is not None and target_id in marriage.partner_ids:
+            return True
+        observer_guild = authoritative_guild_id(self.runtime, observer_id)
+        target_guild = authoritative_guild_id(self.runtime, target_id)
+        if observer_guild is not None and observer_guild == target_guild:
+            return True
         belief = self.runtime.belief(observer_id, f"player_identity:{target_id}")
         return belief is not None
 

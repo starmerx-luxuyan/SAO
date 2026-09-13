@@ -134,7 +134,9 @@ def _validate_registered_guild(runtime, spec: CanonGuildSpec, leader: CombatantS
 
 
 def install_progressive_clearing_guilds(runtime) -> dict[str, GuildState]:
-    """Install/verify the canon early-clearing guild identities in the real relationship runtime."""
+    """Install/verify the canon clearing guilds only after Floor 8 exists in current world state."""
+    if not runtime.world.floors[8].unlocked:
+        raise ValueError("DKB/ALS Floor 8 state cannot materialize before Floor 8 is unlocked")
     if not hasattr(runtime, "relationships"):
         raise RuntimeError("progressive clearing guilds require the relationship runtime")
 

@@ -192,6 +192,29 @@ def validate_custom_mechanics(catalog: Catalog, mechanics: list[dict[str, Any]])
                 if multiplier < 0.0:
                     raise ValueError("proficiency gain multiplier must be non-negative")
                 clean.update(skill_id=skill_id, multiplier=multiplier, flat_bonus=flat_bonus)
+            elif effect_type == "critical_chance_bonus":
+                bonus = float(effect.get("bonus", 0.0))
+                cap = float(effect.get("cap", 0.25))
+                if not 0.0 <= bonus <= 1.0:
+                    raise ValueError("critical chance bonus must be 0..1")
+                if not 0.0 <= cap <= 1.0:
+                    raise ValueError("critical chance cap must be 0..1")
+                clean.update(bonus=bonus, cap=cap)
+            elif effect_type == "loot_reward_multiplier":
+                col_multiplier = float(effect.get("col_multiplier", 1.0))
+                material_drop_chance_multiplier = float(effect.get("material_drop_chance_multiplier", 1.0))
+                material_quantity_multiplier = float(effect.get("material_quantity_multiplier", 1.0))
+                if col_multiplier < 0.0:
+                    raise ValueError("loot Col multiplier must be non-negative")
+                if material_drop_chance_multiplier < 0.0:
+                    raise ValueError("material drop chance multiplier must be non-negative")
+                if material_quantity_multiplier < 0.0:
+                    raise ValueError("material quantity multiplier must be non-negative")
+                clean.update(
+                    col_multiplier=col_multiplier,
+                    material_drop_chance_multiplier=material_drop_chance_multiplier,
+                    material_quantity_multiplier=material_quantity_multiplier,
+                )
             else:
                 raise ValueError(f"unsupported custom mechanic effect type: {effect_type!r}")
             clean_effects.append(clean)
@@ -387,3 +410,174 @@ def apply_skill_unlocks(actor: CombatantState, catalog: Catalog) -> list[str]:
             added.append(skill_id)
     actor.metadata["unlocked_special_skills"] = unlocked
     return added
+
+
+def critical_chance_modifiers(actor: CombatantState) -> tuple[float, float]:
+    """Return additive critical chance and the highest active critical cap."""
+    bonus = 0.0
+    cap = 0.25
+    for _, _, effect in iter_effects(actor, "critical_chance_bonus"):
+        bonus += float(effect.get("bonus", 0.0))
+        cap = max(cap, float(effect.get("cap", 0.25)))
+    return max(0.0, bonus), max(0.0, min(1.0, cap))
+
+
+def loot_reward_multipliers(actor: CombatantState) -> tuple[float, float, float]:
+    """Return Col, material-drop-chance and material-quantity multipliers."""
+    col_multiplier = 1.0
+    chance_multiplier = 1.0
+    quantity_multiplier = 1.0
+    for _, _, effect in iter_effects(actor, "loot_reward_multiplier"):
+        col_multiplier *= max(0.0, float(effect.get("col_multiplier", 1.0)))
+        chance_multiplier *= max(0.0, float(effect.get("material_drop_chance_multiplier", 1.0)))
+        quantity_multiplier *= max(0.0, float(effect.get("material_quantity_multiplier", 1.0)))
+    return col_multiplier, chance_multiplier, quantity_multiplier
+
+
+
+def custom_mechanics_json_schema() -> dict[str, Any]:
+    """Return the actual Draft 2020-12 schema accepted by ``validate_custom_mechanics``."""
+    condition_properties = {
+        "min_level": {"type": "integer", "minimum": 1},
+        "max_level": {"type": "integer", "minimum": 1},
+        "min_hp_ratio": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "max_hp_ratio": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "requires_equipped_skills": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": True},
+        "requires_unlocked_skills": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": True},
+        "min_proficiencies": {
+            "type": "object",
+            "additionalProperties": {"type": "number", "minimum": 0.0, "maximum": 1000.0},
+        },
+    }
+
+    def effect(effect_type: str, properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "type": {"const": effect_type},
+                "conditions": {"$ref": "#/$defs/conditions"},
+                **properties,
+            },
+            "required": ["type", *(required or [])],
+        }
+
+    effects = [
+        effect(
+            "level_attribute_growth",
+            {
+                "strength_per_level": {"type": "integer", "default": 0},
+                "agility_per_level": {"type": "integer", "default": 0},
+                "from_level": {"type": "integer", "minimum": 1, "default": 1},
+            },
+        ),
+        effect(
+            "weapon_proficiency_route",
+            {"weapon_class": {"type": "string"}, "skill_id": {"type": "string", "minLength": 1}},
+            ["weapon_class", "skill_id"],
+        ),
+        effect(
+            "weapon_enhancement_cap_curve",
+            {
+                "weapon_class": {"type": "string"},
+                "skill_id": {"type": "string", "minLength": 1},
+                "thresholds": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "prefixItems": [
+                            {"type": "number", "minimum": 0.0, "maximum": 1000.0},
+                            {"type": "integer", "minimum": 0},
+                        ],
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
+                },
+            },
+            ["weapon_class", "skill_id", "thresholds"],
+        ),
+        effect(
+            "normal_attack_curve",
+            {
+                "weapon_class": {"type": "string"},
+                "skill_id": {"type": "string", "minLength": 1},
+                "min_proficiency": {"type": "number", "minimum": 0.0, "maximum": 1000.0, "default": 0.0},
+                "reference_proficiency": {"type": "number", "minimum": 0.0, "maximum": 1000.0},
+                "damage_multiplier_start": {"type": "number", "minimum": 0.0, "default": 1.0},
+                "damage_multiplier_per_proficiency": {"type": "number", "minimum": 0.0, "default": 0.0},
+                "damage_multiplier_max": {"type": "number", "minimum": 0.0},
+                "recovery_multiplier_start": {"type": "number", "exclusiveMinimum": 0.0, "default": 1.0},
+                "recovery_multiplier_end": {"type": "number", "exclusiveMinimum": 0.0},
+                "recovery_end_proficiency": {"type": "number", "minimum": 0.0, "maximum": 1000.0, "default": 1000.0},
+            },
+            ["weapon_class", "skill_id"],
+        ),
+        effect(
+            "skill_unlock",
+            {
+                "skill_id": {"type": "string", "minLength": 1},
+                "watch_skill_id": {"type": "string", "minLength": 1},
+                "min_proficiency": {"type": "number", "minimum": 0.0, "maximum": 1000.0, "default": 0.0},
+            },
+            ["skill_id", "watch_skill_id"],
+        ),
+        effect(
+            "proficiency_gain_modifier",
+            {
+                "skill_id": {"type": "string", "default": "*"},
+                "multiplier": {"type": "number", "minimum": 0.0, "default": 1.0},
+                "flat_bonus": {"type": "number", "default": 0.0},
+            },
+        ),
+        effect(
+            "critical_chance_bonus",
+            {
+                "bonus": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.0},
+                "cap": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 0.25,
+                    "description": "Absolute critical chance ceiling. Omitting it preserves the normal 0.25 cap.",
+                },
+            },
+        ),
+        effect(
+            "loot_reward_multiplier",
+            {
+                "col_multiplier": {"type": "number", "minimum": 0.0, "default": 1.0},
+                "material_drop_chance_multiplier": {"type": "number", "minimum": 0.0, "default": 1.0},
+                "material_quantity_multiplier": {"type": "number", "minimum": 0.0, "default": 1.0},
+            },
+        ),
+    ]
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://starmerx.local/sao/custom-mechanics.schema.json",
+        "title": "SAO Aincrad Custom Mechanics",
+        "type": "array",
+        "items": {"$ref": "#/$defs/mechanic"},
+        "$defs": {
+            "conditions": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": condition_properties,
+            },
+            "effect": {"oneOf": effects},
+            "mechanic": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "mechanic_id": {"type": "string", "minLength": 1},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "effects": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"$ref": "#/$defs/effect"},
+                    },
+                },
+                "required": ["mechanic_id", "effects"],
+            },
+        },
+    }

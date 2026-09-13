@@ -6,7 +6,7 @@ A production-oriented Sword Art Online / Aincrad game runtime, MCP server, GM sk
 
 ## Release status
 
-**v1.2.0** completes the arbitrary custom-start workflow. A single versioned Campaign Blueprint can now declare campaign-local Skills and Sword Skills, equipment and items, one or more starting characters, level/stats/Col/location, proficiencies, loadout, inventory, progression rules and declarative custom mechanics. The same blueprint can be semantically validated, previewed without mutation, then applied as one setup transaction before explicit finalization.
+**v1.3.0** completes the arbitrary custom-start workflow. A single versioned Campaign Blueprint can now declare campaign-local Skills and Sword Skills, equipment and items, one or more starting characters, level/stats/Col/location, proficiencies, loadout, inventory, progression rules and declarative custom mechanics. The same blueprint can be semantically validated, previewed without mutation, then applied as one setup transaction before explicit finalization.
 
 The runtime provides one authoritative campaign state shared by mechanics, GM observation/decision flow, persistence and UI. It supports persistent Aincrad play across combat, exploration, floor progression, inventory, economy, crafting/reinforcement, parties and raids, PvP/legal state, quests, NPC schedules and autonomy, relationships/family/housing, guild activity, population/ecology, communications, world events and save/load.
 

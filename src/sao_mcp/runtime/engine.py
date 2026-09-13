@@ -20,11 +20,13 @@ from sao_mcp.domain.models import (
     EnhancementTrack,
     EntityKind,
     ItemInstance,
+    ItemKind,
     PartyState,
     RaidState,
 )
 from sao_mcp.rules.combat import AttackResolution, resolve_physical_attack
 from sao_mcp.rules.crafting import EnhancementResolution, attempt_enhancement
+from sao_mcp.rules.custom_mechanics import loot_reward_multipliers
 from sao_mcp.rules.inventory import (
     EquipmentChange,
     RepairResolution,
@@ -36,7 +38,7 @@ from sao_mcp.rules.inventory import (
 )
 from sao_mcp.rules.items import ConsumableResolution, tick_statuses, use_consumable
 from sao_mcp.rules.legal_state import LegalStateLedger, SentenceKind
-from sao_mcp.rules.loot import GrantedLoot, LootRoll, grant_loot, roll_loot
+from sao_mcp.rules.loot import GrantedLoot, LootDrop, LootEntry, LootRoll, LootTable, grant_loot, roll_loot
 from sao_mcp.rules.npcs import NPCInteraction, NPCRuntime
 from sao_mcp.rules.progression import (
     default_max_hp,
@@ -492,12 +494,48 @@ class GameRuntime:
             table = self.loot_table(str(table_id))
         except KeyError:
             return None
+        col_multiplier, material_chance_multiplier, material_quantity_multiplier = loot_reward_multipliers(killer)
+        if (
+            col_multiplier != 1.0
+            or material_chance_multiplier != 1.0
+            or material_quantity_multiplier != 1.0
+        ):
+            lucky_entries: list[LootEntry] = []
+            protected_tags = {"quest_item", "key_item", "unique", "unique_drop"}
+            for entry in table.entries:
+                template = self.catalog.item(entry.template_id)
+                eligible_material = (
+                    template.kind is ItemKind.MATERIAL
+                    and not protected_tags.intersection(template.tags)
+                )
+                if not eligible_material:
+                    lucky_entries.append(entry)
+                    continue
+                lucky_entries.append(
+                    LootEntry(
+                        template_id=entry.template_id,
+                        chance=min(1.0, max(0.0, entry.chance * material_chance_multiplier)),
+                        min_quantity=max(1, int(round(entry.min_quantity * material_quantity_multiplier))),
+                        max_quantity=max(1, int(round(entry.max_quantity * material_quantity_multiplier))),
+                    )
+                )
+            table = LootTable(
+                table_id=table.table_id,
+                col_min=table.col_min,
+                col_max=table.col_max,
+                xp_min=table.xp_min,
+                xp_max=table.xp_max,
+                entries=tuple(lucky_entries),
+                provenance=table.provenance,
+            )
         rolled = roll_loot(table, self.rng)
         recipients = self._reward_recipients(encounter, killer)
         count = max(1, len(recipients))
         details: list[dict] = []
         for index, recipient in enumerate(recipients):
-            col_share = rolled.col // count + (rolled.col % count if index == 0 else 0)
+            base_col_share = rolled.col // count + (rolled.col % count if index == 0 else 0)
+            recipient_col_multiplier, _, _ = loot_reward_multipliers(recipient)
+            col_share = max(0, int(round(base_col_share * recipient_col_multiplier)))
             xp_share = rolled.xp // count + (rolled.xp % count if index == 0 else 0)
             share = LootRoll(
                 rolled.table_id,
