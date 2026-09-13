@@ -7,12 +7,96 @@ on:
     paths:
       - .github/workflows/floor22-lazy-v132.yml
 
+permissions:
+  contents: write
+
 jobs:
-  locate-mutation:
+  final-correctness:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Locate dynamic connection flag writes
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Apply candidate patches
         run: |
-          grep -RIn "dynamic_world_connection_ids" src tests scripts || true
-          grep -RIn "global_flags.*connection\|connection_ids\|setdefault.*global_flags" src/sao_mcp | head -n 200 || true
+          python scripts/apply_floor22_lazy_v132.py
+          python scripts/apply_floor22_lazy_v132_part2.py
+          python scripts/apply_floor22_lazy_v132_part3.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tests/test_floor22_lazy_materialization.py')
+          text = p.read_text(encoding='utf-8')
+          old = 'from __future__ import annotations\n\n'
+          new = 'from __future__ import annotations\n\nimport sys\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n\n'
+          if text.count(old) != 1:
+              raise RuntimeError('unexpected test preamble')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Full regression
+        run: |
+          python -m compileall -q src
+          pytest -q
+      - name: Exact first-floor recovery roundtrip
+        run: |
+          python - <<'PY'
+          from scripts.build_kageaki_frontline_recovery_v132 import build_recovery
+          from sao_mcp.runtime.persistence import export_runtime, import_runtime
+          from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
+          from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
+          from sao_mcp.corpus.floor22 import TOTO_ID
+
+          save = build_recovery()
+          runtime = SocialCommunicationAincradRuntime(seed=41)
+          install_floor22_witch_scenario(runtime)
+          assert TOTO_ID not in runtime.npcs.states
+          import_runtime(save, into=runtime)
+          assert export_runtime(runtime) == save
+          assert TOTO_ID not in runtime.npcs.states
+          assert TOTO_ID not in runtime.npc_actor_cores
+          print({'firstFloorExactRoundTrip': True, 'futureTotoMaterialized': False})
+          PY
+      - name: Exact progressed Floor 22 roundtrip
+        run: |
+          python - <<'PY'
+          from sao_mcp.runtime.persistence import export_runtime, import_runtime
+          from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
+          from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
+          from sao_mcp.corpus.floor22 import FOREST_SITE, TOTO_ID
+          from sao_mcp.rules.npcs import CORE_NPCS
+
+          source = SocialCommunicationAincradRuntime(seed=51)
+          scenario = install_floor22_witch_scenario(source)
+          assert TOTO_ID not in source.npcs.states
+          player = source.create_character('Floor22Persist', level=30)
+          source.world.floors[22].unlocked = True
+          player.location_id = FOREST_SITE
+          scenario.start([player.actor_id])
+          save = export_runtime(source)
+          assert TOTO_ID in source.npcs.states
+          assert TOTO_ID not in CORE_NPCS
+
+          restored = SocialCommunicationAincradRuntime(seed=52)
+          install_floor22_witch_scenario(restored)
+          import_runtime(save, into=restored)
+          assert export_runtime(restored) == save
+          assert TOTO_ID in restored.npcs.states
+          assert TOTO_ID in restored.npc_actor_cores
+          fresh = SocialCommunicationAincradRuntime(seed=53)
+          assert TOTO_ID not in fresh.npcs.states
+          assert TOTO_ID not in fresh.npcs.definitions
+          print({'floor22ExactRoundTrip': True, 'registryIsolation': True})
+          PY
+      - name: Commit tested source
+        run: |
+          rm scripts/apply_floor22_lazy_v132.py scripts/apply_floor22_lazy_v132_part2.py scripts/apply_floor22_lazy_v132_part3.py .github/workflows/floor22-lazy-v132.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: isolate scenario NPC state and preserve exact saves"
+          git push origin HEAD:fix/floor22-lazy-v132
