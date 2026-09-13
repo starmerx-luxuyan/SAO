@@ -1,6 +1,5 @@
 name: floor22-lazy-v132
 
-# Hosted-runtime roundtrip gate for the final v1.3.2 correctness pass.
 on:
   push:
     branches:
@@ -9,7 +8,7 @@ on:
       - .github/workflows/floor22-lazy-v132.yml
 
 jobs:
-  prove-and-test:
+  diagnose-roundtrip:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,76 +18,73 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Apply lazy Floor 22 patch
+      - name: Apply candidate patches
         run: |
           python scripts/apply_floor22_lazy_v132.py
           python scripts/apply_floor22_lazy_v132_part2.py
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('tests/test_floor22_lazy_materialization.py')
-          text = p.read_text(encoding='utf-8')
-          old = 'from __future__ import annotations\n\n'
-          new = 'from __future__ import annotations\n\nimport sys\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n\n'
-          if text.count(old) != 1:
-              raise RuntimeError('unexpected test preamble')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-      - name: Install patched tree
+      - name: Install
         run: python -m pip install -e ".[dev]"
-      - name: Prove lifecycle and registry isolation
-        run: |
-          python - <<'PY'
-          from sao_mcp.runtime.housing_runtime import HousingAincradRuntime
-          from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
-          from sao_mcp.corpus.floor22 import FOREST_SITE, TOTO_ID
-          from sao_mcp.rules.npcs import CORE_NPCS
-
-          runtime = HousingAincradRuntime(seed=111)
-          scenario = install_floor22_witch_scenario(runtime)
-          assert TOTO_ID not in runtime.npcs.states
-          assert TOTO_ID not in runtime.npc_actor_cores
-          player = runtime.create_character('Floor22Proof', level=30)
-          runtime.world.floors[22].unlocked = True
-          player.location_id = FOREST_SITE
-          scenario.start([player.actor_id])
-          assert TOTO_ID in runtime.npcs.states
-          assert TOTO_ID in runtime.npc_actor_cores
-          assert TOTO_ID not in CORE_NPCS
-
-          fresh = HousingAincradRuntime(seed=112)
-          assert TOTO_ID not in fresh.npcs.definitions
-          assert TOTO_ID not in fresh.npcs.states
-          print({'lazyLifecycle': True, 'registryIsolation': True})
-          PY
-      - name: Compile and full regression
-        run: |
-          python -m compileall -q src
-          pytest -q
-      - name: Exact recovery roundtrip with hosted scenario registry
+      - name: Diff Floor 22 hosted save roundtrip
         run: |
           python - <<'PY'
           import json
-          from scripts.build_kageaki_frontline_recovery_v132 import build_recovery
           from sao_mcp.runtime.persistence import export_runtime, import_runtime
           from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
           from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
-          from sao_mcp.corpus.floor22 import TOTO_ID
+          from sao_mcp.corpus.floor22 import FOREST_SITE, TOTO_ID
 
-          save = build_recovery()
-          runtime = SocialCommunicationAincradRuntime(seed=41)
-          install_floor22_witch_scenario(runtime)
-          assert TOTO_ID not in runtime.npcs.states
-          import_runtime(save, into=runtime)
-          assert export_runtime(runtime) == save
-          assert TOTO_ID not in runtime.npcs.states
-          assert TOTO_ID not in runtime.npc_actor_cores
-          print(json.dumps({'exactRoundTrip': True, 'futureTotoMaterialized': False}))
+          source = SocialCommunicationAincradRuntime(seed=136)
+          scenario = install_floor22_witch_scenario(source)
+          player = source.create_character('Floor22Persist', level=30)
+          source.world.floors[22].unlocked = True
+          player.location_id = FOREST_SITE
+          scenario.start([player.actor_id])
+          before_text = export_runtime(source)
+          before = json.loads(before_text)
+
+          restored = SocialCommunicationAincradRuntime(seed=137)
+          install_floor22_witch_scenario(restored)
+          import_runtime(before_text, into=restored)
+          after_text = export_runtime(restored)
+          after = json.loads(after_text)
+
+          def compact(value):
+              if isinstance(value, dict):
+                  return {'type':'dict','len':len(value),'keys':list(value)[:20]}
+              if isinstance(value, list):
+                  return {'type':'list','len':len(value),'head':value[:3]}
+              return value
+
+          def walk(a, b, path=''):
+              diffs=[]
+              if type(a) is not type(b):
+                  return [(path, compact(a), compact(b))]
+              if isinstance(a, dict):
+                  for key in sorted(set(a)|set(b)):
+                      p=f'{path}.{key}' if path else key
+                      if key not in a or key not in b:
+                          diffs.append((p, compact(a.get(key)), compact(b.get(key))))
+                      elif a[key] != b[key]:
+                          diffs.extend(walk(a[key], b[key], p))
+                          if len(diffs) >= 80:
+                              break
+              elif isinstance(a, list):
+                  if len(a) != len(b):
+                      diffs.append((path+'.length', len(a), len(b)))
+                  for i,(x,y) in enumerate(zip(a,b)):
+                      if x != y:
+                          diffs.extend(walk(x,y,f'{path}[{i}]'))
+                          if len(diffs) >= 80:
+                              break
+              elif a != b:
+                  diffs.append((path,a,b))
+              return diffs
+
+          diffs=walk(before,after)
+          print('EXACT_EQUAL', before_text == after_text)
+          print('TOTO_SOURCE', TOTO_ID in source.npcs.states, TOTO_ID in source.npc_actor_cores)
+          print('TOTO_RESTORED', TOTO_ID in restored.npcs.states, TOTO_ID in restored.npc_actor_cores)
+          print('DIFF_COUNT_SHOWN', len(diffs))
+          for path,left,right in diffs[:80]:
+              print('DIFF', path, 'BEFORE=', json.dumps(left,ensure_ascii=False,sort_keys=True), 'AFTER=', json.dumps(right,ensure_ascii=False,sort_keys=True))
           PY
-      - name: Commit tested patch
-        run: |
-          rm scripts/apply_floor22_lazy_v132.py scripts/apply_floor22_lazy_v132_part2.py .github/workflows/floor22-lazy-v132.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: isolate NPC registries and lazily materialize Floor 22 actors"
-          git push origin HEAD:fix/floor22-lazy-v132
