@@ -37,10 +37,9 @@ def _rebuild_world_map_adjacency(world_map: WorldMapCatalog) -> None:
 
 
 def _dynamic_connection_ids(world: WorldState) -> list[str]:
-    value = world.global_flags.get(DYNAMIC_CONNECTION_IDS_FLAG)
-    if value is None:
-        value = []
-        world.global_flags[DYNAMIC_CONNECTION_IDS_FLAG] = value
+    # Reading/restoring a world with no unlocked dynamic connection must be side-effect free.
+    # Otherwise a plain import/export grows an empty persistence field.
+    value = world.global_flags.get(DYNAMIC_CONNECTION_IDS_FLAG, [])
     if not isinstance(value, list) or any(not isinstance(connection_id, str) for connection_id in value):
         raise RuntimeError("dynamic_world_connection_ids must be a list of connection IDs")
     unknown = [connection_id for connection_id in value if connection_id not in DYNAMIC_TRAVEL_CONNECTIONS]
@@ -82,6 +81,9 @@ def unlock_dynamic_world_connection(
     if connection_id not in DYNAMIC_TRAVEL_CONNECTIONS:
         raise KeyError(connection_id)
     ids = _dynamic_connection_ids(world)
+    if DYNAMIC_CONNECTION_IDS_FLAG not in world.global_flags:
+        ids = list(ids)
+        world.global_flags[DYNAMIC_CONNECTION_IDS_FLAG] = ids
     if connection_id not in ids:
         ids.append(connection_id)
     _install_dynamic_connection(world_map, connection_id)

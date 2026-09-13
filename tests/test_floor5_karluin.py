@@ -146,3 +146,14 @@ def test_karluin_relic_catacomb_and_shortcut_progression_use_base_world_state():
     restored_unlocked.travel_actor(restored_player.actor_id, SHORTCUT_TUNNEL)
     restored_unlocked.travel_actor(restored_player.actor_id, AREA_BOSS_ROOM)
     assert restored_player.location_id == AREA_BOSS_ROOM
+
+
+def test_restoring_world_without_dynamic_connections_does_not_grow_empty_flag():
+    from sao_mcp.corpus.world import build_world_map_catalog
+    from sao_mcp.rules.world import DYNAMIC_CONNECTION_IDS_FLAG, make_aincrad_world, restore_dynamic_world_connections
+
+    world = make_aincrad_world()
+    world_map = build_world_map_catalog()
+    assert DYNAMIC_CONNECTION_IDS_FLAG not in world.global_flags
+    restore_dynamic_world_connections(world, world_map)
+    assert DYNAMIC_CONNECTION_IDS_FLAG not in world.global_flags

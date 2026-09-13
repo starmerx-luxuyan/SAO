@@ -38,13 +38,30 @@ class Floor22WitchScenario:
         apply_floor22_catalog_seed(runtime.catalog)
         apply_floor22_world_seed(runtime.world_map)
         runtime.quests.definitions.setdefault(QUEST_ID, floor22_quest_definition())
-        install_floor22_npc(runtime)
         runtime.register_world_event_rule(
             WITCH_RETURN_EVENT_RULE_ID,
             self._discover_witch_return_events,
             self._resolve_witch_return_event,
         )
         runtime.evaluate_world_events()
+
+    def _ensure_toto_state(self) -> None:
+        """Materialize Toto only once Floor 22 gameplay actually needs him."""
+        install_floor22_npc(self.runtime)
+        ensure_core = getattr(self.runtime, "_ensure_actor_core", None)
+        if ensure_core is not None:
+            ensure_core(TOTO_ID)
+
+    def prepare_import(self, payload: dict) -> None:
+        """Restore dynamic Toto state only for saves that already contain it."""
+        npc_state = payload.get("npc_state", {})
+        autonomy = payload.get("npc_autonomy_state", {})
+        if (
+            TOTO_ID in npc_state
+            or TOTO_ID in autonomy.get("actor_cores", {})
+            or TOTO_ID in autonomy.get("agendas", {})
+        ):
+            self._ensure_toto_state()
 
     def instances(self) -> dict:
         return self.runtime.world.global_flags.setdefault("floor22_witch_instances", {})
@@ -68,6 +85,9 @@ class Floor22WitchScenario:
                 raise ValueError("quest participants must be living players")
             if actor.location_id != FOREST_SITE:
                 raise ValueError(f"all quest participants must be at {FOREST_SITE}")
+
+        self._ensure_toto_state()
+        for actor_id in players:
             runtime.quests.accept(actor_id, QUEST_ID, now_ms=runtime.world.now_ms)
 
         instance_id = f"witch22_{uuid.uuid4().hex[:12]}"

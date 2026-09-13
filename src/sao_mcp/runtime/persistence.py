@@ -160,12 +160,16 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
 
     if into is None:
         from sao_mcp.runtime.social_communication_runtime import SocialCommunicationAincradRuntime
-        from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
 
         runtime: GameRuntime = SocialCommunicationAincradRuntime()
-        install_floor22_witch_scenario(runtime)
     else:
         runtime = into
+
+    # Scenario installers may seed static corpus/rules, but dynamic actors are restored lazily
+    # from the save through the scenario import hook below.
+    from sao_mcp.scenarios.floor22_witch import install_floor22_witch_scenario
+
+    install_floor22_witch_scenario(runtime)
     load_campaign_setup_state(runtime, payload.get("campaign_setup_state"))
     load_custom_catalog_state(runtime, payload.get("custom_catalog_state", {}))
     runtime.world = WORLD_ADAPTER.validate_python(payload["world"])
@@ -218,6 +222,10 @@ def import_runtime(payload_json: str, *, into: GameRuntime | None = None) -> Gam
 
     if "rng_state" in payload:
         runtime.rng.setstate(_tuplify(payload["rng_state"]))
+    for scenario in getattr(runtime, "scenarios", {}).values():
+        prepare_import = getattr(scenario, "prepare_import", None)
+        if prepare_import is not None:
+            prepare_import(payload)
     runtime.quests.load_state(payload.get("quest_state", {}))
     runtime.npcs.load_state(payload.get("npc_state", {}))
     runtime.legal.load_state(payload.get("legal_state", {}))
