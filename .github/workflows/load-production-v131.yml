@@ -1,0 +1,82 @@
+name: load-production-v1.3.1
+
+on:
+  push:
+    branches:
+      - release-v1.3.1
+    paths:
+      - ".github/workflows/load-production-v131.yml"
+
+jobs:
+  load-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install client/runtime
+        run: python -m pip install -e .
+      - name: Restore Kageaki Day 3 to production and verify live UI payload
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          from mcp import Client
+          from scripts.build_kageaki_day3_save import build_save
+
+          ENDPOINT = "https://sao-aincrad-mcp-production.up.railway.app/mcp"
+          save_json = build_save()
+          save = json.loads(save_json)
+          actor_id = next(actor_id for actor_id, actor in save["actors"].items() if actor["name"] == "凑斗景明")
+
+          def text_json(result):
+              return json.loads(result.content[0].text)
+
+          async def main():
+              async with Client(ENDPOINT, raise_exceptions=True) as client:
+                  tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+                  before = text_json(await client.call_tool("health", {}))
+                  imported = text_json(await client.call_tool("import_save_json", {"save_json": save_json}))
+                  after = text_json(await client.call_tool("health", {}))
+                  hud_result = await client.call_tool("character_hud", {"actor_id": actor_id})
+                  menu_result = await client.call_tool("system_menu", {"actor_id": actor_id})
+
+              hud = hud_result.structured_content
+              menu = menu_result.structured_content
+              assert before["version"] == "1.3.1", before
+              assert imported["ok"] is True and imported["actors"] == 9, imported
+              assert after["version"] == "1.3.1" and after["actors"] == 9, after
+              assert hud and menu and "result" not in hud and "result" not in menu
+              assert hud["actor"]["name"] == "凑斗景明"
+              assert hud["actor"]["level"] == 7
+              assert [hud["actor"]["hp"], hud["actor"]["maxHp"]] == [1561, 1561]
+              assert hud["actor"]["col"] == 88888
+              star = next(skill for skill in hud["skills"]["equipped"] if skill["id"] == "star_sword")
+              assert star["proficiency"] == 238
+              weapon = hud["equipment"]["weapon"]
+              assert "Anneal Blade" in weapon["name"] and sum(weapon["enhancements"].values()) == 3
+              assert menu["character"]["actor"]["col"] == 88888
+              assert tools["character_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/aincrad-hud.html"
+              assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/system-menu.html"
+              assert tools["boss_raid_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/boss-raid.html"
+              print(json.dumps({
+                  "before": before,
+                  "imported": imported,
+                  "after": after,
+                  "actorId": actor_id,
+                  "hud": {
+                      "name": hud["actor"]["name"],
+                      "level": hud["actor"]["level"],
+                      "hp": [hud["actor"]["hp"], hud["actor"]["maxHp"]],
+                      "col": hud["actor"]["col"],
+                      "weapon": weapon["name"],
+                      "enhancementTotal": sum(weapon["enhancements"].values()),
+                      "starSword": star["proficiency"],
+                  },
+                  "resourceUri": tools["character_hud"].meta["ui"]["resourceUri"],
+              }, ensure_ascii=False))
+
+          asyncio.run(main())
+          PY
