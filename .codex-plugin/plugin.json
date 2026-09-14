@@ -1,7 +1,7 @@
 {
   "name": "sao-aincrad",
-  "version": "1.3.2",
-  "description": "Run detailed Sword Art Online Aincrad campaigns with rules, combat, items, progression and native UI.",
+  "version": "1.3.3",
+  "description": "Run persistent Sword Art Online Aincrad campaigns through one authoritative runtime line and one System Menu UI.",
   "author": {
     "name": "starmerx-luxuyan",
     "url": "https://github.com/starmerx-luxuyan"
@@ -9,34 +9,23 @@
   "homepage": "https://github.com/starmerx-luxuyan/SAO",
   "repository": "https://github.com/starmerx-luxuyan/SAO",
   "license": "MIT",
-  "keywords": [
-    "sao",
-    "aincrad",
-    "rpg",
-    "gm",
-    "mcp",
-    "combat"
-  ],
+  "keywords": ["sao", "aincrad", "rpg", "gm", "mcp", "combat"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "SAO Aincrad GM",
-    "shortDescription": "Detailed Aincrad rules, runtime and HUD",
-    "longDescription": "A granular Aincrad game runtime for character progression, Sword Skills, equipment, crafting, combat, parties, raids, crime, quests, floors and stateful GM play.",
+    "shortDescription": "Aincrad runtime with internal GATE and one System Menu",
+    "longDescription": "A persistent Aincrad runtime whose ordinary gameplay mutations all pass through one fixed server-owned GATE/runline and refresh one player-visible System Menu.",
     "developerName": "starmerx-luxuyan",
     "category": "Games",
-    "capabilities": [
-      "Interactive",
-      "Read",
-      "Write"
-    ],
+    "capabilities": ["Interactive", "Read", "Write"],
     "websiteURL": "https://github.com/starmerx-luxuyan/SAO",
     "privacyPolicyURL": "https://github.com/starmerx-luxuyan/SAO/blob/main/docs/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/starmerx-luxuyan/SAO/blob/main/docs/TERMS.md",
     "defaultPrompt": [
-      "Start a new Aincrad campaign and show my character HUD.",
-      "Inspect my equipment and recommend a legal upgrade from my current inventory.",
-      "Resolve this combat action mechanically, then narrate only what my character can observe."
+      "Continue my Aincrad campaign through the runtime and show the System Menu after state changes.",
+      "Resolve my in-world action through turn_execute; do not hand-orchestrate observation or world ticks.",
+      "Inspect my current System Menu and continue play from authoritative state."
     ],
     "brandColor": "#54C6D8"
   }

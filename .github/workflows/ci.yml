@@ -44,76 +44,79 @@ jobs:
 
           expected_public = {
               "health", "create_character", "get_character_state", "inspect_catalog_entry", "list_catalog",
-              "create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor",
-              "export_save_json", "import_save_json", "get_gm_observation", "get_gm_decision_contract",
-              "preview_gm_decision", "execute_gm_decision", "character_hud", "system_menu", "boss_raid_hud",
-              "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup", "get_custom_mechanics_schema",
-              "create_configured_character", "configure_character_setup", "set_character_custom_mechanics",
-              "get_character_setup_state", "grant_character_item", "remove_character_item_setup",
-              "get_custom_catalog_state", "register_custom_weapon_definition", "register_custom_armor_definition",
-              "register_custom_consumable_definition", "register_custom_item_definition", "remove_custom_item_definition",
-              "register_custom_skill_definition", "register_custom_sword_skill_definition",
-              "validate_campaign_blueprint", "preview_campaign_blueprint", "apply_campaign_blueprint",
+              "list_vendors", "export_save_json", "import_save_json", "get_turn_contract", "turn_execute",
+              "system_menu", "get_campaign_setup_status", "begin_campaign_setup", "finalize_campaign_setup",
+              "get_custom_mechanics_schema", "create_configured_character", "configure_character_setup",
+              "set_character_custom_mechanics", "get_character_setup_state", "grant_character_item",
+              "remove_character_item_setup", "get_custom_catalog_state", "register_custom_weapon_definition",
+              "register_custom_armor_definition", "register_custom_consumable_definition",
+              "register_custom_item_definition", "remove_custom_item_definition", "register_custom_skill_definition",
+              "register_custom_sword_skill_definition", "validate_campaign_blueprint", "preview_campaign_blueprint",
+              "apply_campaign_blueprint",
           }
-          expected_resources = {
-              "ui://sao/v1.3.1/aincrad-hud.html",
-              "ui://sao/v1.3.1/system-menu.html",
-              "ui://sao/v1.3.1/boss-raid.html",
+          removed_hosted = {
+              "get_gm_observation", "get_gm_decision_contract", "preview_gm_decision", "execute_gm_decision",
+              "character_hud", "boss_raid_hud", "buy_from_vendor", "sell_to_vendor", "create_party", "join_party",
           }
-          assert sao_mcp.__version__ == "1.3.2"
+          expected_resources = {"ui://sao/v1.3.3/system-menu.html"}
+
+          assert sao_mcp.__version__ == "1.3.3"
           assert server_bootstrap.runtime is server_public.runtime
           assert AINCRAD_MONSTERS["ruin_kobold_trooper"].level == 6
           assert AINCRAD_MONSTERS["ruin_kobold_trooper"].location_id == "floor_1_labyrinth"
           assert "npc_smith_tolbana_frontline" in server_public.runtime.economy.vendors
-          for filename in ("hud.html", "system_menu.html", "boss_raid.html"):
-              resource = files("sao_mcp.ui").joinpath(filename)
-              assert resource.is_file()
-              html = resource.read_text(encoding="utf-8")
-              assert "window.openai?.toolOutput" in html
-              assert "ui/notifications/tool-result" in html
-              assert "structuredContent" in html
-              assert "result?.content?.[0]?.text" not in html
-              assert "JSON.parse(text)" not in html
+
+          resource = files("sao_mcp.ui").joinpath("system_menu.html")
+          assert resource.is_file()
+          html = resource.read_text(encoding="utf-8")
+          assert "window.openai?.toolOutput" in html
+          assert "ui/notifications/tool-result" in html
+          assert "structuredContent" in html
+          assert "result?.content?.[0]?.text" not in html
+          assert "JSON.parse(text)" not in html
+
           tools = {tool.name: tool for tool in asyncio.run(server_public.mcp.list_tools())}
           full_names = {tool.name for tool in asyncio.run(server_bootstrap.mcp.list_tools())}
           assert set(tools) == expected_public
-          assert "reopen_campaign_setup" not in tools
-          assert {"reopen_campaign_setup", "validate_campaign_amendment", "preview_campaign_amendment", "apply_campaign_amendment", "mark_floor_boss_defeated", "advance_world_time"} <= full_names
-          assert tools["character_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/aincrad-hud.html"
-          assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/system-menu.html"
-          assert tools["boss_raid_hud"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.1/boss-raid.html"
-          for name in ("character_hud", "system_menu", "boss_raid_hud"):
-              schema = tools[name].output_schema
-              assert schema["type"] == "object"
-              assert "result" not in schema.get("properties", {})
+          assert removed_hosted.isdisjoint(tools)
+          assert {
+              "reopen_campaign_setup", "validate_campaign_amendment", "preview_campaign_amendment",
+              "apply_campaign_amendment", "mark_floor_boss_defeated", "advance_world_time",
+              "get_gm_observation", "get_gm_decision_contract", "preview_gm_decision", "execute_gm_decision",
+          } <= full_names
+          assert tools["system_menu"].meta["ui"]["resourceUri"] == "ui://sao/v1.3.3/system-menu.html"
+          schema = tools["system_menu"].output_schema
+          assert schema["type"] == "object"
+          assert "result" not in schema.get("properties", {})
+
           resources = {str(binding.resource.uri): binding.resource for binding in server_public.apps.resources()}
           assert set(resources) == expected_resources
-          for resource in resources.values():
-              ui_meta = resource.meta["ui"]
+          for app_resource in resources.values():
+              ui_meta = app_resource.meta["ui"]
               assert ui_meta["domain"] == WIDGET_DOMAIN
               assert "csp" in ui_meta
           PY
       - name: Assemble plugin bundle
         run: |
-          rm -rf release/SAO-Aincrad-v1.3.2
-          mkdir -p release/SAO-Aincrad-v1.3.2/.codex-plugin
-          mkdir -p release/SAO-Aincrad-v1.3.2/skills
-          mkdir -p release/SAO-Aincrad-v1.3.2/docs
-          mkdir -p release/SAO-Aincrad-v1.3.2/dist
-          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.3.2/.codex-plugin/
-          cp .mcp.json release/SAO-Aincrad-v1.3.2/
-          cp -R skills/sao-gm release/SAO-Aincrad-v1.3.2/skills/
-          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.3.2/
-          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.2.md release/SAO-Aincrad-v1.3.2/docs/
-          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.3.2/dist/
-          mkdir -p release/SAO-Aincrad-v1.3.2/presets
-          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json release/SAO-Aincrad-v1.3.2/presets/
-          cp /tmp/SAO_Kageaki_Day3_v1.3.2.save.json release/SAO-Aincrad-v1.3.2/
-          cp /tmp/SAO_Kageaki_Frontline_Recovery_v1.3.2.save.json release/SAO-Aincrad-v1.3.2/
+          rm -rf release/SAO-Aincrad-v1.3.3
+          mkdir -p release/SAO-Aincrad-v1.3.3/.codex-plugin
+          mkdir -p release/SAO-Aincrad-v1.3.3/skills
+          mkdir -p release/SAO-Aincrad-v1.3.3/docs
+          mkdir -p release/SAO-Aincrad-v1.3.3/dist
+          cp .codex-plugin/plugin.json release/SAO-Aincrad-v1.3.3/.codex-plugin/
+          cp .mcp.json release/SAO-Aincrad-v1.3.3/
+          cp -R skills/sao-gm release/SAO-Aincrad-v1.3.3/skills/
+          cp README.md LICENSE SOURCE_POLICY.md release/SAO-Aincrad-v1.3.3/
+          cp docs/RELEASE.md docs/PRIVACY.md docs/TERMS.md docs/SETUP_API.md docs/V1.3.3_RUNLINE.md docs/PLAYABILITY_CLOSURE_V133.md release/SAO-Aincrad-v1.3.3/docs/
+          cp dist/starmerx_sao_mcp-*.whl release/SAO-Aincrad-v1.3.3/dist/
+          mkdir -p release/SAO-Aincrad-v1.3.3/presets
+          cp presets/kageaki_day3.json presets/kageaki_super_luck_amendment.json release/SAO-Aincrad-v1.3.3/presets/
+          cp /tmp/SAO_Kageaki_Day3_v1.3.2.save.json release/SAO-Aincrad-v1.3.3/
+          cp /tmp/SAO_Kageaki_Frontline_Recovery_v1.3.2.save.json release/SAO-Aincrad-v1.3.3/
       - name: Upload plugin bundle
         uses: actions/upload-artifact@v4
         with:
-          name: SAO-Aincrad-v1.3.2-plugin
-          path: release/SAO-Aincrad-v1.3.2
+          name: SAO-Aincrad-v1.3.3-plugin
+          path: release/SAO-Aincrad-v1.3.3
           if-no-files-found: error
           include-hidden-files: true
