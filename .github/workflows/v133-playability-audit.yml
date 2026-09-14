@@ -1,0 +1,65 @@
+name: v133-playability-audit
+
+on:
+  push:
+    branches:
+      - fix/playability-closure-v133
+    paths:
+      - .github/workflows/v133-playability-audit.yml
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Audit full/public/GM surfaces
+        run: |
+          python - <<'PY'
+          import asyncio, json
+          from mcp import Client
+          from sao_mcp import server_public
+          from sao_mcp.runtime.gm_decision import PLAYER_DECISION_OPS
+
+          READ_PREFIXES = (
+              'get_', 'list_', 'inspect_', 'preview_', 'quote_', 'health', 'export_',
+              'relationship_position_', 'skill_slots_', 'monster_target'
+          )
+          READ_EXACT = {'character_hud','system_menu','boss_raid_hud'}
+
+          async def names(mcp):
+              async with Client(mcp, raise_exceptions=True) as client:
+                  return sorted(t.name for t in (await client.list_tools()).tools)
+
+          public = asyncio.run(names(server_public.mcp))
+          print('PUBLIC_COUNT', len(public))
+          print('PUBLIC', json.dumps(public, ensure_ascii=False))
+          print('GM_OP_COUNT', len(PLAYER_DECISION_OPS))
+          print('GM_OPS', json.dumps(sorted(PLAYER_DECISION_OPS), ensure_ascii=False))
+          print('PUBLIC_POTENTIAL_MUTATORS', json.dumps([
+              n for n in public if n not in READ_EXACT and not n.startswith(READ_PREFIXES)
+          ], ensure_ascii=False))
+          PY
+          python - <<'PY'
+          import asyncio, json
+          from mcp import Client
+          from sao_mcp import server_bootstrap
+
+          READ_PREFIXES = (
+              'get_', 'list_', 'inspect_', 'preview_', 'quote_', 'health', 'export_',
+              'relationship_position_', 'skill_slots_', 'monster_target'
+          )
+          READ_EXACT = {'character_hud','system_menu','boss_raid_hud'}
+          async def main():
+              async with Client(server_bootstrap.mcp, raise_exceptions=True) as client:
+                  names = sorted(t.name for t in (await client.list_tools()).tools)
+              print('FULL_COUNT', len(names))
+              print('FULL', json.dumps(names, ensure_ascii=False))
+              mut = [n for n in names if n not in READ_EXACT and not n.startswith(READ_PREFIXES)]
+              print('FULL_POTENTIAL_MUTATOR_COUNT', len(mut))
+              print('FULL_POTENTIAL_MUTATORS', json.dumps(mut, ensure_ascii=False))
+          asyncio.run(main())
+          PY
