@@ -12,20 +12,18 @@ from mcp.server.mcpserver import MCPServer
 from sao_mcp import __version__
 from sao_mcp.runtime.character_setup import require_campaign_setup_open
 from sao_mcp.runtime.persistence import export_runtime, import_runtime
+from sao_mcp.runtime.player_runline import PlayerRunline
 from sao_mcp.server_bootstrap import gm_decision_runtime, gm_turn_executor, runtime
 from sao_mcp.server_campaign_blueprint import register_campaign_blueprint_tools
-from sao_mcp.server_gm import register_gm_tools
+from sao_mcp.server_runline import register_player_runline_tools
 from sao_mcp.server_setup import register_setup_tools
 from sao_mcp.ui.app_security import WIDGET_CSP, WIDGET_DOMAIN
-from sao_mcp.ui.boss_views import boss_raid_view
 from sao_mcp.ui.system_views import system_menu_view
 from sao_mcp.ui.view_models import character_view, dumps_view
 
 
 UI_DIR = Path(__file__).parent / "ui"
-HUD_HTML = (UI_DIR / "hud.html").read_text(encoding="utf-8")
 SYSTEM_MENU_HTML = (UI_DIR / "system_menu.html").read_text(encoding="utf-8")
-BOSS_RAID_HTML = (UI_DIR / "boss_raid.html").read_text(encoding="utf-8")
 
 
 def _default(value: Any):
@@ -42,61 +40,37 @@ def _json(value: Any) -> str:
 
 apps = Apps()
 
-
+# v1.3.3 exposes exactly one visual surface. Character HUD and Boss Raid HUD are
+# intentionally not registered on the hosted surface; their old HTML/view code may
+# remain internal until repository cleanup, but players cannot discover/invoke it.
 @apps.tool(
-    resource_uri="ui://sao/v1.3.1/aincrad-hud.html",
-    title="Aincrad HUD",
-    description="Render the player-visible character and encounter HUD.",
-)
-def character_hud(actor_id: str, encounter_id: str | None = None) -> dict[str, Any]:
-    actor = runtime.actors[actor_id]
-    encounter = runtime.encounters.get(encounter_id) if encounter_id else None
-    return character_view(actor, runtime.catalog, encounter)
-
-
-@apps.tool(
-    resource_uri="ui://sao/v1.3.1/system-menu.html",
+    resource_uri="ui://sao/v1.3.3/system-menu.html",
     title="Aincrad System Menu",
-    description="Render the player-visible Aincrad character, equipment, skills, map, quest and market panels.",
+    description="Render the single player-visible Aincrad System Menu.",
 )
 def system_menu(actor_id: str, encounter_id: str | None = None) -> dict[str, Any]:
     return system_menu_view(runtime, actor_id, encounter_id)
 
 
-@apps.tool(
-    resource_uri="ui://sao/v1.3.1/boss-raid.html",
-    title="Aincrad Boss Raid HUD",
-    description="Render the current boss-raid HUD for an encounter visible to the connected campaign.",
+apps.add_html_resource(
+    "ui://sao/v1.3.3/system-menu.html",
+    SYSTEM_MENU_HTML,
+    title="Aincrad System Menu",
+    csp=WIDGET_CSP,
+    domain=WIDGET_DOMAIN,
+    prefers_border=True,
 )
-def boss_raid_hud(encounter_id: str, boss_id: str | None = None) -> dict[str, Any]:
-    return boss_raid_view(runtime, encounter_id, boss_id)
-
-
-for uri, html, title in (
-    ("ui://sao/v1.3.1/aincrad-hud.html", HUD_HTML, "Aincrad System HUD"),
-    ("ui://sao/v1.3.1/system-menu.html", SYSTEM_MENU_HTML, "Aincrad System Menu"),
-    ("ui://sao/v1.3.1/boss-raid.html", BOSS_RAID_HTML, "Aincrad Boss Raid HUD"),
-):
-    apps.add_html_resource(
-        uri,
-        html,
-        title=title,
-        csp=WIDGET_CSP,
-        domain=WIDGET_DOMAIN,
-        prefers_border=True,
-    )
 
 
 mcp = MCPServer(
     "SAO Aincrad Player Runtime",
     extensions=[apps],
     instructions=(
-        "This is the hosted player/GM surface for Aincrad. Mechanical state is authoritative in the runtime. "
-        "For ordinary in-world actions, observe with get_gm_observation and mutate through execute_gm_decision. "
-        "Explicit campaign setup/admin tools are separate from ordinary in-world actions and may initialize characters, "
-        "grant setup inventory, register campaign-local custom definitions, and apply complete campaign blueprints. Direct "
-        "NPC/guild administration, raw ecology/population controls, floor-boss completion flags and raw world mutation "
-        "tools remain unexposed."
+        "This is the hosted Aincrad player surface. Ordinary play has one mutation boundary: turn_execute. "
+        "The runtime always performs fresh observation, player projection, gate validation, execution, "
+        "engine-owned settling, re-observation and System Menu refresh in that order. The model must not "
+        "orchestrate observation/preview/execute/world-tick calls itself. Campaign setup is a separate explicit "
+        "authority. The System Menu is the only hosted visual UI."
     ),
 )
 
@@ -112,6 +86,8 @@ def health() -> str:
             "version": __version__,
             "actors": len(runtime.actors),
             "encounters": len(runtime.encounters),
+            "ordinary_play_entry": "turn_execute",
+            "ui": "system_menu",
         }
     )
 
@@ -126,7 +102,7 @@ def create_character(name: str, level: int = 1) -> str:
 
 @mcp.tool()
 def get_character_state(actor_id: str, encounter_id: str | None = None) -> str:
-    """Return player-visible character state using the same model as the HUD."""
+    """Return player-visible character state as data; System Menu remains the sole UI."""
     encounter = runtime.encounters.get(encounter_id) if encounter_id else None
     return dumps_view(character_view(runtime.actors[actor_id], runtime.catalog, encounter))
 
@@ -179,20 +155,8 @@ def list_catalog(category: str) -> str:
 
 
 @mcp.tool()
-def create_party(leader_id: str) -> str:
-    """Create a live party for a player leader."""
-    return _json(asdict(runtime.create_party(leader_id)))
-
-
-@mcp.tool()
-def join_party(party_id: str, actor_id: str) -> str:
-    """Join a player to an existing live party."""
-    return _json(asdict(runtime.join_party(party_id, actor_id)))
-
-
-@mcp.tool()
 def list_vendors(location_id: str | None = None) -> str:
-    """List living NPC vendor nodes, optionally at one location."""
+    """Read living NPC vendor nodes. Purchases and sales mutate only through turn_execute."""
     rows = []
     for vendor in runtime.economy.vendors.values():
         if location_id is not None and vendor.location_id != location_id:
@@ -200,24 +164,6 @@ def list_vendors(location_id: str | None = None) -> str:
         state = getattr(runtime.economy, "vendor_state", None)
         rows.append(state(vendor.vendor_id) if state is not None else asdict(vendor))
     return _json({"vendors": rows})
-
-
-@mcp.tool()
-def sell_to_vendor(actor_id: str, vendor_id: str, instance_id: str, quantity: int | None = None) -> str:
-    """Sell an unequipped carried item to a colocated NPC vendor."""
-    actor = runtime.actors[actor_id]
-    return _json(asdict(runtime.economy.sell_to_vendor(
-        actor, vendor_id, instance_id, runtime.catalog, quantity=quantity, actor_location_id=actor.location_id
-    )))
-
-
-@mcp.tool()
-def buy_from_vendor(actor_id: str, vendor_id: str, template_id: str, quantity: int = 1) -> str:
-    """Buy a stocked item from a colocated NPC vendor."""
-    actor = runtime.actors[actor_id]
-    return _json(asdict(runtime.economy.buy_from_vendor(
-        actor, vendor_id, template_id, quantity, runtime.catalog, actor_location_id=actor.location_id
-    )))
 
 
 @mcp.tool()
@@ -242,6 +188,13 @@ def import_save_json(save_json: str) -> str:
 
 register_setup_tools(mcp, runtime)
 register_campaign_blueprint_tools(mcp, runtime)
-register_gm_tools(mcp, gm_turn_executor, gm_decision_runtime)
 
-__all__ = ["mcp", "apps", "runtime"]
+player_runline = PlayerRunline(
+    runtime,
+    gm_turn_executor,
+    gm_decision_runtime,
+    system_menu_view,
+)
+register_player_runline_tools(mcp, player_runline)
+
+__all__ = ["mcp", "apps", "runtime", "player_runline"]
