@@ -94,9 +94,11 @@ def test_old_v131_state_gains_new_ecology_and_vendor_authorities():
     assert restored.actors[actor.actor_id].location_id == actor.location_id
 
 
-def test_public_surface_has_party_and_vendor_actions():
+def test_public_surface_routes_party_and_vendor_mutations_through_turn_execute():
     async def run():
         async with Client(server_public.mcp, raise_exceptions=True) as client:
             return {tool.name for tool in (await client.list_tools()).tools}
+
     names = asyncio.run(run())
-    assert {"create_party", "join_party", "list_vendors", "sell_to_vendor", "buy_from_vendor"} <= names
+    assert {"list_vendors", "get_turn_contract", "turn_execute", "system_menu"} <= names
+    assert {"create_party", "join_party", "sell_to_vendor", "buy_from_vendor"}.isdisjoint(names)
